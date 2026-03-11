@@ -33,10 +33,10 @@ juce_add_plugin(PatternFlow
     PLUGIN_CODE              PtFl
     FORMATS                  VST3 Standalone
     PRODUCT_NAME             "PatternFlow"
-    IS_SYNTH                 FALSE
+    IS_SYNTH                 TRUE
     NEEDS_MIDI_INPUT         TRUE
     NEEDS_MIDI_OUTPUT        TRUE
-    IS_MIDI_EFFECT           TRUE
+    IS_MIDI_EFFECT           FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD  FALSE
 )

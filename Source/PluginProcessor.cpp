@@ -4,7 +4,9 @@
 namespace pflow {
 
 PatternFlowProcessor::PatternFlowProcessor()
-    : AudioProcessor(BusesProperties())
+    : AudioProcessor(BusesProperties()
+                         .withInput ("Input",  juce::AudioChannelSet::stereo(), true)
+                         .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
     // Start with a single empty lane
     CompLane defaultLane;
@@ -21,7 +23,7 @@ void PatternFlowProcessor::prepareToPlay(double sr, int /*samplesPerBlock*/)
 void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                          juce::MidiBuffer& midi)
 {
-    buffer.clear();
+    // Pass audio through unchanged; only generate MIDI
     midi.clear();
 
     // Read host transport
