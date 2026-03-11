@@ -184,13 +184,29 @@ PatternFlowProcessor::TransportInfo PatternFlowProcessor::getTransport() const
 
 void PatternFlowProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
-    // TODO: serialise lanes, split rules, scale settings
-    juce::ignoreUnused(dest);
+    juce::XmlElement xml("PatternFlowState");
+    xml.setAttribute("version", 1);
+    xml.setAttribute("scaleEnabled", scaleEnabled.load());
+    xml.setAttribute("scaleRoot",    scaleRoot.load());
+    xml.setAttribute("scaleType",    scaleType.load());
+    xml.setAttribute("splitEnabled", splitEnabled.load());
+    xml.setAttribute("humanVelocity", (double)humanVelocity.load());
+    xml.setAttribute("humanTiming",   (double)humanTiming.load());
+    copyXmlToBinary(xml, dest);
 }
 
 void PatternFlowProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-    juce::ignoreUnused(data, sizeInBytes);
+    auto xml = getXmlFromBinary(data, sizeInBytes);
+    if (xml != nullptr && xml->hasTagName("PatternFlowState"))
+    {
+        scaleEnabled .store(xml->getBoolAttribute("scaleEnabled", false));
+        scaleRoot    .store(xml->getIntAttribute("scaleRoot", 0));
+        scaleType    .store(xml->getIntAttribute("scaleType", 0));
+        splitEnabled .store(xml->getBoolAttribute("splitEnabled", false));
+        humanVelocity.store((float)xml->getDoubleAttribute("humanVelocity", 0.0));
+        humanTiming  .store((float)xml->getDoubleAttribute("humanTiming", 0.0));
+    }
 }
 
 juce::AudioProcessorEditor* PatternFlowProcessor::createEditor()

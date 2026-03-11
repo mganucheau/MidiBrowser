@@ -38,7 +38,7 @@ juce_add_plugin(PatternFlow
     NEEDS_MIDI_OUTPUT        TRUE
     IS_MIDI_EFFECT           FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    COPY_PLUGIN_AFTER_BUILD  FALSE
+    COPY_PLUGIN_AFTER_BUILD  TRUE
 )
 
 target_sources(PatternFlow PRIVATE
