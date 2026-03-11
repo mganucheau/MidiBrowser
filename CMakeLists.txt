@@ -10,10 +10,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
 # compile until upstream adds macOS 26 support.
 # Set via CMAKE_*_FLAGS so the flag propagates to all sub-builds (juceaide).
 if(APPLE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
-    set(CMAKE_OBJC_FLAGS "${CMAKE_OBJC_FLAGS} -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
-    set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
+    set(_sdk_compat "-DMAC_OS_X_VERSION_MIN_REQUIRED=130000 -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_sdk_compat}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_sdk_compat}")
+    set(CMAKE_OBJC_FLAGS "${CMAKE_OBJC_FLAGS} ${_sdk_compat}")
+    set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} ${_sdk_compat}")
 endif()
 
 # ── JUCE (fetched automatically) ──────────────────────────────────────────────
