@@ -23,7 +23,7 @@ public:
     void timerCallback() override;
 
 private:
-    PatternFlowProcessor& processor;
+    PatternFlowProcessor& processorRef;
 
     PatternFlowLookAndFeel lnf;
 

@@ -4,7 +4,7 @@ namespace pflow {
 
 PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     : AudioProcessorEditor(&p),
-      processor(p),
+      processorRef(p),
       controlPanel(p),
       arrangementView(p)
 {
@@ -15,20 +15,20 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
 
     // Title
     lblTitle.setText("PatternFlow", juce::dontSendNotification);
-    lblTitle.setFont(juce::Font(14.0f, juce::Font::bold));
+    lblTitle.setFont(juce::Font(juce::FontOptions(14.0f).withStyle("Bold")));
     lblTitle.setColour(juce::Label::textColourId, colours::accent);
     addAndMakeVisible(lblTitle);
 
     // Control panel
     controlPanel.onAddLane = [this]
     {
-        juce::ScopedLock sl(processor.laneLock);
+        juce::ScopedLock sl(processorRef.laneLock);
         CompLane newLane;
-        int idx = (int)processor.lanes.size();
+        int idx = (int)processorRef.lanes.size();
         auto presets = getClipColourPresets();
         newLane.name   = "Lane " + juce::String(idx + 1);
         newLane.colour = presets[idx % presets.size()];
-        processor.lanes.push_back(newLane);
+        processorRef.lanes.push_back(newLane);
         arrangementView.refresh();
     };
     addAndMakeVisible(controlPanel);
@@ -101,7 +101,7 @@ void PatternFlowEditor::resized()
 void PatternFlowEditor::timerCallback()
 {
     // Animate playhead
-    if (processor.hostPlaying.load())
+    if (processorRef.hostPlaying.load())
         arrangementView.repaint();
 }
 

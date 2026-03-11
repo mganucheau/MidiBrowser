@@ -64,7 +64,7 @@ MidiClip parseMidiFile(const juce::File& file)
             auto& ev = track->getEventPointer(i)->message;
             if (ev.isTempoMetaEvent())
             {
-                bpm = 60000000.0 / ev.getTempoMetaEventMicrosecondsPerBeat();
+                bpm = 60.0 / ev.getTempoSecondsPerQuarterNote();
                 break;
             }
         }
@@ -75,14 +75,16 @@ MidiClip parseMidiFile(const juce::File& file)
 
     for (int t = 0; t < midiFile.getNumTracks(); ++t)
     {
-        auto* track = midiFile.getTrack(t);
-        if (track == nullptr) continue;
+        auto* trackPtr = midiFile.getTrack(t);
+        if (trackPtr == nullptr) continue;
 
-        track->updateMatchedPairs();
+        // getTrack() returns const* in newer JUCE; copy so we can update pairs
+        juce::MidiMessageSequence track(*trackPtr);
+        track.updateMatchedPairs();
 
-        for (int i = 0; i < track->getNumEvents(); ++i)
+        for (int i = 0; i < track.getNumEvents(); ++i)
         {
-            auto* evHolder = track->getEventPointer(i);
+            auto* evHolder = track.getEventPointer(i);
             auto& msg = evHolder->message;
 
             if (msg.isNoteOn())

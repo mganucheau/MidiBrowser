@@ -59,10 +59,6 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                                                      juce::MidiBuffer& output,
                                                      int numSamples)
 {
-    double bpm          = hostBpm.load();
-    double secPerBeat   = 60.0 / bpm;
-    double totalSeconds = (endBeat - startBeat) * secPerBeat;
-
     juce::ScopedLock sl(laneLock);
 
     for (auto& lane : lanes)
