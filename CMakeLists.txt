@@ -8,8 +8,12 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
 # Workaround: Xcode 26 / macOS 26 SDK marks older CoreGraphics APIs as
 # unavailable.  Cap the SDK version the headers advertise so JUCE can still
 # compile until upstream adds macOS 26 support.
+# Set via CMAKE_*_FLAGS so the flag propagates to all sub-builds (juceaide).
 if(APPLE)
-    add_compile_options(-DMAC_OS_X_VERSION_MAX_ALLOWED=150400)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
+    set(CMAKE_OBJC_FLAGS "${CMAKE_OBJC_FLAGS} -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
+    set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
 endif()
 
 # ── JUCE (fetched automatically) ──────────────────────────────────────────────
