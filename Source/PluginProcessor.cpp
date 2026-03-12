@@ -5,14 +5,31 @@ namespace pflow {
 
 PatternFlowProcessor::PatternFlowProcessor()
     : AudioProcessor(BusesProperties()
-                         .withInput ("Input",  juce::AudioChannelSet::stereo(), true)
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
-    // Start with a single empty lane
     CompLane defaultLane;
     defaultLane.name   = "Lane 1";
     defaultLane.colour = juce::Colour(0xff3a7bd5);
     lanes.push_back(defaultLane);
+}
+
+double PatternFlowProcessor::snapBeat(double beat) const
+{
+    int g = gridSnap.load();
+    if (g == (int)GridSize::Off) return beat;
+
+    double div = 1.0;
+    switch ((GridSize)g)
+    {
+        case GridSize::Bar:         div = 4.0;   break;
+        case GridSize::Beat:        div = 1.0;   break;
+        case GridSize::HalfBeat:    div = 0.5;   break;
+        case GridSize::QuarterBeat: div = 0.25;  break;
+        case GridSize::Eighth:      div = 0.5;   break;
+        case GridSize::Sixteenth:   div = 0.25;  break;
+        default: break;
+    }
+    return std::round(beat / div) * div;
 }
 
 void PatternFlowProcessor::prepareToPlay(double sr, int /*samplesPerBlock*/)
@@ -23,10 +40,10 @@ void PatternFlowProcessor::prepareToPlay(double sr, int /*samplesPerBlock*/)
 void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                          juce::MidiBuffer& midi)
 {
-    // Pass audio through unchanged; only generate MIDI
-    midi.clear();
+    buffer.clear();
 
-    // Read host transport
+    juce::MidiBuffer generated;
+
     if (auto* playHead = getPlayHead())
     {
         auto posInfo = playHead->getPosition();
@@ -34,26 +51,41 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         {
             if (auto bpm = posInfo->getBpm())
                 hostBpm.store(*bpm);
-
             if (auto ppq = posInfo->getPpqPosition())
                 hostBeatPos.store(*ppq);
-
             hostPlaying.store(posInfo->getIsPlaying());
         }
     }
 
-    if (!hostPlaying.load()) return;
+    if (!hostPlaying.load())
+    {
+        for (auto& an : activeNotes_)
+            midi.addEvent(juce::MidiMessage::noteOff(an.channel, an.pitch), 0);
+        activeNotes_.clear();
+        lastBeatPos_ = -1.0;
+        return;
+    }
 
     double bpm     = hostBpm.load();
     double beatPos = hostBeatPos.load();
 
-    double secPerBeat    = 60.0 / bpm;
+    double secPerBeat     = 60.0 / bpm;
     double beatsPerSample = 1.0 / (sampleRate_ * secPerBeat);
-    double endBeat       = beatPos + buffer.getNumSamples() * beatsPerSample;
+    double endBeat        = beatPos + buffer.getNumSamples() * beatsPerSample;
 
-    generateMidiForBeatRange(beatPos, endBeat, midi, buffer.getNumSamples());
+    // Detect transport jump - send all-notes-off
+    if (lastBeatPos_ >= 0.0 && std::abs(beatPos - lastBeatPos_) > beatsPerSample * 2.0)
+    {
+        for (auto& an : activeNotes_)
+            generated.addEvent(juce::MidiMessage::noteOff(an.channel, an.pitch), 0);
+        activeNotes_.clear();
+    }
 
+    generateMidiForBeatRange(beatPos, endBeat, generated, buffer.getNumSamples());
     lastBeatPos_ = endBeat;
+
+    for (const auto metadata : generated)
+        midi.addEvent(metadata.getMessage(), metadata.samplePosition);
 }
 
 void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
@@ -75,14 +107,12 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
 
             for (auto& note : clip.notes)
             {
-                // Filter by note if per-note comping
                 if (region.noteFilter >= 0 && note.noteNumber != region.noteFilter)
                     continue;
 
                 double noteGlobalStart = region.startBeat + note.startBeat;
                 double noteGlobalEnd   = noteGlobalStart + note.lengthBeats;
 
-                // Note-on in this block?
                 if (noteGlobalStart >= startBeat && noteGlobalStart < endBeat)
                 {
                     double fraction = (noteGlobalStart - startBeat) / (endBeat - startBeat);
@@ -90,19 +120,14 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                                                     (int)(fraction * numSamples));
 
                     int pitch = note.noteNumber + clip.rootNoteOffset;
-
-                    // Apply scale quantisation
                     if (scaleEnabled.load())
                         pitch = quantiseToScale(pitch, scaleRoot.load(),
                                                (ScaleType)scaleType.load());
-
                     pitch = juce::jlimit(0, 127, pitch);
 
                     int vel = applyHumanVelocity(note.velocity);
-
                     int channel = note.channel;
 
-                    // Apply MIDI split routing
                     if (splitEnabled.load())
                     {
                         for (auto& rule : splitRules)
@@ -118,9 +143,9 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                     output.addEvent(
                         juce::MidiMessage::noteOn(channel, pitch, (juce::uint8)vel),
                         sampleOffset);
+                    activeNotes_.push_back({ pitch, channel });
                 }
 
-                // Note-off in this block?
                 if (noteGlobalEnd >= startBeat && noteGlobalEnd < endBeat)
                 {
                     double fraction = (noteGlobalEnd - startBeat) / (endBeat - startBeat);
@@ -149,6 +174,13 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                     output.addEvent(
                         juce::MidiMessage::noteOff(channel, pitch),
                         sampleOffset);
+
+                    activeNotes_.erase(
+                        std::remove_if(activeNotes_.begin(), activeNotes_.end(),
+                            [pitch, channel](const ActiveNote& a) {
+                                return a.pitch == pitch && a.channel == channel;
+                            }),
+                        activeNotes_.end());
                 }
             }
         }
@@ -159,7 +191,6 @@ int PatternFlowProcessor::applyHumanVelocity(int vel)
 {
     float h = humanVelocity.load();
     if (h <= 0.0f) return vel;
-
     auto& rng = juce::Random::getSystemRandom();
     int deviation = (int)(h * 20.0f * (rng.nextFloat() * 2.0f - 1.0f));
     return juce::jlimit(1, 127, vel + deviation);
@@ -169,7 +200,6 @@ double PatternFlowProcessor::applyHumanTiming(double beatPos)
 {
     float h = humanTiming.load();
     if (h <= 0.0f) return beatPos;
-
     auto& rng = juce::Random::getSystemRandom();
     double deviation = h * 0.03 * (rng.nextFloat() * 2.0f - 1.0f);
     return beatPos + deviation;
@@ -192,6 +222,11 @@ void PatternFlowProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("splitEnabled", splitEnabled.load());
     xml.setAttribute("humanVelocity", (double)humanVelocity.load());
     xml.setAttribute("humanTiming",   (double)humanTiming.load());
+    xml.setAttribute("arrangementBars", arrangementBars.load());
+    xml.setAttribute("gridSnap",     gridSnap.load());
+    xml.setAttribute("loopEnabled",  loopEnabled.load());
+    xml.setAttribute("loopStartBeat", loopStartBeat.load());
+    xml.setAttribute("loopEndBeat",  loopEndBeat.load());
     copyXmlToBinary(xml, dest);
 }
 
@@ -206,6 +241,11 @@ void PatternFlowProcessor::setStateInformation(const void* data, int sizeInBytes
         splitEnabled .store(xml->getBoolAttribute("splitEnabled", false));
         humanVelocity.store((float)xml->getDoubleAttribute("humanVelocity", 0.0));
         humanTiming  .store((float)xml->getDoubleAttribute("humanTiming", 0.0));
+        arrangementBars.store(xml->getIntAttribute("arrangementBars", 8));
+        gridSnap     .store(xml->getIntAttribute("gridSnap", (int)GridSize::Beat));
+        loopEnabled  .store(xml->getBoolAttribute("loopEnabled", false));
+        loopStartBeat.store(xml->getDoubleAttribute("loopStartBeat", 0.0));
+        loopEndBeat  .store(xml->getDoubleAttribute("loopEndBeat", 32.0));
     }
 }
 

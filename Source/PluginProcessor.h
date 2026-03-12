@@ -33,8 +33,10 @@ public:
 
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override
     {
-        return layouts.getMainInputChannelSet()  == layouts.getMainOutputChannelSet()
-            && !layouts.getMainOutputChannelSet().isDisabled();
+        auto mainOut = layouts.getMainOutputChannelSet();
+        if (mainOut.isDisabled()) return true;
+        return mainOut == juce::AudioChannelSet::stereo()
+            || mainOut == juce::AudioChannelSet::mono();
     }
 
     double getTailLengthSeconds() const override { return 0.0; }
@@ -48,16 +50,29 @@ public:
     std::vector<CompLane> lanes;
     juce::CriticalSection laneLock;
 
+    // Arrangement length in bars (default 8)
+    std::atomic<int> arrangementBars { 8 };
+
+    // Grid snap
+    enum class GridSize { Off, Bar, Beat, HalfBeat, QuarterBeat, Eighth, Sixteenth };
+    std::atomic<int> gridSnap { (int)GridSize::Beat };
+    double snapBeat(double beat) const;
+
+    // Loop mode
+    std::atomic<bool>   loopEnabled  { false };
+    std::atomic<double> loopStartBeat{ 0.0 };
+    std::atomic<double> loopEndBeat  { 32.0 };
+
     // Scale / transpose
-    std::atomic<int>       scaleRoot    { 0 };  // 0=C
-    std::atomic<int>       scaleType    { 0 };  // ScaleType enum
+    std::atomic<int>       scaleRoot    { 0 };
+    std::atomic<int>       scaleType    { 0 };
     std::atomic<bool>      scaleEnabled { false };
-    std::atomic<int>       rootNoteRemap{ 24 }; // default C1
+    std::atomic<int>       rootNoteRemap{ 24 };
 
     // Humanization parameters (0..1)
     std::atomic<float>     humanTiming  { 0.0f };
     std::atomic<float>     humanVelocity{ 0.0f };
-    std::atomic<float>     humanFeel    { 0.0f };  // swing
+    std::atomic<float>     humanFeel    { 0.0f };
     std::atomic<float>     intonation   { 0.0f };
 
     // MIDI split rules
@@ -69,13 +84,15 @@ public:
     std::atomic<double>    hostBeatPos  { 0.0 };
     std::atomic<bool>      hostPlaying  { false };
 
-    // Notify UI about transport
     struct TransportInfo { double bpm; double beatPos; bool playing; };
     TransportInfo getTransport() const;
 
 private:
     double sampleRate_ = 44100.0;
     double lastBeatPos_ = -1.0;
+
+    struct ActiveNote { int pitch; int channel; };
+    std::vector<ActiveNote> activeNotes_;
 
     void generateMidiForBeatRange(double startBeat, double endBeat,
                                   juce::MidiBuffer& output, int numSamples);

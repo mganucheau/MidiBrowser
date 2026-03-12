@@ -7,7 +7,6 @@ namespace pflow {
 
 class PatternFlowProcessor;
 
-// ── Single clip visual block on a lane ───────────────────────────────────────
 struct ClipBlock
 {
     juce::Rectangle<float> bounds;
@@ -15,7 +14,6 @@ struct ClipBlock
     int                    regionIndex = 0;
 };
 
-// ── Arrangement / comping view (right main area) ─────────────────────────────
 class ArrangementView : public juce::Component,
                         public juce::DragAndDropTarget
 {
@@ -28,35 +26,34 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
 
-    // DragAndDropTarget
     bool isInterestedInDragSource(const SourceDetails&) override;
     void itemDragEnter(const SourceDetails&) override;
     void itemDragMove(const SourceDetails&) override;
     void itemDragExit(const SourceDetails&) override;
     void itemDropped(const SourceDetails&) override;
 
-    // Add a clip to a specific lane or create a new lane
     void addClipToLane(const MidiClip& clip, int laneIndex, double beatPos);
     void addClipToNewLane(const MidiClip& clip, double beatPos);
 
-    // Open comp view for a region
     std::function<void(int laneIdx, int regionIdx)> onRegionDoubleClicked;
-    // Open piano roll for a clip
-    std::function<void(const MidiClip&)>            onClipDoubleClicked;
-    // Colour picker
+    std::function<void(const MidiClip&, int laneIdx, int regionIdx)> onClipDoubleClicked;
     std::function<void(int laneIdx, int regionIdx)> onColourPickRequested;
 
-    // Zoom / scroll
     float beatsPerPixel = 0.1f;
     float scrollBeatOffset = 0.0f;
 
+    int openPianoRollLane = -1;
+    int openPianoRollRegion = -1;
+
     void refresh();
+
+    static constexpr int rulerH = 20;
 
 private:
     PatternFlowProcessor& processor;
 
-    // Visual layout
     std::vector<ClipBlock> clipBlocks;
     int   hoveredLane   = -1;
     int   hoveredRegion = -1;
@@ -64,24 +61,29 @@ private:
     int   dropLaneIdx   = -1;
     bool  draggingOver  = false;
 
-    // Selected region
     int selLane   = -1;
     int selRegion = -1;
 
-    // Convert pixel x to beat position
+    enum class LoopDragTarget { None, Start, End };
+    LoopDragTarget loopDragging = LoopDragTarget::None;
+
+    bool  draggingClip = false;
+    double clipDragOrigBeat = 0.0;
+
     double xToBeat(float x) const;
     float  beatToX(double beat) const;
     int    yToLane(float y) const;
     float  laneToY(int lane) const;
 
     void rebuildClipBlocks();
+    void paintRuler(juce::Graphics&);
     void paintLaneHeaders(juce::Graphics&);
     void paintClipBlocks(juce::Graphics&);
     void paintPlayhead(juce::Graphics&);
     void paintDropIndicator(juce::Graphics&);
     void paintBeatGrid(juce::Graphics&);
+    void paintLoopMarkers(juce::Graphics&);
 
-    // Context menu for clip colour etc.
     void showClipContextMenu(int laneIdx, int regionIdx);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ArrangementView)
