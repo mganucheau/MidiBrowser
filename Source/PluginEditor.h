@@ -12,7 +12,8 @@ namespace pflow {
 
 class PatternFlowEditor : public juce::AudioProcessorEditor,
                           public juce::DragAndDropContainer,
-                          public juce::Timer
+                          public juce::Timer,
+                          public juce::KeyListener
 {
 public:
     explicit PatternFlowEditor(PatternFlowProcessor&);
@@ -21,6 +22,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void timerCallback() override;
+    bool keyPressed(const juce::KeyPress& key, juce::Component* originatingComponent) override;
 
 private:
     PatternFlowProcessor& processorRef;
@@ -35,6 +37,9 @@ private:
 
     // Title bar
     juce::Label lblTitle;
+    juce::TextButton btnAbout { "i" };
+
+    void showAboutDialog();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PatternFlowEditor)
 };

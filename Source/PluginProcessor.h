@@ -77,6 +77,7 @@ public:
 
     // MIDI split rules
     std::vector<MidiSplitRule> splitRules;
+    juce::CriticalSection      splitLock;
     std::atomic<bool>          splitEnabled { false };
 
     // Transport state from host

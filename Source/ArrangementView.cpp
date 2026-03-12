@@ -36,12 +36,12 @@ float ArrangementView::beatToX(double beat) const
 
 int ArrangementView::yToLane(float y) const
 {
-    return std::max(0, (int)((y - rulerH) / metrics::laneHeight));
+    return std::max(0, (int)((y + verticalScrollOffset - rulerH) / metrics::laneHeight));
 }
 
 float ArrangementView::laneToY(int lane) const
 {
-    return (float)(lane * metrics::laneHeight) + rulerH;
+    return (float)(lane * metrics::laneHeight) + rulerH - verticalScrollOffset;
 }
 
 void ArrangementView::rebuildClipBlocks()
@@ -410,6 +410,33 @@ void ArrangementView::mouseUp(const juce::MouseEvent&)
 {
     loopDragging = LoopDragTarget::None;
     draggingClip = false;
+}
+
+void ArrangementView::mouseWheelMove(const juce::MouseEvent& e,
+                                      const juce::MouseWheelDetails& wheel)
+{
+    if (e.mods.isCommandDown())
+    {
+        // Zoom with Cmd/Ctrl + scroll
+        float zoomFactor = wheel.deltaY > 0 ? 0.85f : 1.18f;
+        beatsPerPixel = juce::jlimit(0.01f, 2.0f, beatsPerPixel * zoomFactor);
+        refresh();
+    }
+    else if (e.mods.isShiftDown())
+    {
+        // Horizontal scroll with Shift + scroll
+        scrollBeatOffset = std::max(0.0f, scrollBeatOffset - wheel.deltaY * 8.0f);
+        refresh();
+    }
+    else
+    {
+        // Vertical scroll
+        int numLanes;
+        { juce::ScopedLock sl(processor.laneLock); numLanes = (int)processor.lanes.size(); }
+        float maxScroll = std::max(0.0f, (float)((numLanes + 1) * metrics::laneHeight) - (float)(getHeight() - rulerH));
+        verticalScrollOffset = juce::jlimit(0.0f, maxScroll, verticalScrollOffset - wheel.deltaY * 40.0f);
+        refresh();
+    }
 }
 
 void ArrangementView::resized()

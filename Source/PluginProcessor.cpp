@@ -94,6 +94,7 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                                                      int numSamples)
 {
     juce::ScopedLock sl(laneLock);
+    juce::ScopedLock sl2(splitLock);
 
     for (auto& lane : lanes)
     {
@@ -215,18 +216,80 @@ PatternFlowProcessor::TransportInfo PatternFlowProcessor::getTransport() const
 void PatternFlowProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
     juce::XmlElement xml("PatternFlowState");
-    xml.setAttribute("version", 1);
+    xml.setAttribute("version", 2);
     xml.setAttribute("scaleEnabled", scaleEnabled.load());
     xml.setAttribute("scaleRoot",    scaleRoot.load());
     xml.setAttribute("scaleType",    scaleType.load());
     xml.setAttribute("splitEnabled", splitEnabled.load());
     xml.setAttribute("humanVelocity", (double)humanVelocity.load());
     xml.setAttribute("humanTiming",   (double)humanTiming.load());
+    xml.setAttribute("humanFeel",     (double)humanFeel.load());
+    xml.setAttribute("humanIntonation", (double)intonation.load());
     xml.setAttribute("arrangementBars", arrangementBars.load());
     xml.setAttribute("gridSnap",     gridSnap.load());
     xml.setAttribute("loopEnabled",  loopEnabled.load());
     xml.setAttribute("loopStartBeat", loopStartBeat.load());
     xml.setAttribute("loopEndBeat",  loopEndBeat.load());
+
+    // Serialize lanes and clips
+    {
+        juce::ScopedLock sl(laneLock);
+        auto* lanesXml = xml.createNewChildElement("Lanes");
+        for (auto& lane : lanes)
+        {
+            auto* laneXml = lanesXml->createNewChildElement("Lane");
+            laneXml->setAttribute("name", lane.name);
+            laneXml->setAttribute("colour", (int)lane.colour.getARGB());
+            laneXml->setAttribute("expanded", lane.expanded);
+
+            auto* clipsXml = laneXml->createNewChildElement("Clips");
+            for (auto& clip : lane.clips)
+            {
+                auto* clipXml = clipsXml->createNewChildElement("Clip");
+                clipXml->setAttribute("name", clip.name);
+                clipXml->setAttribute("filePath", clip.filePath);
+                clipXml->setAttribute("lengthBeats", clip.lengthBeats);
+                clipXml->setAttribute("colour", (int)clip.colour.getARGB());
+                clipXml->setAttribute("rootNoteOffset", clip.rootNoteOffset);
+
+                auto* notesXml = clipXml->createNewChildElement("Notes");
+                for (auto& note : clip.notes)
+                {
+                    auto* noteXml = notesXml->createNewChildElement("N");
+                    noteXml->setAttribute("p", note.noteNumber);
+                    noteXml->setAttribute("v", note.velocity);
+                    noteXml->setAttribute("s", note.startBeat);
+                    noteXml->setAttribute("l", note.lengthBeats);
+                    noteXml->setAttribute("c", note.channel);
+                }
+            }
+
+            auto* regionsXml = laneXml->createNewChildElement("Regions");
+            for (auto& region : lane.regions)
+            {
+                auto* regXml = regionsXml->createNewChildElement("R");
+                regXml->setAttribute("start", region.startBeat);
+                regXml->setAttribute("end", region.endBeat);
+                regXml->setAttribute("clip", region.clipIndex);
+                regXml->setAttribute("filter", region.noteFilter);
+                regXml->setAttribute("muted", region.muted);
+            }
+        }
+    }
+
+    // Serialize split rules
+    {
+        auto* splitsXml = xml.createNewChildElement("SplitRules");
+        juce::ScopedLock sl(splitLock);
+        for (auto& rule : splitRules)
+        {
+            auto* ruleXml = splitsXml->createNewChildElement("Rule");
+            ruleXml->setAttribute("min", rule.noteMin);
+            ruleXml->setAttribute("max", rule.noteMax);
+            ruleXml->setAttribute("out", rule.outputIndex);
+        }
+    }
+
     copyXmlToBinary(xml, dest);
 }
 
@@ -241,11 +304,87 @@ void PatternFlowProcessor::setStateInformation(const void* data, int sizeInBytes
         splitEnabled .store(xml->getBoolAttribute("splitEnabled", false));
         humanVelocity.store((float)xml->getDoubleAttribute("humanVelocity", 0.0));
         humanTiming  .store((float)xml->getDoubleAttribute("humanTiming", 0.0));
+        humanFeel    .store((float)xml->getDoubleAttribute("humanFeel", 0.0));
+        intonation   .store((float)xml->getDoubleAttribute("humanIntonation", 0.0));
         arrangementBars.store(xml->getIntAttribute("arrangementBars", 8));
         gridSnap     .store(xml->getIntAttribute("gridSnap", (int)GridSize::Beat));
         loopEnabled  .store(xml->getBoolAttribute("loopEnabled", false));
         loopStartBeat.store(xml->getDoubleAttribute("loopStartBeat", 0.0));
         loopEndBeat  .store(xml->getDoubleAttribute("loopEndBeat", 32.0));
+
+        // Restore lanes and clips
+        if (auto* lanesXml = xml->getChildByName("Lanes"))
+        {
+            juce::ScopedLock sl(laneLock);
+            lanes.clear();
+
+            for (auto* laneXml : lanesXml->getChildIterator())
+            {
+                CompLane lane;
+                lane.name     = laneXml->getStringAttribute("name", "Lane");
+                lane.colour   = juce::Colour((juce::uint32)laneXml->getIntAttribute("colour", (int)0xff3a7bd5));
+                lane.expanded = laneXml->getBoolAttribute("expanded", false);
+
+                if (auto* clipsXml = laneXml->getChildByName("Clips"))
+                {
+                    for (auto* clipXml : clipsXml->getChildIterator())
+                    {
+                        MidiClip clip;
+                        clip.name           = clipXml->getStringAttribute("name");
+                        clip.filePath       = clipXml->getStringAttribute("filePath");
+                        clip.lengthBeats    = clipXml->getDoubleAttribute("lengthBeats", 4.0);
+                        clip.colour         = juce::Colour((juce::uint32)clipXml->getIntAttribute("colour", (int)0xff3a7bd5));
+                        clip.rootNoteOffset = clipXml->getIntAttribute("rootNoteOffset", 0);
+
+                        if (auto* notesXml = clipXml->getChildByName("Notes"))
+                        {
+                            for (auto* noteXml : notesXml->getChildIterator())
+                            {
+                                NoteEvent note;
+                                note.noteNumber  = noteXml->getIntAttribute("p", 60);
+                                note.velocity    = noteXml->getIntAttribute("v", 100);
+                                note.startBeat   = noteXml->getDoubleAttribute("s", 0.0);
+                                note.lengthBeats = noteXml->getDoubleAttribute("l", 1.0);
+                                note.channel     = noteXml->getIntAttribute("c", 1);
+                                clip.notes.push_back(note);
+                            }
+                        }
+                        lane.clips.push_back(clip);
+                    }
+                }
+
+                if (auto* regionsXml = laneXml->getChildByName("Regions"))
+                {
+                    for (auto* regXml : regionsXml->getChildIterator())
+                    {
+                        CompRegion region;
+                        region.startBeat  = regXml->getDoubleAttribute("start", 0.0);
+                        region.endBeat    = regXml->getDoubleAttribute("end", 4.0);
+                        region.clipIndex  = regXml->getIntAttribute("clip", -1);
+                        region.noteFilter = regXml->getIntAttribute("filter", -1);
+                        region.muted      = regXml->getBoolAttribute("muted", false);
+                        lane.regions.push_back(region);
+                    }
+                }
+
+                lanes.push_back(lane);
+            }
+        }
+
+        // Restore split rules
+        if (auto* splitsXml = xml->getChildByName("SplitRules"))
+        {
+            juce::ScopedLock sl(splitLock);
+            splitRules.clear();
+            for (auto* ruleXml : splitsXml->getChildIterator())
+            {
+                MidiSplitRule rule;
+                rule.noteMin     = ruleXml->getIntAttribute("min", 0);
+                rule.noteMax     = ruleXml->getIntAttribute("max", 127);
+                rule.outputIndex = ruleXml->getIntAttribute("out", 0);
+                splitRules.push_back(rule);
+            }
+        }
     }
 }
 

@@ -49,10 +49,16 @@ public:
     int openPianoRollRegion = -1;
 
     void refresh();
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     static constexpr int rulerH = 24;
 
     juce::TextButton btnAddBars { "+4 Bars" };
+
+    int selLane   = -1;
+    int selRegion = -1;
+
+    float verticalScrollOffset = 0.0f;
 
 private:
     PatternFlowProcessor& processor;
@@ -63,9 +69,6 @@ private:
     float dropBeatPos   = 0.0f;
     int   dropLaneIdx   = -1;
     bool  draggingOver  = false;
-
-    int selLane   = -1;
-    int selRegion = -1;
 
     enum class LoopDragTarget { None, Start, End };
     LoopDragTarget loopDragging = LoopDragTarget::None;

@@ -43,6 +43,23 @@ inline std::vector<juce::Colour> getClipColourPresets()
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
+// ── Version ─────────────────────────────────────────────────────────────────
+namespace version {
+    constexpr const char* number = "0.1.0";
+    constexpr const char* name   = "PatternFlow";
+    constexpr const char* desc   = "A MIDI composition and comping tool for creative producers. "
+                                   "Arrange, layer, and reshape MIDI clips with per-note comping, "
+                                   "scale quantisation, humanisation, and flexible routing.";
+    constexpr const char* license =
+        "Commercial License\n\n"
+        "Copyright (c) 2024-2026 PatternFlow. All rights reserved.\n\n"
+        "This software is licensed, not sold. You are granted a non-exclusive, "
+        "non-transferable license to use this software for personal and commercial "
+        "music production. Redistribution, reverse engineering, or modification of "
+        "the software is prohibited without prior written consent from the author.\n\n"
+        "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.";
+}
+
 namespace metrics {
     constexpr int browserWidth      = 240;
     constexpr int controlPanelH     = 60;

@@ -20,6 +20,16 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     lblTitle.setColour(juce::Label::textColourId, colours::accent);
     addAndMakeVisible(lblTitle);
 
+    // About button
+    btnAbout.setColour(juce::TextButton::buttonColourId, colours::bgLighter);
+    btnAbout.setColour(juce::TextButton::textColourOffId, colours::textDim);
+    btnAbout.onClick = [this] { showAboutDialog(); };
+    addAndMakeVisible(btnAbout);
+
+    // Keyboard shortcuts
+    addKeyListener(this);
+    setWantsKeyboardFocus(true);
+
     // Control panel
     controlPanel.onAddLane = [this]
     {
@@ -78,6 +88,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
 
 PatternFlowEditor::~PatternFlowEditor()
 {
+    removeKeyListener(this);
     setLookAndFeel(nullptr);
 }
 
@@ -86,12 +97,115 @@ void PatternFlowEditor::paint(juce::Graphics& g)
     g.fillAll(colours::bg);
 }
 
+void PatternFlowEditor::showAboutDialog()
+{
+    auto* dialog = new juce::DialogWindow::LaunchOptions();
+
+    auto* content = new juce::Component();
+    content->setSize(400, 340);
+
+    auto* titleLabel = new juce::Label({}, version::name);
+    titleLabel->setFont(juce::Font(juce::FontOptions(22.0f).withStyle("Bold")));
+    titleLabel->setColour(juce::Label::textColourId, colours::accent);
+    titleLabel->setBounds(20, 12, 360, 30);
+    content->addAndMakeVisible(titleLabel);
+
+    auto* versionLabel = new juce::Label({}, juce::String("Version ") + version::number);
+    versionLabel->setFont(juce::Font(juce::FontOptions(13.0f)));
+    versionLabel->setColour(juce::Label::textColourId, colours::textDim);
+    versionLabel->setBounds(20, 42, 360, 20);
+    content->addAndMakeVisible(versionLabel);
+
+    auto* descLabel = new juce::Label({}, version::desc);
+    descLabel->setFont(juce::Font(juce::FontOptions(13.0f)));
+    descLabel->setColour(juce::Label::textColourId, colours::text);
+    descLabel->setBounds(20, 70, 360, 50);
+    descLabel->setMinimumHorizontalScale(1.0f);
+    content->addAndMakeVisible(descLabel);
+
+    auto* licenseEditor = new juce::TextEditor();
+    licenseEditor->setMultiLine(true, true);
+    licenseEditor->setReadOnly(true);
+    licenseEditor->setScrollbarsShown(true);
+    licenseEditor->setColour(juce::TextEditor::backgroundColourId, colours::bgLight);
+    licenseEditor->setColour(juce::TextEditor::textColourId, colours::textDim);
+    licenseEditor->setColour(juce::TextEditor::outlineColourId, colours::panelBorder);
+    licenseEditor->setFont(juce::Font(juce::FontOptions(11.0f)));
+    licenseEditor->setText(version::license);
+    licenseEditor->setBounds(20, 128, 360, 160);
+    content->addAndMakeVisible(licenseEditor);
+
+    auto* closeBtn = new juce::TextButton("Close");
+    closeBtn->setColour(juce::TextButton::buttonColourId, colours::accent);
+    closeBtn->setColour(juce::TextButton::textColourOffId, colours::textBright);
+    closeBtn->setBounds(155, 300, 90, 28);
+    closeBtn->onClick = [content]
+    {
+        if (auto* dw = content->findParentComponentOfClass<juce::DialogWindow>())
+            dw->exitModalState(0);
+    };
+    content->addAndMakeVisible(closeBtn);
+
+    dialog->content.setOwned(content);
+    dialog->dialogTitle = "About PatternFlow";
+    dialog->dialogBackgroundColour = colours::bg;
+    dialog->escapeKeyTriggersCloseButton = true;
+    dialog->useNativeTitleBar = false;
+    dialog->resizable = false;
+
+    dialog->launchAsync();
+}
+
+bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
+{
+    // Delete selected region
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    {
+        if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
+        {
+            juce::ScopedLock sl(processorRef.laneLock);
+            if (arrangementView.selLane < (int)processorRef.lanes.size())
+            {
+                auto& lane = processorRef.lanes[arrangementView.selLane];
+                if (arrangementView.selRegion < (int)lane.regions.size())
+                {
+                    lane.removeRegion(arrangementView.selRegion);
+                    arrangementView.selLane = -1;
+                    arrangementView.selRegion = -1;
+                    arrangementView.refresh();
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Zoom in: Cmd/Ctrl + =
+    if (key == juce::KeyPress('+', juce::ModifierKeys::commandModifier, 0) ||
+        key == juce::KeyPress('=', juce::ModifierKeys::commandModifier, 0))
+    {
+        arrangementView.beatsPerPixel = std::max(0.01f, arrangementView.beatsPerPixel * 0.8f);
+        arrangementView.refresh();
+        return true;
+    }
+
+    // Zoom out: Cmd/Ctrl + -
+    if (key == juce::KeyPress('-', juce::ModifierKeys::commandModifier, 0))
+    {
+        arrangementView.beatsPerPixel = std::min(2.0f, arrangementView.beatsPerPixel * 1.25f);
+        arrangementView.refresh();
+        return true;
+    }
+
+    return false;
+}
+
 void PatternFlowEditor::resized()
 {
     auto b = getLocalBounds();
 
     // Title bar (thin)
     auto titleBar = b.removeFromTop(28);
+    btnAbout.setBounds(titleBar.removeFromRight(28).reduced(2));
     lblTitle.setBounds(titleBar.reduced(metrics::padding, 2));
 
     // Control panel

@@ -76,18 +76,21 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
         {
             if (result == 1)
             {
+                juce::ScopedLock sl(processor.splitLock);
                 processor.splitRules.clear();
                 processor.splitRules.push_back({24, 35, 0});   // C1-B1 -> output 0
                 processor.splitRules.push_back({36, 47, 1});   // C2-B2 -> output 1
             }
             else if (result == 2)
             {
+                juce::ScopedLock sl(processor.splitLock);
                 processor.splitRules.clear();
                 processor.splitRules.push_back({0, 59, 0});    // Low -> output 0
                 processor.splitRules.push_back({60, 127, 1});  // High -> output 1
             }
             else if (result == 3)
             {
+                juce::ScopedLock sl(processor.splitLock);
                 processor.splitRules.clear();
             }
         });
