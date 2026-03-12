@@ -16,7 +16,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
 
     // Title
     lblTitle.setText("PatternFlow", juce::dontSendNotification);
-    lblTitle.setFont(juce::Font(juce::FontOptions(14.0f).withStyle("Bold")));
+    lblTitle.setFont(juce::Font(juce::FontOptions(16.0f).withStyle("Bold")));
     lblTitle.setColour(juce::Label::textColourId, colours::accent);
     addAndMakeVisible(lblTitle);
 
@@ -77,13 +77,16 @@ void PatternFlowEditor::resized()
     auto b = getLocalBounds();
 
     // Title bar (thin)
-    auto titleBar = b.removeFromTop(24);
+    auto titleBar = b.removeFromTop(28);
     lblTitle.setBounds(titleBar.reduced(metrics::padding, 2));
 
     // Control panel
     controlPanel.setBounds(b.removeFromTop(metrics::controlPanelH));
 
-    // Piano roll (if open)
+    // File browser takes full remaining height on the left
+    fileBrowser.setBounds(b.removeFromLeft(metrics::browserWidth));
+
+    // Right side: arrangement + optional piano roll
     bool showPianoRoll = pianoRoll.hasClip();
     if (showPianoRoll)
         pianoRoll.setBounds(b.removeFromBottom(metrics::pianoRollH));
@@ -92,10 +95,7 @@ void PatternFlowEditor::resized()
 
     pianoRoll.setVisible(showPianoRoll);
 
-    // File browser on left
-    fileBrowser.setBounds(b.removeFromLeft(metrics::browserWidth));
-
-    // Arrangement fills the rest
+    // Arrangement fills the rest of the right side
     arrangementView.setBounds(b);
 }
 

@@ -37,7 +37,7 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
 
     // Root note remap
     lblRootNote.setColour(juce::Label::textColourId, colours::textDim);
-    lblRootNote.setFont(juce::Font(10.0f));
+    lblRootNote.setFont(juce::Font(12.0f));
     addAndMakeVisible(lblRootNote);
 
     for (int oct = -2; oct <= 8; ++oct)
@@ -108,7 +108,7 @@ void ControlPanel::setupKnob(juce::Slider& knob, juce::Label& label)
     addAndMakeVisible(knob);
 
     label.setColour(juce::Label::textColourId, colours::textDim);
-    label.setFont(juce::Font(9.0f));
+    label.setFont(juce::Font(11.0f));
     label.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(label);
 }
@@ -138,23 +138,23 @@ void ControlPanel::resized()
     x += 8;
 
     // Scale section
-    int secH = 22;
-    btnScaleEnable.setBounds(x, cy - secH + 2, 55, secH - 2);
-    cmbScaleRoot.setBounds(x + 56, cy - secH + 2, 48, secH - 2);
-    cmbScaleType.setBounds(x + 106, cy - secH + 2, 110, secH - 2);
+    int secH = 24;
+    btnScaleEnable.setBounds(x, cy - secH + 2, 60, secH - 2);
+    cmbScaleRoot.setBounds(x + 62, cy - secH + 2, 50, secH - 2);
+    cmbScaleType.setBounds(x + 114, cy - secH + 2, 115, secH - 2);
 
     // Root note
-    lblRootNote.setBounds(x, cy + 4, 30, secH - 4);
-    cmbRootNote.setBounds(x + 30, cy + 4, 55, secH - 4);
+    lblRootNote.setBounds(x, cy + 4, 34, secH - 4);
+    cmbRootNote.setBounds(x + 34, cy + 4, 58, secH - 4);
 
-    x += 224;
+    x += 236;
 
     // Split
-    btnSplitEnable.setBounds(x, cy - secH + 2, 50, secH - 2);
-    btnSplitEdit.setBounds(x + 52, cy - secH + 2, 50, secH - 2);
+    btnSplitEnable.setBounds(x, cy - secH + 2, 55, secH - 2);
+    btnSplitEdit.setBounds(x + 57, cy - secH + 2, 55, secH - 2);
 
     // Add lane (far right)
-    btnAddLane.setBounds(b.getRight() - 70, cy - 11, 66, 22);
+    btnAddLane.setBounds(b.getRight() - 76, cy - 13, 72, 26);
 }
 
 void ControlPanel::paint(juce::Graphics& g)

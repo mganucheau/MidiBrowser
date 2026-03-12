@@ -44,20 +44,21 @@ inline std::vector<juce::Colour> getClipColourPresets()
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
 namespace metrics {
-    constexpr int browserWidth      = 220;
-    constexpr int controlPanelH     = 52;
-    constexpr int pianoRollH        = 260;
-    constexpr int laneHeaderW       = 100;
-    constexpr int laneHeight        = 48;
-    constexpr int compLaneHeight    = 32;
-    constexpr int knobSize          = 36;
-    constexpr int knobLabelH        = 14;
-    constexpr int knobSpacing       = 52;
+    constexpr int browserWidth      = 240;
+    constexpr int controlPanelH     = 60;
+    constexpr int pianoRollH        = 280;
+    constexpr int laneHeaderW       = 120;
+    constexpr int laneHeight        = 64;
+    constexpr int compLaneHeight    = 40;
+    constexpr int knobSize          = 42;
+    constexpr int knobLabelH        = 16;
+    constexpr int knobSpacing       = 58;
     constexpr float cornerRadius    = 4.0f;
     constexpr float clipCorner      = 3.0f;
     constexpr int scrollbarW        = 8;
-    constexpr int buttonH           = 24;
-    constexpr int padding           = 6;
+    constexpr int buttonH           = 28;
+    constexpr int padding           = 8;
+    constexpr float browserFontSize = 11.0f;
 }
 
 // ── Custom LookAndFeel ───────────────────────────────────────────────────────

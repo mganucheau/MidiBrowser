@@ -49,7 +49,9 @@ public:
 
     void refresh();
 
-    static constexpr int rulerH = 20;
+    static constexpr int rulerH = 24;
+
+    juce::TextButton btnAddBars { "+4 Bars" };
 
 private:
     PatternFlowProcessor& processor;
@@ -84,6 +86,7 @@ private:
     void paintBeatGrid(juce::Graphics&);
     void paintLoopMarkers(juce::Graphics&);
 
+    void ensureBarsForBeat(double endBeat);
     void showClipContextMenu(int laneIdx, int regionIdx);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ArrangementView)

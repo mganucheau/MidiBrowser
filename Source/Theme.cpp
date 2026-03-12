@@ -76,7 +76,7 @@ void PatternFlowLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
 
 juce::Font PatternFlowLookAndFeel::getLabelFont(juce::Label&)
 {
-    return juce::Font(12.0f);
+    return juce::Font(14.0f);
 }
 
 } // namespace pflow

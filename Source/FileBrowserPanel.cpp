@@ -5,7 +5,7 @@ namespace pflow {
 FileBrowserPanel::FileBrowserPanel()
 {
     lblHeader.setText("BROWSER", juce::dontSendNotification);
-    lblHeader.setFont(juce::Font(11.0f, juce::Font::bold));
+    lblHeader.setFont(juce::Font(13.0f, juce::Font::bold));
     lblHeader.setColour(juce::Label::textColourId, colours::textDim);
     addAndMakeVisible(lblHeader);
 
@@ -36,6 +36,7 @@ FileBrowserPanel::FileBrowserPanel()
     fileTree = std::make_unique<juce::FileTreeComponent>(*dirContents);
     fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::panel);
     fileTree->setDragAndDropDescription("MidiFileDrag");
+    fileTree->setItemHeight(20);
     fileTree->addListener(this);
     addAndMakeVisible(*fileTree);
 }

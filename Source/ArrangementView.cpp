@@ -6,6 +6,15 @@ namespace pflow {
 ArrangementView::ArrangementView(PatternFlowProcessor& proc) : processor(proc)
 {
     setOpaque(true);
+
+    btnAddBars.setColour(juce::TextButton::buttonColourId, colours::bgLighter);
+    btnAddBars.setColour(juce::TextButton::textColourOffId, colours::text);
+    btnAddBars.onClick = [this]
+    {
+        processor.arrangementBars.store(processor.arrangementBars.load() + 4);
+        refresh();
+    };
+    addAndMakeVisible(btnAddBars);
 }
 
 void ArrangementView::refresh()
@@ -84,7 +93,7 @@ void ArrangementView::paintRuler(juce::Graphics& g)
         float x = beatToX(beat);
         if (x < metrics::laneHeaderW || x > getWidth()) continue;
         g.setColour(colours::textDim);
-        g.setFont(9.0f);
+        g.setFont(12.0f);
         int barNum = (int)(beat / 4.0) + 1;
         g.drawText(juce::String(barNum), (int)x + 2, 0, 30, rulerH - 2,
                    juce::Justification::centredLeft);
@@ -176,8 +185,8 @@ void ArrangementView::paintLaneHeaders(juce::Graphics& g)
         g.fillRect(0.0f, y + 2.0f, 4.0f, (float)metrics::laneHeight - 4.0f);
 
         g.setColour(colours::text);
-        g.setFont(10.0f);
-        g.drawText(lane.name, 8, (int)y, metrics::laneHeaderW - 12,
+        g.setFont(13.0f);
+        g.drawText(lane.name, 10, (int)y, metrics::laneHeaderW - 14,
                    metrics::laneHeight, juce::Justification::centredLeft);
 
         g.setColour(colours::panelBorder);
@@ -188,7 +197,7 @@ void ArrangementView::paintLaneHeaders(juce::Graphics& g)
     g.setColour(colours::bgLight.withAlpha(0.3f));
     g.fillRect(0.0f, addY, (float)metrics::laneHeaderW, (float)metrics::laneHeight);
     g.setColour(colours::textDim);
-    g.setFont(16.0f);
+    g.setFont(20.0f);
     g.drawText("+", 0, (int)addY, metrics::laneHeaderW, metrics::laneHeight,
                juce::Justification::centred);
 }
@@ -237,7 +246,7 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
         }
 
         g.setColour(juce::Colours::white);
-        g.setFont(9.0f);
+        g.setFont(11.0f);
         g.drawText(clip.name, cb.bounds.reduced(4.0f, 2.0f), juce::Justification::topLeft, true);
     }
 }
@@ -364,7 +373,11 @@ void ArrangementView::mouseUp(const juce::MouseEvent&)
     draggingClip = false;
 }
 
-void ArrangementView::resized() { refresh(); }
+void ArrangementView::resized()
+{
+    btnAddBars.setBounds(getWidth() - 70, 2, 66, rulerH - 4);
+    refresh();
+}
 
 // ── Drag & Drop ──────────────────────────────────────────────────────────────
 
@@ -443,6 +456,18 @@ void ArrangementView::itemDropped(const SourceDetails& details)
     refresh();
 }
 
+void ArrangementView::ensureBarsForBeat(double endBeat)
+{
+    int currentBars = processor.arrangementBars.load();
+    int neededBars = (int)std::ceil(endBeat / 4.0);
+    if (neededBars > currentBars)
+    {
+        // Round up to next multiple of 4
+        int newBars = ((neededBars + 3) / 4) * 4;
+        processor.arrangementBars.store(newBars);
+    }
+}
+
 void ArrangementView::addClipToLane(const MidiClip& clip, int laneIndex, double beatPos)
 {
     if (laneIndex >= 0 && laneIndex < (int)processor.lanes.size())
@@ -451,6 +476,7 @@ void ArrangementView::addClipToLane(const MidiClip& clip, int laneIndex, double 
         MidiClip colouredClip = clip;
         colouredClip.colour = presets[processor.lanes[laneIndex].clips.size() % presets.size()];
         processor.lanes[laneIndex].addClipAtPosition(colouredClip, beatPos);
+        ensureBarsForBeat(beatPos + clip.lengthBeats);
     }
 }
 
@@ -465,6 +491,7 @@ void ArrangementView::addClipToNewLane(const MidiClip& clip, double beatPos)
     colouredClip.colour = newLane.colour;
     newLane.addClipAtPosition(colouredClip, beatPos);
     processor.lanes.push_back(newLane);
+    ensureBarsForBeat(beatPos + clip.lengthBeats);
 }
 
 void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
