@@ -37,6 +37,7 @@ public:
     void addClipToLane(const MidiClip& clip, int laneIndex, double beatPos);
     void addClipToNewLane(const MidiClip& clip, double beatPos);
 
+    std::function<void()> onAddLaneClicked;
     std::function<void(int laneIdx, int regionIdx)> onRegionDoubleClicked;
     std::function<void(const MidiClip&, int laneIdx, int regionIdx)> onClipDoubleClicked;
     std::function<void(int laneIdx, int regionIdx)> onColourPickRequested;
@@ -71,6 +72,7 @@ private:
 
     bool  draggingClip = false;
     double clipDragOrigBeat = 0.0;
+    double clipDragMouseOffset = 0.0;
 
     double xToBeat(float x) const;
     float  beatToX(double beat) const;

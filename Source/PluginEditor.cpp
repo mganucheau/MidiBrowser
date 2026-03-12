@@ -42,7 +42,11 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     };
     addAndMakeVisible(fileBrowser);
 
-    // Arrangement view
+    // Arrangement view - "+" lane click
+    arrangementView.onAddLaneClicked = [this]
+    {
+        if (controlPanel.onAddLane) controlPanel.onAddLane();
+    };
     arrangementView.onClipDoubleClicked = [this](const MidiClip& clip, int laneIdx, int regionIdx)
     {
         pianoRoll.setClip(clip, laneIdx, regionIdx);
@@ -51,9 +55,19 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     addAndMakeVisible(arrangementView);
 
     // Piano roll (starts hidden)
-    pianoRoll.onClipEdited = [this](const MidiClip& /*editedClip*/, int /*laneIdx*/, int /*regionIdx*/)
+    pianoRoll.onClipEdited = [this](const MidiClip& editedClip, int laneIdx, int regionIdx)
     {
-        // TODO: write edited clip back to the lane data
+        juce::ScopedLock sl(processorRef.laneLock);
+        if (laneIdx >= 0 && laneIdx < (int)processorRef.lanes.size())
+        {
+            auto& lane = processorRef.lanes[laneIdx];
+            if (regionIdx >= 0 && regionIdx < (int)lane.regions.size())
+            {
+                int clipIdx = lane.regions[regionIdx].clipIndex;
+                if (clipIdx >= 0 && clipIdx < (int)lane.clips.size())
+                    lane.clips[clipIdx] = editedClip;
+            }
+        }
         arrangementView.refresh();
     };
     addAndMakeVisible(pianoRoll);

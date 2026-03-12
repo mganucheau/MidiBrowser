@@ -14,7 +14,7 @@ namespace colours {
     const juce::Colour accentDim     { 0xff4e47b3 };
     const juce::Colour accentBright  { 0xff8a83ff };
     const juce::Colour text          { 0xffe0e0e8 };
-    const juce::Colour textDim       { 0xff8888a0 };
+    const juce::Colour textDim       { 0xffa0a0bb };
     const juce::Colour textBright    { 0xffffffff };
     const juce::Colour knobTrack     { 0xff3a3a60 };
     const juce::Colour laneA         { 0xff3a7bd5 };

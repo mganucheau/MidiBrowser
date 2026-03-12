@@ -34,6 +34,9 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     cmbScaleType.setSelectedId(2); // Major
     cmbScaleType.addListener(this);
     addAndMakeVisible(cmbScaleType);
+    // Sync processor with UI defaults
+    processor.scaleRoot.store(0);  // C
+    processor.scaleType.store(1);  // Major
 
     // Root note remap
     lblRootNote.setColour(juce::Label::textColourId, colours::textDim);

@@ -121,9 +121,9 @@ void PianoRollEditor::paint(juce::Graphics& g)
 
     if (!clipLoaded)
     {
-        g.setColour(colours::textDim);
-        g.setFont(11.0f);
-        g.drawText("Double-click a clip to edit", getLocalBounds(), juce::Justification::centred);
+        g.setColour(colours::text);
+        g.setFont(13.0f);
+        g.drawText("Double-click any clip in the arrangement to open it here", getLocalBounds(), juce::Justification::centred);
         return;
     }
 
@@ -160,7 +160,7 @@ void PianoRollEditor::paintPianoKeys(juce::Graphics& g)
         if (n % 12 == 0)
         {
             g.setColour(colours::textDim);
-            g.setFont(8.0f);
+            g.setFont(10.0f);
             g.drawText("C" + juce::String(n / 12 - 2), 2, (int)y, pianoKeyWidth - 4, (int)noteHeight, juce::Justification::centredLeft);
         }
     }
@@ -254,7 +254,7 @@ void PianoRollEditor::paintExpressionView(juce::Graphics& g)
         g.setColour(colours::accentBright);
         g.fillRect(x, barY, w, 2.0f);
     }
-    g.setColour(colours::textDim); g.setFont(9.0f);
+    g.setColour(colours::textDim); g.setFont(11.0f);
     g.drawText("Velocity", pianoKeyWidth + 4, tabH + 2, 60, 14, juce::Justification::centredLeft);
 }
 
@@ -262,7 +262,7 @@ void PianoRollEditor::paintAutomationView(juce::Graphics& g)
 {
     int tabH = 28;
     float areaH = (float)(getHeight() - tabH);
-    g.setColour(colours::textDim); g.setFont(9.0f);
+    g.setColour(colours::textDim); g.setFont(11.0f);
     g.drawText("CC 1 (Mod Wheel)", pianoKeyWidth + 4, tabH + 2, 120, 14, juce::Justification::centredLeft);
     g.setColour(colours::pianoGrid.withAlpha(0.3f));
     float centerY = tabH + areaH * 0.5f;
