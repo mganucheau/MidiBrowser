@@ -27,7 +27,7 @@ double PatternFlowProcessor::snapBeat(double beat) const
         case GridSize::QuarterBeat: div = 0.25;  break;
         case GridSize::Eighth:      div = 0.5;   break;
         case GridSize::Sixteenth:   div = 0.25;  break;
-        default: break;
+        case GridSize::Off:         return beat;
     }
     return std::round(beat / div) * div;
 }

@@ -6,7 +6,8 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     : AudioProcessorEditor(&p),
       processorRef(p),
       controlPanel(p),
-      arrangementView(p)
+      arrangementView(p),
+      pianoRoll(p)
 {
     setLookAndFeel(&lnf);
     setSize(1100, 680);
@@ -42,15 +43,15 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     addAndMakeVisible(fileBrowser);
 
     // Arrangement view
-    arrangementView.onClipDoubleClicked = [this](const MidiClip& clip)
+    arrangementView.onClipDoubleClicked = [this](const MidiClip& clip, int laneIdx, int regionIdx)
     {
-        pianoRoll.setClip(clip);
+        pianoRoll.setClip(clip, laneIdx, regionIdx);
         resized();
     };
     addAndMakeVisible(arrangementView);
 
     // Piano roll (starts hidden)
-    pianoRoll.onClipEdited = [this](const MidiClip& /*editedClip*/)
+    pianoRoll.onClipEdited = [this](const MidiClip& /*editedClip*/, int /*laneIdx*/, int /*regionIdx*/)
     {
         // TODO: write edited clip back to the lane data
         arrangementView.refresh();
