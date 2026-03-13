@@ -25,30 +25,44 @@ void PatternFlowLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y,
                                                float startAngle, float endAngle,
                                                juce::Slider&)
 {
-    auto radius  = (float)juce::jmin(w, h) * 0.4f;
+    auto radius  = (float)juce::jmin(w, h) * 0.38f;
     auto centreX = (float)x + (float)w * 0.5f;
     auto centreY = (float)y + (float)h * 0.5f;
     auto angle   = startAngle + sliderPos * (endAngle - startAngle);
 
-    // Track
+    // Knob body (filled circle)
+    auto bodyRadius = radius - 2.0f;
+    g.setColour(colours::bgLight());
+    g.fillEllipse(centreX - bodyRadius, centreY - bodyRadius, bodyRadius * 2.0f, bodyRadius * 2.0f);
+    g.setColour(colours::panelBorder());
+    g.drawEllipse(centreX - bodyRadius, centreY - bodyRadius, bodyRadius * 2.0f, bodyRadius * 2.0f, 1.0f);
+
+    // Track arc (background)
     juce::Path track;
     track.addCentredArc(centreX, centreY, radius, radius, 0.0f,
                         startAngle, endAngle, true);
     g.setColour(colours::knobTrack());
-    g.strokePath(track, juce::PathStrokeType(3.0f));
+    g.strokePath(track, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     // Value arc
-    juce::Path valueArc;
-    valueArc.addCentredArc(centreX, centreY, radius, radius, 0.0f,
-                           startAngle, angle, true);
-    g.setColour(colours::accent());
-    g.strokePath(valueArc, juce::PathStrokeType(3.0f));
+    if (sliderPos > 0.0f)
+    {
+        juce::Path valueArc;
+        valueArc.addCentredArc(centreX, centreY, radius, radius, 0.0f,
+                               startAngle, angle, true);
+        g.setColour(colours::accent());
+        g.strokePath(valueArc, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
 
-    // Thumb dot
-    juce::Point<float> thumbPos(centreX + radius * std::cos(angle - juce::MathConstants<float>::halfPi),
-                                centreY + radius * std::sin(angle - juce::MathConstants<float>::halfPi));
-    g.setColour(colours::accentBright());
-    g.fillEllipse(thumbPos.x - 4.0f, thumbPos.y - 4.0f, 8.0f, 8.0f);
+    // Pointer line (from center towards edge at current angle)
+    float pointerLen = bodyRadius * 0.6f;
+    float px = centreX + pointerLen * std::cos(angle - juce::MathConstants<float>::halfPi);
+    float py = centreY + pointerLen * std::sin(angle - juce::MathConstants<float>::halfPi);
+    g.setColour(colours::accent());
+    g.drawLine(centreX, centreY, px, py, 2.0f);
+
+    // Small dot at pointer tip
+    g.fillEllipse(px - 2.5f, py - 2.5f, 5.0f, 5.0f);
 }
 
 void PatternFlowLookAndFeel::drawButtonBackground(juce::Graphics& g,

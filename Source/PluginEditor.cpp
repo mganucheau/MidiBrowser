@@ -27,6 +27,20 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     btnAbout.onClick = [this] { showAboutDialog(); };
     addAndMakeVisible(btnAbout);
 
+    // Theme toggle button
+    updateThemeButton();
+    btnTheme.onClick = [this]
+    {
+        darkModeEnabled().store(!darkModeEnabled().load());
+        updateThemeButton();
+        repaint();
+        controlPanel.repaint();
+        fileBrowser.repaint();
+        arrangementView.refresh();
+        pianoRoll.repaint();
+    };
+    addAndMakeVisible(btnTheme);
+
     // Keyboard shortcuts
     addKeyListener(this);
     setWantsKeyboardFocus(true);
@@ -156,23 +170,12 @@ void PatternFlowEditor::showAboutDialog()
     licenseEditor->setBounds(20, 128, 360, 150);
     content->addAndMakeVisible(licenseEditor);
 
-    // High contrast toggle
-    auto* hcToggle = new juce::ToggleButton("High Contrast Mode");
-    hcToggle->setColour(juce::ToggleButton::textColourId, colours::text());
-    hcToggle->setColour(juce::ToggleButton::tickColourId, colours::accent());
-    hcToggle->setToggleState(highContrastEnabled().load(), juce::dontSendNotification);
-    hcToggle->setBounds(20, 286, 200, 24);
-    hcToggle->onClick = [hcToggle, this]
-    {
-        highContrastEnabled().store(hcToggle->getToggleState());
-        // Trigger full repaint of the editor to apply new colours
-        repaint();
-        controlPanel.repaint();
-        fileBrowser.repaint();
-        arrangementView.refresh();
-        pianoRoll.repaint();
-    };
-    content->addAndMakeVisible(hcToggle);
+    auto* themeLabel = new juce::Label({}, "Use the theme button in the title bar to switch between Light and Dark mode.");
+    themeLabel->setFont(juce::Font(juce::FontOptions(11.0f)));
+    themeLabel->setColour(juce::Label::textColourId, colours::textDim());
+    themeLabel->setBounds(20, 286, 360, 24);
+    themeLabel->setMinimumHorizontalScale(1.0f);
+    content->addAndMakeVisible(themeLabel);
 
     auto* closeBtn = new juce::TextButton("Close");
     closeBtn->setColour(juce::TextButton::buttonColourId, colours::accent());
@@ -376,6 +379,7 @@ void PatternFlowEditor::resized()
     // Title bar (thin)
     auto titleBar = b.removeFromTop(28);
     btnAbout.setBounds(titleBar.removeFromRight(28).reduced(2));
+    btnTheme.setBounds(titleBar.removeFromRight(56).reduced(2));
     lblTitle.setBounds(titleBar.reduced(metrics::padding, 2));
 
     // Control panel
@@ -395,6 +399,14 @@ void PatternFlowEditor::resized()
 
     // Arrangement fills the rest of the right side
     arrangementView.setBounds(b);
+}
+
+void PatternFlowEditor::updateThemeButton()
+{
+    bool dark = darkModeEnabled().load();
+    btnTheme.setButtonText(dark ? "Light" : "Dark");
+    btnTheme.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnTheme.setColour(juce::TextButton::textColourOffId, colours::textDim());
 }
 
 void PatternFlowEditor::timerCallback()

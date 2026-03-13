@@ -78,6 +78,16 @@ private:
     double clipDragOrigEnd = 0.0;
     double clipDragMouseOffset = 0.0;
 
+    // Region edge drag-to-loop
+    enum class EdgeDragTarget { None, Start, End };
+    EdgeDragTarget edgeDragging = EdgeDragTarget::None;
+    int edgeDragLane = -1;
+    int edgeDragRegion = -1;
+    double edgeDragOrigStart = 0.0;
+    double edgeDragOrigEnd = 0.0;
+
+    bool isNearRegionEdge(const juce::MouseEvent& e, const ClipBlock& cb, EdgeDragTarget& which) const;
+
     double xToBeat(float x) const;
     float  beatToX(double beat) const;
     int    yToLane(float y) const;

@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <set>
 #include "MidiFileData.h"
 #include "Theme.h"
 
@@ -8,10 +9,12 @@ namespace pflow {
 class PatternFlowProcessor;
 enum class EditorViewMode { Notes, Expression, Automation };
 
-class PianoRollEditor : public juce::Component
+class PianoRollEditor : public juce::Component,
+                        public juce::KeyListener
 {
 public:
     explicit PianoRollEditor(PatternFlowProcessor& proc);
+    ~PianoRollEditor() override;
 
     void setClip(const MidiClip& clip, int laneIdx = -1, int regionIdx = -1);
     void clearClip();
@@ -27,6 +30,7 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void mouseMove(const juce::MouseEvent&) override;
+    bool keyPressed(const juce::KeyPress& key, juce::Component*) override;
 
     std::function<void(const MidiClip&, int laneIdx, int regionIdx)> onClipEdited;
     std::function<void()> onCloseRequested;
@@ -51,6 +55,7 @@ private:
     int   pianoKeyWidth  = 40;
 
     int   selectedNote   = -1;
+    std::set<int> selectedNotes;   // multi-selection
     bool  draggingNote   = false;
     float dragStartX     = 0.0f;
     float dragStartY     = 0.0f;

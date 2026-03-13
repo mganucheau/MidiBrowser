@@ -239,19 +239,41 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
             float clipH = cb.bounds.getHeight();
             float clipX = cb.bounds.getX();
             float clipY = cb.bounds.getY();
+            double regionLen = region.endBeat - region.startBeat;
 
             int minNote = 127, maxNote = 0;
             for (auto& n : clip.notes) { minNote = std::min(minNote, n.noteNumber); maxNote = std::max(maxNote, n.noteNumber); }
             int noteRange = std::max(1, maxNote - minNote + 1);
 
+            // Draw looped content: repeat notes for each loop iteration
+            double loopLen = clip.lengthBeats;
+            int loopCount = std::max(1, (int)std::ceil(regionLen / loopLen));
+
             g.setColour(juce::Colours::white.withAlpha(0.4f));
-            for (auto& n : clip.notes)
+            for (int loop = 0; loop < loopCount; ++loop)
             {
-                float nx = clipX + (float)(n.startBeat / clip.lengthBeats) * clipW;
-                float nw = std::max(1.0f, (float)(n.lengthBeats / clip.lengthBeats) * clipW);
-                float ny = clipY + clipH - ((float)(n.noteNumber - minNote + 1) / noteRange) * (clipH - 4.0f) - 2.0f;
-                float nh = std::max(1.0f, (clipH - 4.0f) / noteRange);
-                g.fillRect(nx, ny, nw, nh);
+                double loopOffset = loop * loopLen;
+                for (auto& n : clip.notes)
+                {
+                    double noteBeat = loopOffset + n.startBeat;
+                    if (noteBeat >= regionLen) continue;
+                    float nx = clipX + (float)(noteBeat / regionLen) * clipW;
+                    float nw = std::max(1.0f, (float)(n.lengthBeats / regionLen) * clipW);
+                    float ny = clipY + clipH - ((float)(n.noteNumber - minNote + 1) / noteRange) * (clipH - 4.0f) - 2.0f;
+                    float nh = std::max(1.0f, (clipH - 4.0f) / noteRange);
+                    g.fillRect(nx, ny, nw, nh);
+                }
+            }
+
+            // Draw loop boundary markers
+            if (regionLen > loopLen)
+            {
+                g.setColour(juce::Colours::white.withAlpha(0.15f));
+                for (double beat = loopLen; beat < regionLen; beat += loopLen)
+                {
+                    float lx = clipX + (float)(beat / regionLen) * clipW;
+                    g.drawVerticalLine((int)lx, clipY, clipY + clipH);
+                }
             }
         }
 
@@ -265,8 +287,19 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
 
         if (selected)
         {
+            // Selection glow
+            g.setColour(colours::accent().withAlpha(0.15f));
+            g.fillRoundedRectangle(cb.bounds.expanded(2.0f), metrics::clipCorner + 1.0f);
             g.setColour(colours::accentBright());
-            g.drawRoundedRectangle(cb.bounds, metrics::clipCorner, 2.0f);
+            g.drawRoundedRectangle(cb.bounds, metrics::clipCorner, 2.5f);
+
+            // Edge drag handles
+            float handleW = 5.0f;
+            float handleH = cb.bounds.getHeight() * 0.4f;
+            float handleY = cb.bounds.getCentreY() - handleH * 0.5f;
+            g.setColour(colours::textBright().withAlpha(0.7f));
+            g.fillRoundedRectangle(cb.bounds.getX() - 1.0f, handleY, handleW, handleH, 2.0f);
+            g.fillRoundedRectangle(cb.bounds.getRight() - handleW + 1.0f, handleY, handleW, handleH, 2.0f);
         }
 
         // Use contrast-aware text color for clip names
@@ -300,6 +333,18 @@ void ArrangementView::paintDropIndicator(juce::Graphics& g)
 
 // ── Mouse ────────────────────────────────────────────────────────────────────
 
+bool ArrangementView::isNearRegionEdge(const juce::MouseEvent& e, const ClipBlock& cb, EdgeDragTarget& which) const
+{
+    constexpr float edgeThreshold = 8.0f;
+    if (std::abs(e.position.x - cb.bounds.getX()) < edgeThreshold &&
+        e.position.y >= cb.bounds.getY() && e.position.y <= cb.bounds.getBottom())
+    { which = EdgeDragTarget::Start; return true; }
+    if (std::abs(e.position.x - cb.bounds.getRight()) < edgeThreshold &&
+        e.position.y >= cb.bounds.getY() && e.position.y <= cb.bounds.getBottom())
+    { which = EdgeDragTarget::End; return true; }
+    return false;
+}
+
 void ArrangementView::mouseMove(const juce::MouseEvent& e)
 {
     if (processor.loopEnabled.load() && e.position.y < rulerH)
@@ -307,6 +352,16 @@ void ArrangementView::mouseMove(const juce::MouseEvent& e)
         float lx = beatToX(processor.loopStartBeat.load());
         float rx = beatToX(processor.loopEndBeat.load());
         if (std::abs(e.position.x - lx) < 12 || std::abs(e.position.x - rx) < 12)
+        {
+            setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+            return;
+        }
+    }
+    // Check for region edges
+    for (auto& cb : clipBlocks)
+    {
+        EdgeDragTarget which;
+        if (isNearRegionEdge(e, cb, which))
         {
             setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
             return;
@@ -325,7 +380,7 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
         if (std::abs(e.position.x - rx) < 12) { loopDragging = LoopDragTarget::End; return; }
     }
 
-    selLane = -1; selRegion = -1; draggingClip = false;
+    selLane = -1; selRegion = -1; draggingClip = false; edgeDragging = EdgeDragTarget::None;
 
     // Check if "+" add-lane area was clicked
     {
@@ -342,6 +397,22 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
 
     for (auto& cb : clipBlocks)
     {
+        // Check for edge drag first (loop extend)
+        EdgeDragTarget which;
+        if (isNearRegionEdge(e, cb, which))
+        {
+            selLane = cb.laneIndex; selRegion = cb.regionIndex;
+            edgeDragging = which;
+            edgeDragLane = cb.laneIndex;
+            edgeDragRegion = cb.regionIndex;
+            juce::ScopedLock sl(processor.laneLock);
+            auto& reg = processor.lanes[cb.laneIndex].regions[cb.regionIndex];
+            edgeDragOrigStart = reg.startBeat;
+            edgeDragOrigEnd = reg.endBeat;
+            repaint();
+            return;
+        }
+
         if (cb.bounds.contains(e.position))
         {
             selLane = cb.laneIndex; selRegion = cb.regionIndex;
@@ -393,6 +464,25 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         return;
     }
 
+    // Region edge drag-to-loop
+    if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
+    {
+        double beat = std::max(0.0, xToBeat(e.position.x));
+        beat = processor.snapBeat(beat);
+        juce::ScopedLock sl(processor.laneLock);
+        if (edgeDragLane < (int)processor.lanes.size() &&
+            edgeDragRegion < (int)processor.lanes[edgeDragLane].regions.size())
+        {
+            auto& region = processor.lanes[edgeDragLane].regions[edgeDragRegion];
+            if (edgeDragging == EdgeDragTarget::Start)
+                region.startBeat = std::min(beat, region.endBeat - 0.25);
+            else
+                region.endBeat = std::max(beat, region.startBeat + 0.25);
+        }
+        repaint();
+        return;
+    }
+
     if (draggingClip && selLane >= 0 && selRegion >= 0)
     {
         double newBeat = std::max(0.0, xToBeat(e.position.x) - clipDragMouseOffset);
@@ -411,6 +501,31 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 
 void ArrangementView::mouseUp(const juce::MouseEvent&)
 {
+    // Edge drag-to-loop undo
+    if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
+    {
+        juce::ScopedLock sl(processor.laneLock);
+        if (edgeDragLane < (int)processor.lanes.size() &&
+            edgeDragRegion < (int)processor.lanes[edgeDragLane].regions.size())
+        {
+            auto& region = processor.lanes[edgeDragLane].regions[edgeDragRegion];
+            double newStart = region.startBeat;
+            double newEnd = region.endBeat;
+            if (std::abs(newStart - edgeDragOrigStart) > 0.001 ||
+                std::abs(newEnd - edgeDragOrigEnd) > 0.001)
+            {
+                region.startBeat = edgeDragOrigStart;
+                region.endBeat = edgeDragOrigEnd;
+                processor.undoManager.perform(
+                    new MoveRegionAction(processor, edgeDragLane, edgeDragRegion,
+                                         edgeDragOrigStart, edgeDragOrigEnd,
+                                         newStart, newEnd));
+            }
+        }
+        edgeDragging = EdgeDragTarget::None;
+        return;
+    }
+
     if (draggingClip && selLane >= 0 && selRegion >= 0)
     {
         juce::ScopedLock sl(processor.laneLock);
@@ -419,10 +534,8 @@ void ArrangementView::mouseUp(const juce::MouseEvent&)
             auto& region = processor.lanes[selLane].regions[selRegion];
             double newStart = region.startBeat;
             double newEnd = region.endBeat;
-            // Only record undo if the position actually changed
             if (std::abs(newStart - clipDragOrigBeat) > 0.001)
             {
-                // Restore original position first, then let the action perform the move
                 region.startBeat = clipDragOrigBeat;
                 region.endBeat = clipDragOrigEnd;
                 processor.undoManager.perform(

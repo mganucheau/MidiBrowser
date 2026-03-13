@@ -33,6 +33,14 @@ PianoRollEditor::PianoRollEditor(PatternFlowProcessor& proc) : processor(proc)
     btnClose.setColour(juce::TextButton::textColourOffId, colours::textDim());
     btnClose.onClick = [this] { clearClip(); if (onCloseRequested) onCloseRequested(); };
     addAndMakeVisible(btnClose);
+
+    addKeyListener(this);
+    setWantsKeyboardFocus(true);
+}
+
+PianoRollEditor::~PianoRollEditor()
+{
+    removeKeyListener(this);
 }
 
 void PianoRollEditor::setClip(const MidiClip& clip, int laneIdx, int regionIdx)
@@ -221,7 +229,7 @@ void PianoRollEditor::paintNotes(juce::Graphics& g)
         float w = std::max(4.0f, (float)note.lengthBeats * pixelsPerBeat);
         if (x + w < pianoKeyWidth || x > getWidth()) continue;
 
-        bool selected = (i == selectedNote);
+        bool selected = (i == selectedNote) || (selectedNotes.count(i) > 0);
         float velAlpha = 0.5f + 0.5f * (note.velocity / 127.0f);
         g.setColour(selected ? colours::accentBright() : colours::noteBlock().withAlpha(velAlpha));
         g.fillRoundedRectangle(x, y + 1.0f, w, noteHeight - 2.0f, 2.0f);
@@ -232,7 +240,7 @@ void PianoRollEditor::paintNotes(juce::Graphics& g)
         if (selected)
         {
             g.setColour(colours::accentBright());
-            g.drawRoundedRectangle(x, y + 1.0f, w, noteHeight - 2.0f, 2.0f, 1.0f);
+            g.drawRoundedRectangle(x, y + 1.0f, w, noteHeight - 2.0f, 2.0f, 1.5f);
             g.setColour(juce::Colours::white.withAlpha(0.6f));
             g.fillRect(x + w - 3.0f, y + 2.0f, 2.0f, noteHeight - 4.0f);
         }
@@ -317,6 +325,26 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
 
     if (viewMode == EditorViewMode::Notes)
     {
+        // Piano key click: select all notes on that pitch
+        if (e.position.x < pianoKeyWidth && e.position.y >= 28)
+        {
+            int pitch = yToNote(e.position.y);
+            selectedNotes.clear();
+            for (int i = 0; i < (int)currentClip.notes.size(); ++i)
+            {
+                if (currentClip.notes[i].noteNumber == pitch)
+                    selectedNotes.insert(i);
+            }
+            if (!selectedNotes.empty())
+                selectedNote = *selectedNotes.begin();
+            repaint();
+            return;
+        }
+
+        // Clear multi-selection unless Shift is held
+        if (!e.mods.isShiftDown())
+            selectedNotes.clear();
+
         for (int i = 0; i < (int)currentClip.notes.size(); ++i)
         {
             auto& note = currentClip.notes[i];
@@ -325,6 +353,8 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
             if (e.position.x >= nx && e.position.x <= nx + nw && e.position.y >= ny && e.position.y <= ny + noteHeight)
             {
                 selectedNote = i;
+                if (e.mods.isShiftDown())
+                    selectedNotes.insert(i);
                 dragOrigNote = note;
                 if (isNearRightEdge(e, i))
                 { resizingNote = true; resizeOrigLen = note.lengthBeats; dragStartX = e.position.x; }
@@ -340,6 +370,7 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
             processor.undoManager.perform(
                 new DeleteNoteAction(processor, editLaneIdx, editRegionIdx, selectedNote));
             currentClip.notes.erase(currentClip.notes.begin() + selectedNote);
+            selectedNotes.erase(selectedNote);
             selectedNote = -1; draggingNote = false; resizingNote = false;
         }
     }
@@ -437,6 +468,51 @@ void PianoRollEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::Mous
     else
         scrollNoteY = juce::jlimit(0, 115, scrollNoteY + (int)(wheel.deltaY * -4.0f));
     repaint();
+}
+
+bool PianoRollEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
+{
+    if (!clipLoaded || viewMode != EditorViewMode::Notes) return false;
+    if (selectedNotes.empty() && selectedNote < 0) return false;
+
+    // Build working set of indices to move
+    std::set<int> toMove = selectedNotes;
+    if (toMove.empty() && selectedNote >= 0)
+        toMove.insert(selectedNote);
+
+    int pitchDelta = 0;
+    double beatDelta = 0.0;
+
+    if (key == juce::KeyPress::upKey)        pitchDelta = 1;
+    else if (key == juce::KeyPress::downKey)  pitchDelta = -1;
+    else if (key == juce::KeyPress::leftKey)  beatDelta = -0.25;
+    else if (key == juce::KeyPress::rightKey) beatDelta = 0.25;
+    else return false;
+
+    // Validate moves won't go out of range
+    for (int idx : toMove)
+    {
+        if (idx < 0 || idx >= (int)currentClip.notes.size()) continue;
+        auto& n = currentClip.notes[idx];
+        if (juce::jlimit(0, 127, n.noteNumber + pitchDelta) != n.noteNumber + pitchDelta) return true;
+        if (n.startBeat + beatDelta < 0.0) return true;
+    }
+
+    // Apply moves with undo
+    for (int idx : toMove)
+    {
+        if (idx < 0 || idx >= (int)currentClip.notes.size()) continue;
+        NoteEvent oldNote = currentClip.notes[idx];
+        currentClip.notes[idx].noteNumber = juce::jlimit(0, 127, oldNote.noteNumber + pitchDelta);
+        currentClip.notes[idx].startBeat = std::max(0.0, oldNote.startBeat + beatDelta);
+        processor.undoManager.perform(
+            new EditNoteAction(processor, editLaneIdx, editRegionIdx,
+                               idx, oldNote, currentClip.notes[idx]));
+    }
+
+    if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+    repaint();
+    return true;
 }
 
 } // namespace pflow

@@ -38,8 +38,10 @@ private:
     // Title bar
     juce::Label lblTitle;
     juce::TextButton btnAbout { "i" };
+    juce::TextButton btnTheme { "Dark" };
 
     void showAboutDialog();
+    void updateThemeButton();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PatternFlowEditor)
 };

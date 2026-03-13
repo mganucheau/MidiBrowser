@@ -9,7 +9,7 @@ PatternFlowProcessor::PatternFlowProcessor()
 {
     CompLane defaultLane;
     defaultLane.name   = "Lane 1";
-    defaultLane.colour = juce::Colour(0xff3a7bd5);
+    defaultLane.colour = juce::Colour(0xff2979ff);
     lanes.push_back(defaultLane);
 }
 
@@ -105,13 +105,19 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                 continue;
 
             auto& clip = lane.clips[region.clipIndex];
+            double regionLen = region.endBeat - region.startBeat;
+            double loopLen = clip.lengthBeats;
+            int loopCount = (loopLen > 0.0) ? std::max(1, (int)std::ceil(regionLen / loopLen)) : 1;
 
+            for (int loop = 0; loop < loopCount; ++loop)
+            {
             for (auto& note : clip.notes)
             {
                 if (region.noteFilter >= 0 && note.noteNumber != region.noteFilter)
                     continue;
 
-                double noteGlobalStart = region.startBeat + note.startBeat;
+                double noteGlobalStart = region.startBeat + loop * loopLen + note.startBeat;
+                if (noteGlobalStart >= region.endBeat) continue;
                 double noteGlobalEnd   = noteGlobalStart + note.lengthBeats;
 
                 if (noteGlobalStart >= startBeat && noteGlobalStart < endBeat)
@@ -184,6 +190,7 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                         activeNotes_.end());
                 }
             }
+            } // loop iterations
         }
     }
 }

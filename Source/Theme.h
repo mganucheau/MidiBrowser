@@ -4,57 +4,67 @@
 
 namespace pflow {
 
-// ── High contrast mode toggle ────────────────────────────────────────────────
-inline std::atomic<bool>& highContrastEnabled()
+// ── Dark mode toggle (false = light mode default) ───────────────────────────
+inline std::atomic<bool>& darkModeEnabled()
 {
     static std::atomic<bool> enabled { false };
     return enabled;
 }
 
 // ── Colour palette ───────────────────────────────────────────────────────────
-// High contrast palette: black background, bright saturated colours, strong borders
+// Light mode: clean white/gray. Dark mode: standard dark gray palette.
 namespace colours {
-    inline juce::Colour bg()            { return highContrastEnabled() ? juce::Colour(0xff000000) : juce::Colour(0xff1a1a2e); }
-    inline juce::Colour bgLight()       { return highContrastEnabled() ? juce::Colour(0xff111111) : juce::Colour(0xff222240); }
-    inline juce::Colour bgLighter()     { return highContrastEnabled() ? juce::Colour(0xff1a1a1a) : juce::Colour(0xff2a2a50); }
-    inline juce::Colour panel()         { return highContrastEnabled() ? juce::Colour(0xff0a0a0a) : juce::Colour(0xff16162b); }
-    inline juce::Colour panelBorder()   { return highContrastEnabled() ? juce::Colour(0xffaaaaaa) : juce::Colour(0xff333360); }
-    inline juce::Colour accent()        { return highContrastEnabled() ? juce::Colour(0xff44aaff) : juce::Colour(0xff6c63ff); }
-    inline juce::Colour accentDim()     { return highContrastEnabled() ? juce::Colour(0xff2288dd) : juce::Colour(0xff4e47b3); }
-    inline juce::Colour accentBright()  { return highContrastEnabled() ? juce::Colour(0xff66ccff) : juce::Colour(0xff8a83ff); }
-    inline juce::Colour text()          { return highContrastEnabled() ? juce::Colour(0xffffffff) : juce::Colour(0xffe0e0e8); }
-    inline juce::Colour textDim()       { return highContrastEnabled() ? juce::Colour(0xffcccccc) : juce::Colour(0xffa0a0bb); }
-    inline juce::Colour textBright()    { return juce::Colour(0xffffffff); }
-    inline juce::Colour knobTrack()     { return highContrastEnabled() ? juce::Colour(0xff555555) : juce::Colour(0xff3a3a60); }
-    inline juce::Colour laneA()         { return juce::Colour(0xff3a7bd5); }
-    inline juce::Colour laneB()         { return juce::Colour(0xff00d2ff); }
-    inline juce::Colour laneC()         { return juce::Colour(0xffff6b6b); }
-    inline juce::Colour laneD()         { return juce::Colour(0xff51cf66); }
-    inline juce::Colour laneE()         { return juce::Colour(0xfffcc419); }
-    inline juce::Colour pianoWhiteKey() { return highContrastEnabled() ? juce::Colour(0xff222222) : juce::Colour(0xff2c2c4a); }
-    inline juce::Colour pianoBlackKey() { return highContrastEnabled() ? juce::Colour(0xff0d0d0d) : juce::Colour(0xff1a1a30); }
-    inline juce::Colour pianoGrid()     { return highContrastEnabled() ? juce::Colour(0xff666666) : juce::Colour(0xff333355); }
-    inline juce::Colour noteBlock()     { return highContrastEnabled() ? juce::Colour(0xff44aaff) : juce::Colour(0xff6c63ff); }
-    inline juce::Colour selection()     { return highContrastEnabled() ? juce::Colour(0x6644aaff) : juce::Colour(0x446c63ff); }
-    inline juce::Colour playhead()      { return highContrastEnabled() ? juce::Colour(0xffffff00) : juce::Colour(0xffffffff); }
+    // Backgrounds
+    inline juce::Colour bg()            { return darkModeEnabled() ? juce::Colour(0xff1e1e1e) : juce::Colour(0xfff5f5f5); }
+    inline juce::Colour bgLight()       { return darkModeEnabled() ? juce::Colour(0xff2d2d2d) : juce::Colour(0xffffffff); }
+    inline juce::Colour bgLighter()     { return darkModeEnabled() ? juce::Colour(0xff383838) : juce::Colour(0xffe8e8e8); }
+    inline juce::Colour panel()         { return darkModeEnabled() ? juce::Colour(0xff252525) : juce::Colour(0xfffafafa); }
+    inline juce::Colour panelBorder()   { return darkModeEnabled() ? juce::Colour(0xff444444) : juce::Colour(0xffd0d0d0); }
+
+    // Accent (blue)
+    inline juce::Colour accent()        { return darkModeEnabled() ? juce::Colour(0xff5b9bd5) : juce::Colour(0xff2979ff); }
+    inline juce::Colour accentDim()     { return darkModeEnabled() ? juce::Colour(0xff3d7ab8) : juce::Colour(0xff1565c0); }
+    inline juce::Colour accentBright()  { return darkModeEnabled() ? juce::Colour(0xff7ec8ff) : juce::Colour(0xff448aff); }
+
+    // Text
+    inline juce::Colour text()          { return darkModeEnabled() ? juce::Colour(0xffe0e0e0) : juce::Colour(0xff212121); }
+    inline juce::Colour textDim()       { return darkModeEnabled() ? juce::Colour(0xff999999) : juce::Colour(0xff757575); }
+    inline juce::Colour textBright()    { return darkModeEnabled() ? juce::Colour(0xffffffff) : juce::Colour(0xff000000); }
+
+    // Knob
+    inline juce::Colour knobTrack()     { return darkModeEnabled() ? juce::Colour(0xff484848) : juce::Colour(0xffc8c8c8); }
+
+    // Lane colours
+    inline juce::Colour laneA()         { return juce::Colour(0xff2979ff); }
+    inline juce::Colour laneB()         { return juce::Colour(0xff00bcd4); }
+    inline juce::Colour laneC()         { return juce::Colour(0xffef5350); }
+    inline juce::Colour laneD()         { return juce::Colour(0xff66bb6a); }
+    inline juce::Colour laneE()         { return juce::Colour(0xfffdd835); }
+
+    // Piano roll
+    inline juce::Colour pianoWhiteKey() { return darkModeEnabled() ? juce::Colour(0xff353535) : juce::Colour(0xfff0f0f0); }
+    inline juce::Colour pianoBlackKey() { return darkModeEnabled() ? juce::Colour(0xff222222) : juce::Colour(0xffd8d8d8); }
+    inline juce::Colour pianoGrid()     { return darkModeEnabled() ? juce::Colour(0xff555555) : juce::Colour(0xffbbbbbb); }
+    inline juce::Colour noteBlock()     { return darkModeEnabled() ? juce::Colour(0xff5b9bd5) : juce::Colour(0xff2979ff); }
+    inline juce::Colour selection()     { return darkModeEnabled() ? juce::Colour(0x665b9bd5) : juce::Colour(0x662979ff); }
+    inline juce::Colour playhead()      { return darkModeEnabled() ? juce::Colour(0xffffffff) : juce::Colour(0xffff1744); }
 }
 
 // ── Clip colour presets ──────────────────────────────────────────────────────
 inline std::vector<juce::Colour> getClipColourPresets()
 {
     return {
-        juce::Colour(0xff3a7bd5), juce::Colour(0xff00d2ff),
-        juce::Colour(0xffff6b6b), juce::Colour(0xff51cf66),
-        juce::Colour(0xfffcc419), juce::Colour(0xffcc5de8),
-        juce::Colour(0xffff922b), juce::Colour(0xff20c997),
-        juce::Colour(0xfff06595), juce::Colour(0xff748ffc),
+        juce::Colour(0xff2979ff), juce::Colour(0xff00bcd4),
+        juce::Colour(0xffef5350), juce::Colour(0xff66bb6a),
+        juce::Colour(0xfffdd835), juce::Colour(0xffab47bc),
+        juce::Colour(0xffff7043), juce::Colour(0xff26a69a),
+        juce::Colour(0xffec407a), juce::Colour(0xff5c6bc0),
     };
 }
 
-// ── Metrics ──────────────────────────────────────────────────────────────────
 // ── Version ─────────────────────────────────────────────────────────────────
 namespace version {
-    constexpr const char* number = "0.2.0";
+    constexpr const char* number = "0.3.0";
     constexpr const char* name   = "PatternFlow";
     constexpr const char* desc   = "A MIDI composition and comping tool for creative producers. "
                                    "Arrange, layer, and reshape MIDI clips with per-note comping, "
@@ -69,6 +79,7 @@ namespace version {
         "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.";
 }
 
+// ── Metrics ──────────────────────────────────────────────────────────────────
 namespace metrics {
     constexpr int browserWidth      = 240;
     constexpr int controlPanelH     = 60;
