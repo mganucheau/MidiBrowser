@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_data_structures/juce_data_structures.h>
 #include "MidiFileData.h"
 #include <atomic>
 
@@ -79,6 +80,9 @@ public:
     std::vector<MidiSplitRule> splitRules;
     juce::CriticalSection      splitLock;
     std::atomic<bool>          splitEnabled { false };
+
+    // Undo/redo manager
+    juce::UndoManager undoManager { 30000, 100 };
 
     // Transport state from host
     std::atomic<double>    hostBpm      { 120.0 };

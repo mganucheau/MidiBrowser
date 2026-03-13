@@ -75,6 +75,7 @@ private:
 
     bool  draggingClip = false;
     double clipDragOrigBeat = 0.0;
+    double clipDragOrigEnd = 0.0;
     double clipDragMouseOffset = 0.0;
 
     double xToBeat(float x) const;

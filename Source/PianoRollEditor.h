@@ -59,6 +59,7 @@ private:
 
     bool  resizingNote   = false;
     double resizeOrigLen = 0.0;
+    NoteEvent dragOrigNote;  // snapshot before drag/resize
 
     float noteToY(int noteNum) const;
     int   yToNote(float y) const;

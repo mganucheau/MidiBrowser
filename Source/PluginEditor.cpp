@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "UndoActions.h"
 
 namespace pflow {
 
@@ -17,18 +18,38 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     // Title
     lblTitle.setText("PatternFlow", juce::dontSendNotification);
     lblTitle.setFont(juce::Font(juce::FontOptions(16.0f).withStyle("Bold")));
-    lblTitle.setColour(juce::Label::textColourId, colours::accent);
+    lblTitle.setColour(juce::Label::textColourId, colours::accent());
     addAndMakeVisible(lblTitle);
 
     // About button
-    btnAbout.setColour(juce::TextButton::buttonColourId, colours::bgLighter);
-    btnAbout.setColour(juce::TextButton::textColourOffId, colours::textDim);
+    btnAbout.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnAbout.setColour(juce::TextButton::textColourOffId, colours::textDim());
     btnAbout.onClick = [this] { showAboutDialog(); };
     addAndMakeVisible(btnAbout);
 
     // Keyboard shortcuts
     addKeyListener(this);
     setWantsKeyboardFocus(true);
+
+    // Accessibility descriptions
+    setTitle("PatternFlow Editor");
+    setDescription("Main editor window for PatternFlow MIDI composition tool");
+    controlPanel.setTitle("Control Panel");
+    controlPanel.setDescription("Humanisation knobs, scale settings, and MIDI split controls");
+    fileBrowser.setTitle("File Browser");
+    fileBrowser.setDescription("Browse and select MIDI files to add to the arrangement");
+    arrangementView.setTitle("Arrangement View");
+    arrangementView.setDescription("Arrange MIDI clips on lanes. Use arrow keys to navigate regions.");
+    pianoRoll.setTitle("Piano Roll Editor");
+    pianoRoll.setDescription("Edit individual MIDI notes in the selected clip");
+    btnAbout.setTitle("About");
+    btnAbout.setDescription("Show information about PatternFlow");
+
+    // Make panels focusable for keyboard navigation
+    controlPanel.setWantsKeyboardFocus(true);
+    fileBrowser.setWantsKeyboardFocus(true);
+    arrangementView.setWantsKeyboardFocus(true);
+    pianoRoll.setWantsKeyboardFocus(true);
 
     // Control panel
     controlPanel.onAddLane = [this]
@@ -94,7 +115,7 @@ PatternFlowEditor::~PatternFlowEditor()
 
 void PatternFlowEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::bg);
+    g.fillAll(colours::bg());
 }
 
 void PatternFlowEditor::showAboutDialog()
@@ -102,23 +123,23 @@ void PatternFlowEditor::showAboutDialog()
     auto* dialog = new juce::DialogWindow::LaunchOptions();
 
     auto* content = new juce::Component();
-    content->setSize(400, 340);
+    content->setSize(400, 380);
 
     auto* titleLabel = new juce::Label({}, version::name);
     titleLabel->setFont(juce::Font(juce::FontOptions(22.0f).withStyle("Bold")));
-    titleLabel->setColour(juce::Label::textColourId, colours::accent);
+    titleLabel->setColour(juce::Label::textColourId, colours::accent());
     titleLabel->setBounds(20, 12, 360, 30);
     content->addAndMakeVisible(titleLabel);
 
     auto* versionLabel = new juce::Label({}, juce::String("Version ") + version::number);
     versionLabel->setFont(juce::Font(juce::FontOptions(13.0f)));
-    versionLabel->setColour(juce::Label::textColourId, colours::textDim);
+    versionLabel->setColour(juce::Label::textColourId, colours::textDim());
     versionLabel->setBounds(20, 42, 360, 20);
     content->addAndMakeVisible(versionLabel);
 
     auto* descLabel = new juce::Label({}, version::desc);
     descLabel->setFont(juce::Font(juce::FontOptions(13.0f)));
-    descLabel->setColour(juce::Label::textColourId, colours::text);
+    descLabel->setColour(juce::Label::textColourId, colours::text());
     descLabel->setBounds(20, 70, 360, 50);
     descLabel->setMinimumHorizontalScale(1.0f);
     content->addAndMakeVisible(descLabel);
@@ -127,18 +148,36 @@ void PatternFlowEditor::showAboutDialog()
     licenseEditor->setMultiLine(true, true);
     licenseEditor->setReadOnly(true);
     licenseEditor->setScrollbarsShown(true);
-    licenseEditor->setColour(juce::TextEditor::backgroundColourId, colours::bgLight);
-    licenseEditor->setColour(juce::TextEditor::textColourId, colours::textDim);
-    licenseEditor->setColour(juce::TextEditor::outlineColourId, colours::panelBorder);
+    licenseEditor->setColour(juce::TextEditor::backgroundColourId, colours::bgLight());
+    licenseEditor->setColour(juce::TextEditor::textColourId, colours::textDim());
+    licenseEditor->setColour(juce::TextEditor::outlineColourId, colours::panelBorder());
     licenseEditor->setFont(juce::Font(juce::FontOptions(11.0f)));
     licenseEditor->setText(version::license);
-    licenseEditor->setBounds(20, 128, 360, 160);
+    licenseEditor->setBounds(20, 128, 360, 150);
     content->addAndMakeVisible(licenseEditor);
 
+    // High contrast toggle
+    auto* hcToggle = new juce::ToggleButton("High Contrast Mode");
+    hcToggle->setColour(juce::ToggleButton::textColourId, colours::text());
+    hcToggle->setColour(juce::ToggleButton::tickColourId, colours::accent());
+    hcToggle->setToggleState(highContrastEnabled().load(), juce::dontSendNotification);
+    hcToggle->setBounds(20, 286, 200, 24);
+    hcToggle->onClick = [hcToggle, this]
+    {
+        highContrastEnabled().store(hcToggle->getToggleState());
+        // Trigger full repaint of the editor to apply new colours
+        repaint();
+        controlPanel.repaint();
+        fileBrowser.repaint();
+        arrangementView.refresh();
+        pianoRoll.repaint();
+    };
+    content->addAndMakeVisible(hcToggle);
+
     auto* closeBtn = new juce::TextButton("Close");
-    closeBtn->setColour(juce::TextButton::buttonColourId, colours::accent);
-    closeBtn->setColour(juce::TextButton::textColourOffId, colours::textBright);
-    closeBtn->setBounds(155, 300, 90, 28);
+    closeBtn->setColour(juce::TextButton::buttonColourId, colours::accent());
+    closeBtn->setColour(juce::TextButton::textColourOffId, colours::textBright());
+    closeBtn->setBounds(155, 340, 90, 28);
     closeBtn->onClick = [content]
     {
         if (auto* dw = content->findParentComponentOfClass<juce::DialogWindow>())
@@ -148,7 +187,7 @@ void PatternFlowEditor::showAboutDialog()
 
     dialog->content.setOwned(content);
     dialog->dialogTitle = "About PatternFlow";
-    dialog->dialogBackgroundColour = colours::bg;
+    dialog->dialogBackgroundColour = colours::bg();
     dialog->escapeKeyTriggersCloseButton = true;
     dialog->useNativeTitleBar = false;
     dialog->resizable = false;
@@ -158,24 +197,70 @@ void PatternFlowEditor::showAboutDialog()
 
 bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
 {
-    // Delete selected region
+    // Undo: Cmd/Ctrl + Z
+    if (key == juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0))
+    {
+        if (processorRef.undoManager.undo())
+        {
+            arrangementView.refresh();
+            // Refresh piano roll if open
+            if (pianoRoll.hasClip())
+            {
+                int li = pianoRoll.getEditLaneIndex();
+                int ri = pianoRoll.getEditRegionIndex();
+                juce::ScopedLock sl(processorRef.laneLock);
+                if (li >= 0 && li < (int)processorRef.lanes.size())
+                {
+                    auto& lane = processorRef.lanes[li];
+                    if (ri >= 0 && ri < (int)lane.regions.size())
+                    {
+                        int ci = lane.regions[ri].clipIndex;
+                        if (ci >= 0 && ci < (int)lane.clips.size())
+                            pianoRoll.setClip(lane.clips[ci], li, ri);
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    // Redo: Cmd/Ctrl + Shift + Z
+    if (key == juce::KeyPress('z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0))
+    {
+        if (processorRef.undoManager.redo())
+        {
+            arrangementView.refresh();
+            if (pianoRoll.hasClip())
+            {
+                int li = pianoRoll.getEditLaneIndex();
+                int ri = pianoRoll.getEditRegionIndex();
+                juce::ScopedLock sl(processorRef.laneLock);
+                if (li >= 0 && li < (int)processorRef.lanes.size())
+                {
+                    auto& lane = processorRef.lanes[li];
+                    if (ri >= 0 && ri < (int)lane.regions.size())
+                    {
+                        int ci = lane.regions[ri].clipIndex;
+                        if (ci >= 0 && ci < (int)lane.clips.size())
+                            pianoRoll.setClip(lane.clips[ci], li, ri);
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    // Delete selected region (undoable)
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
         if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
         {
-            juce::ScopedLock sl(processorRef.laneLock);
-            if (arrangementView.selLane < (int)processorRef.lanes.size())
-            {
-                auto& lane = processorRef.lanes[arrangementView.selLane];
-                if (arrangementView.selRegion < (int)lane.regions.size())
-                {
-                    lane.removeRegion(arrangementView.selRegion);
-                    arrangementView.selLane = -1;
-                    arrangementView.selRegion = -1;
-                    arrangementView.refresh();
-                    return true;
-                }
-            }
+            processorRef.undoManager.perform(
+                new RemoveRegionAction(processorRef, arrangementView.selLane, arrangementView.selRegion));
+            arrangementView.selLane = -1;
+            arrangementView.selRegion = -1;
+            arrangementView.refresh();
+            return true;
         }
     }
 
@@ -193,6 +278,91 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
     {
         arrangementView.beatsPerPixel = std::min(2.0f, arrangementView.beatsPerPixel * 1.25f);
         arrangementView.refresh();
+        return true;
+    }
+
+    // Arrow key navigation for regions
+    if (key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey ||
+        key == juce::KeyPress::upKey || key == juce::KeyPress::downKey)
+    {
+        juce::ScopedLock sl(processorRef.laneLock);
+        int numLanes = (int)processorRef.lanes.size();
+        if (numLanes == 0) return false;
+
+        if (arrangementView.selLane < 0)
+        {
+            for (int li = 0; li < numLanes; ++li)
+            {
+                if (!processorRef.lanes[li].regions.empty())
+                {
+                    arrangementView.selLane = li;
+                    arrangementView.selRegion = 0;
+                    arrangementView.refresh();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        int lane = arrangementView.selLane;
+        int reg = arrangementView.selRegion;
+
+        if (key == juce::KeyPress::leftKey)
+        {
+            if (reg > 0) reg--;
+        }
+        else if (key == juce::KeyPress::rightKey)
+        {
+            if (lane < numLanes && reg < (int)processorRef.lanes[lane].regions.size() - 1) reg++;
+        }
+        else if (key == juce::KeyPress::upKey)
+        {
+            for (int li = lane - 1; li >= 0; --li)
+            {
+                if (!processorRef.lanes[li].regions.empty())
+                { lane = li; reg = std::min(reg, (int)processorRef.lanes[li].regions.size() - 1); break; }
+            }
+        }
+        else if (key == juce::KeyPress::downKey)
+        {
+            for (int li = lane + 1; li < numLanes; ++li)
+            {
+                if (!processorRef.lanes[li].regions.empty())
+                { lane = li; reg = std::min(reg, (int)processorRef.lanes[li].regions.size() - 1); break; }
+            }
+        }
+
+        arrangementView.selLane = lane;
+        arrangementView.selRegion = reg;
+        arrangementView.refresh();
+        return true;
+    }
+
+    // M key to mute/unmute selected region
+    if (key == juce::KeyPress('m') && arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
+    {
+        processorRef.undoManager.perform(
+            new ToggleMuteAction(processorRef, arrangementView.selLane, arrangementView.selRegion));
+        arrangementView.refresh();
+        return true;
+    }
+
+    // Tab to cycle focus between panels
+    if (key == juce::KeyPress::tabKey)
+    {
+        if (controlPanel.hasKeyboardFocus(true))
+            fileBrowser.grabKeyboardFocus();
+        else if (fileBrowser.hasKeyboardFocus(true))
+            arrangementView.grabKeyboardFocus();
+        else if (arrangementView.hasKeyboardFocus(true))
+        {
+            if (pianoRoll.isVisible())
+                pianoRoll.grabKeyboardFocus();
+            else
+                controlPanel.grabKeyboardFocus();
+        }
+        else
+            controlPanel.grabKeyboardFocus();
         return true;
     }
 

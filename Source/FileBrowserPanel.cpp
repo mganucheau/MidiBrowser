@@ -6,7 +6,7 @@ FileBrowserPanel::FileBrowserPanel()
 {
     lblHeader.setText("BROWSER", juce::dontSendNotification);
     lblHeader.setFont(juce::Font(13.0f, juce::Font::bold));
-    lblHeader.setColour(juce::Label::textColourId, colours::textDim);
+    lblHeader.setColour(juce::Label::textColourId, colours::textDim());
     addAndMakeVisible(lblHeader);
 
     btnSetRoot.onClick = [this]
@@ -34,7 +34,7 @@ FileBrowserPanel::FileBrowserPanel()
     dirContents->setDirectory(defaultDir, true, true);
 
     fileTree = std::make_unique<juce::FileTreeComponent>(*dirContents);
-    fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::panel);
+    fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::panel());
     fileTree->setDragAndDropDescription("MidiFileDrag");
     fileTree->setItemHeight(20);
     fileTree->addListener(this);
@@ -62,8 +62,8 @@ void FileBrowserPanel::resized()
 
 void FileBrowserPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::panel);
-    g.setColour(colours::panelBorder);
+    g.fillAll(colours::panel());
+    g.setColour(colours::panelBorder());
     g.drawLine((float)getWidth(), 0.0f, (float)getWidth(), (float)getHeight(), 1.0f);
 }
 

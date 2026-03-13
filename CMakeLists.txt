@@ -26,7 +26,7 @@ include(FetchContent)
 FetchContent_Declare(
     JUCE
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG        develop
+    GIT_TAG        8.0.12
 )
 FetchContent_MakeAvailable(JUCE)
 
@@ -54,6 +54,7 @@ target_sources(PatternFlow PRIVATE
     Source/PianoRollEditor.cpp
     Source/ControlPanel.cpp
     Source/Theme.cpp
+    Source/UndoActions.cpp
 )
 
 target_compile_definitions(PatternFlow PUBLIC
@@ -68,6 +69,7 @@ target_link_libraries(PatternFlow
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_gui_extra
+        juce::juce_data_structures
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

@@ -12,8 +12,8 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     setupKnob(knobIntonation,    lblIntonation);
 
     // Scale enable
-    btnScaleEnable.setColour(juce::ToggleButton::textColourId, colours::text);
-    btnScaleEnable.setColour(juce::ToggleButton::tickColourId, colours::accent);
+    btnScaleEnable.setColour(juce::ToggleButton::textColourId, colours::text());
+    btnScaleEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
     btnScaleEnable.onClick = [this]
     {
         processor.scaleEnabled.store(btnScaleEnable.getToggleState());
@@ -39,7 +39,7 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     processor.scaleType.store(1);  // Major
 
     // Root note remap
-    lblRootNote.setColour(juce::Label::textColourId, colours::textDim);
+    lblRootNote.setColour(juce::Label::textColourId, colours::textDim());
     lblRootNote.setFont(juce::Font(12.0f));
     addAndMakeVisible(lblRootNote);
 
@@ -53,16 +53,16 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     addAndMakeVisible(cmbRootNote);
 
     // MIDI split
-    btnSplitEnable.setColour(juce::ToggleButton::textColourId, colours::text);
-    btnSplitEnable.setColour(juce::ToggleButton::tickColourId, colours::accent);
+    btnSplitEnable.setColour(juce::ToggleButton::textColourId, colours::text());
+    btnSplitEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
     btnSplitEnable.onClick = [this]
     {
         processor.splitEnabled.store(btnSplitEnable.getToggleState());
     };
     addAndMakeVisible(btnSplitEnable);
 
-    btnSplitEdit.setColour(juce::TextButton::buttonColourId, colours::bgLight);
-    btnSplitEdit.setColour(juce::TextButton::textColourOffId, colours::text);
+    btnSplitEdit.setColour(juce::TextButton::buttonColourId, colours::bgLight());
+    btnSplitEdit.setColour(juce::TextButton::textColourOffId, colours::text());
     btnSplitEdit.onClick = [this]
     {
         // Simple split editor popup
@@ -98,8 +98,8 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     addAndMakeVisible(btnSplitEdit);
 
     // Add lane button
-    btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent);
-    btnAddLane.setColour(juce::TextButton::textColourOffId, colours::textBright);
+    btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent());
+    btnAddLane.setColour(juce::TextButton::textColourOffId, colours::textBright());
     btnAddLane.onClick = [this] { if (onAddLane) onAddLane(); };
     addAndMakeVisible(btnAddLane);
 }
@@ -113,7 +113,7 @@ void ControlPanel::setupKnob(juce::Slider& knob, juce::Label& label)
     knob.addListener(this);
     addAndMakeVisible(knob);
 
-    label.setColour(juce::Label::textColourId, colours::textDim);
+    label.setColour(juce::Label::textColourId, colours::textDim());
     label.setFont(juce::Font(11.0f));
     label.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(label);
@@ -165,8 +165,8 @@ void ControlPanel::resized()
 
 void ControlPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::bgLight);
-    g.setColour(colours::panelBorder);
+    g.fillAll(colours::bgLight());
+    g.setColour(colours::panelBorder());
     g.drawHorizontalLine(getHeight() - 1, 0.0f, (float)getWidth());
 }
 

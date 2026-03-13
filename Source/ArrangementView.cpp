@@ -1,5 +1,6 @@
 #include "ArrangementView.h"
 #include "PluginProcessor.h"
+#include "UndoActions.h"
 
 namespace pflow {
 
@@ -7,8 +8,8 @@ ArrangementView::ArrangementView(PatternFlowProcessor& proc) : processor(proc)
 {
     setOpaque(true);
 
-    btnAddBars.setColour(juce::TextButton::buttonColourId, colours::bgLighter);
-    btnAddBars.setColour(juce::TextButton::textColourOffId, colours::text);
+    btnAddBars.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnAddBars.setColour(juce::TextButton::textColourOffId, colours::text());
     btnAddBars.onClick = [this]
     {
         int expected = processor.arrangementBars.load();
@@ -70,7 +71,7 @@ void ArrangementView::rebuildClipBlocks()
 
 void ArrangementView::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::bg);
+    g.fillAll(colours::bg());
     rebuildClipBlocks();
     paintBeatGrid(g);
     paintRuler(g);
@@ -86,7 +87,7 @@ void ArrangementView::paint(juce::Graphics& g)
         juce::ScopedLock sl(processor.laneLock);
         if (processor.lanes.empty())
         {
-            g.setColour(colours::textDim);
+            g.setColour(colours::textDim());
             g.setFont(14.0f);
             auto area = getLocalBounds().withTrimmedTop(rulerH).withTrimmedLeft(metrics::laneHeaderW);
             g.drawText("Drag MIDI files here or click + to add a lane",
@@ -97,9 +98,9 @@ void ArrangementView::paint(juce::Graphics& g)
 
 void ArrangementView::paintRuler(juce::Graphics& g)
 {
-    g.setColour(colours::bgLight);
+    g.setColour(colours::bgLight());
     g.fillRect(metrics::laneHeaderW, 0, getWidth() - metrics::laneHeaderW, rulerH);
-    g.setColour(colours::panelBorder);
+    g.setColour(colours::panelBorder());
     g.drawHorizontalLine(rulerH - 1, (float)metrics::laneHeaderW, (float)getWidth());
 
     int totalBeats = processor.arrangementBars.load() * 4;
@@ -107,7 +108,7 @@ void ArrangementView::paintRuler(juce::Graphics& g)
     {
         float x = beatToX(beat);
         if (x < metrics::laneHeaderW || x > getWidth()) continue;
-        g.setColour(colours::textDim);
+        g.setColour(colours::textDim());
         g.setFont(12.0f);
         int barNum = (int)(beat / 4.0) + 1;
         g.drawText(juce::String(barNum), (int)x + 2, 0, 30, rulerH - 2,
@@ -149,9 +150,9 @@ void ArrangementView::paintBeatGrid(juce::Graphics& g)
         bool isBar  = (std::fmod(beat, 4.0) < 0.001);
         bool isBeat = (std::fmod(beat, 1.0) < 0.001);
 
-        if (isBar)        g.setColour(colours::panelBorder.withAlpha(0.5f));
-        else if (isBeat)  g.setColour(colours::panelBorder.withAlpha(0.2f));
-        else              g.setColour(colours::panelBorder.withAlpha(0.08f));
+        if (isBar)        g.setColour(colours::panelBorder().withAlpha(0.5f));
+        else if (isBeat)  g.setColour(colours::panelBorder().withAlpha(0.2f));
+        else              g.setColour(colours::panelBorder().withAlpha(0.08f));
 
         g.drawVerticalLine((int)x, (float)rulerH, (float)getHeight());
     }
@@ -164,10 +165,10 @@ void ArrangementView::paintLoopMarkers(juce::Graphics& g)
     float lx = beatToX(processor.loopStartBeat.load());
     float rx = beatToX(processor.loopEndBeat.load());
 
-    g.setColour(colours::accent.withAlpha(0.06f));
+    g.setColour(colours::accent().withAlpha(0.06f));
     g.fillRect(lx, (float)rulerH, rx - lx, (float)(getHeight() - rulerH));
 
-    g.setColour(colours::accent);
+    g.setColour(colours::accent());
     g.fillRect(lx - 1, 0.0f, 3.0f, (float)rulerH);
     g.fillRect(rx - 1, 0.0f, 3.0f, (float)rulerH);
 
@@ -179,7 +180,7 @@ void ArrangementView::paintLoopMarkers(juce::Graphics& g)
     rightTri.addTriangle(rx, 0.0f, rx - 8.0f, 0.0f, rx, (float)rulerH * 0.6f);
     g.fillPath(rightTri);
 
-    g.setColour(colours::accent.withAlpha(0.4f));
+    g.setColour(colours::accent().withAlpha(0.4f));
     g.drawVerticalLine((int)lx, (float)rulerH, (float)getHeight());
     g.drawVerticalLine((int)rx, (float)rulerH, (float)getHeight());
 }
@@ -193,25 +194,25 @@ void ArrangementView::paintLaneHeaders(juce::Graphics& g)
         float y = laneToY(i);
         auto& lane = processor.lanes[i];
 
-        g.setColour(colours::bgLight);
+        g.setColour(colours::bgLight());
         g.fillRect(0.0f, y, (float)metrics::laneHeaderW, (float)metrics::laneHeight);
 
         g.setColour(lane.colour);
         g.fillRect(0.0f, y + 2.0f, 4.0f, (float)metrics::laneHeight - 4.0f);
 
-        g.setColour(colours::text);
+        g.setColour(colours::text());
         g.setFont(13.0f);
         g.drawText(lane.name, 10, (int)y, metrics::laneHeaderW - 14,
                    metrics::laneHeight, juce::Justification::centredLeft);
 
-        g.setColour(colours::panelBorder);
+        g.setColour(colours::panelBorder());
         g.drawHorizontalLine((int)(y + metrics::laneHeight - 1), 0.0f, (float)getWidth());
     }
 
     float addY = laneToY((int)processor.lanes.size());
-    g.setColour(colours::bgLight.withAlpha(0.3f));
+    g.setColour(colours::bgLight().withAlpha(0.3f));
     g.fillRect(0.0f, addY, (float)metrics::laneHeaderW, (float)metrics::laneHeight);
-    g.setColour(colours::textDim);
+    g.setColour(colours::textDim());
     g.setFont(20.0f);
     g.drawText("+", 0, (int)addY, metrics::laneHeaderW, metrics::laneHeight,
                juce::Justification::centred);
@@ -264,7 +265,7 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
 
         if (selected)
         {
-            g.setColour(colours::accentBright);
+            g.setColour(colours::accentBright());
             g.drawRoundedRectangle(cb.bounds, metrics::clipCorner, 2.0f);
         }
 
@@ -281,7 +282,7 @@ void ArrangementView::paintPlayhead(juce::Graphics& g)
     if (processor.hostPlaying.load())
     {
         float x = beatToX(processor.hostBeatPos.load());
-        g.setColour(colours::playhead.withAlpha(0.8f));
+        g.setColour(colours::playhead().withAlpha(0.8f));
         g.drawVerticalLine((int)x, 0.0f, (float)getHeight());
     }
 }
@@ -291,9 +292,9 @@ void ArrangementView::paintDropIndicator(juce::Graphics& g)
     float x = beatToX(dropBeatPos);
     float y = (dropLaneIdx >= 0) ? laneToY(dropLaneIdx) : (float)rulerH;
     float h = (float)metrics::laneHeight;
-    g.setColour(colours::accent.withAlpha(0.3f));
+    g.setColour(colours::accent().withAlpha(0.3f));
     g.fillRect(x, y, 60.0f, h);
-    g.setColour(colours::accent);
+    g.setColour(colours::accent());
     g.drawRect(x, y, 60.0f, h, 1.0f);
 }
 
@@ -350,7 +351,9 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
             {
                 draggingClip = true;
                 juce::ScopedLock sl(processor.laneLock);
-                clipDragOrigBeat = processor.lanes[cb.laneIndex].regions[cb.regionIndex].startBeat;
+                auto& reg = processor.lanes[cb.laneIndex].regions[cb.regionIndex];
+                clipDragOrigBeat = reg.startBeat;
+                clipDragOrigEnd = reg.endBeat;
                 clipDragMouseOffset = xToBeat(e.position.x) - clipDragOrigBeat;
             }
             break;
@@ -408,6 +411,27 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 
 void ArrangementView::mouseUp(const juce::MouseEvent&)
 {
+    if (draggingClip && selLane >= 0 && selRegion >= 0)
+    {
+        juce::ScopedLock sl(processor.laneLock);
+        if (selLane < (int)processor.lanes.size() && selRegion < (int)processor.lanes[selLane].regions.size())
+        {
+            auto& region = processor.lanes[selLane].regions[selRegion];
+            double newStart = region.startBeat;
+            double newEnd = region.endBeat;
+            // Only record undo if the position actually changed
+            if (std::abs(newStart - clipDragOrigBeat) > 0.001)
+            {
+                // Restore original position first, then let the action perform the move
+                region.startBeat = clipDragOrigBeat;
+                region.endBeat = clipDragOrigEnd;
+                processor.undoManager.perform(
+                    new MoveRegionAction(processor, selLane, selRegion,
+                                         clipDragOrigBeat, clipDragOrigEnd,
+                                         newStart, newEnd));
+            }
+        }
+    }
     loopDragging = LoopDragTarget::None;
     draggingClip = false;
 }
@@ -588,7 +612,7 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
         if (result >= 100 && result < 200)
         { auto& clip = lane.clips[lane.regions[regionIdx].clipIndex]; clip.colour = presets[result - 100]; }
         else if (result >= 200 && result < 300) lane.colour = presets[result - 200];
-        else if (result == 1) { lane.regions[regionIdx].muted = !lane.regions[regionIdx].muted; }
+        else if (result == 1) { processor.undoManager.perform(new ToggleMuteAction(processor, laneIdx, regionIdx)); }
         else if (result == 2)
         {
             auto& region = lane.regions[regionIdx]; auto& clip = lane.clips[region.clipIndex];
@@ -601,7 +625,7 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
               if (regionIdx >= (int)processor.lanes[laneIdx].regions.size()) return;
               processor.lanes[laneIdx].regions[regionIdx].noteFilter = (noteResult == 1000) ? -1 : (noteResult - 1001); repaint(); });
         }
-        else if (result == 3) lane.removeRegion(regionIdx);
+        else if (result == 3) { processor.undoManager.perform(new RemoveRegionAction(processor, laneIdx, regionIdx)); }
         repaint();
     });
 }

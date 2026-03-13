@@ -1,5 +1,6 @@
 #include "PianoRollEditor.h"
 #include "PluginProcessor.h"
+#include "UndoActions.h"
 
 namespace pflow {
 
@@ -7,17 +8,17 @@ PianoRollEditor::PianoRollEditor(PatternFlowProcessor& proc) : processor(proc)
 {
     auto setupTabBtn = [this](juce::TextButton& btn, EditorViewMode mode)
     {
-        btn.setColour(juce::TextButton::buttonColourId, colours::bgLight);
-        btn.setColour(juce::TextButton::textColourOffId, colours::textDim);
+        btn.setColour(juce::TextButton::buttonColourId, colours::bgLight());
+        btn.setColour(juce::TextButton::textColourOffId, colours::textDim());
         btn.onClick = [this, mode]
         {
             viewMode = mode;
             btnNotes.setColour(juce::TextButton::buttonColourId,
-                viewMode == EditorViewMode::Notes ? colours::accent : colours::bgLight);
+                viewMode == EditorViewMode::Notes ? colours::accent() : colours::bgLight());
             btnExpression.setColour(juce::TextButton::buttonColourId,
-                viewMode == EditorViewMode::Expression ? colours::accent : colours::bgLight);
+                viewMode == EditorViewMode::Expression ? colours::accent() : colours::bgLight());
             btnAutomation.setColour(juce::TextButton::buttonColourId,
-                viewMode == EditorViewMode::Automation ? colours::accent : colours::bgLight);
+                viewMode == EditorViewMode::Automation ? colours::accent() : colours::bgLight());
             repaint();
         };
         addAndMakeVisible(btn);
@@ -26,10 +27,10 @@ PianoRollEditor::PianoRollEditor(PatternFlowProcessor& proc) : processor(proc)
     setupTabBtn(btnNotes, EditorViewMode::Notes);
     setupTabBtn(btnExpression, EditorViewMode::Expression);
     setupTabBtn(btnAutomation, EditorViewMode::Automation);
-    btnNotes.setColour(juce::TextButton::buttonColourId, colours::accent);
+    btnNotes.setColour(juce::TextButton::buttonColourId, colours::accent());
 
-    btnClose.setColour(juce::TextButton::buttonColourId, colours::bgLight);
-    btnClose.setColour(juce::TextButton::textColourOffId, colours::textDim);
+    btnClose.setColour(juce::TextButton::buttonColourId, colours::bgLight());
+    btnClose.setColour(juce::TextButton::textColourOffId, colours::textDim());
     btnClose.onClick = [this] { clearClip(); if (onCloseRequested) onCloseRequested(); };
     addAndMakeVisible(btnClose);
 }
@@ -117,17 +118,17 @@ bool PianoRollEditor::isNearRightEdge(const juce::MouseEvent& e, int noteIdx) co
 
 void PianoRollEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::panel);
+    g.fillAll(colours::panel());
 
     if (!clipLoaded)
     {
-        g.setColour(colours::text);
+        g.setColour(colours::text());
         g.setFont(13.0f);
         g.drawText("Double-click any clip in the arrangement to open it here", getLocalBounds(), juce::Justification::centred);
         return;
     }
 
-    g.setColour(colours::panelBorder);
+    g.setColour(colours::panelBorder());
     g.drawHorizontalLine(0, 0.0f, (float)getWidth());
 
     switch (viewMode)
@@ -142,7 +143,7 @@ void PianoRollEditor::paint(juce::Graphics& g)
 void PianoRollEditor::paintPianoKeys(juce::Graphics& g)
 {
     int tabH = 28;
-    g.setColour(colours::panel);
+    g.setColour(colours::panel());
     g.fillRect(0, tabH, pianoKeyWidth, getHeight() - tabH);
 
     int topNote = yToNote((float)tabH);
@@ -152,19 +153,19 @@ void PianoRollEditor::paintPianoKeys(juce::Graphics& g)
     {
         float y = noteToY(n);
         bool black = isBlackKey(n);
-        g.setColour(black ? colours::pianoBlackKey : colours::pianoWhiteKey);
+        g.setColour(black ? colours::pianoBlackKey() : colours::pianoWhiteKey());
         g.fillRect(0.0f, y, (float)pianoKeyWidth, noteHeight);
-        g.setColour(colours::panelBorder.withAlpha(0.3f));
+        g.setColour(colours::panelBorder().withAlpha(0.3f));
         g.drawHorizontalLine((int)y, 0.0f, (float)pianoKeyWidth);
 
         if (n % 12 == 0)
         {
-            g.setColour(colours::textDim);
+            g.setColour(colours::textDim());
             g.setFont(10.0f);
             g.drawText("C" + juce::String(n / 12 - 2), 2, (int)y, pianoKeyWidth - 4, (int)noteHeight, juce::Justification::centredLeft);
         }
     }
-    g.setColour(colours::panelBorder);
+    g.setColour(colours::panelBorder());
     g.drawVerticalLine(pianoKeyWidth, (float)tabH, (float)getHeight());
 }
 
@@ -178,9 +179,9 @@ void PianoRollEditor::paintNoteGrid(juce::Graphics& g)
     {
         float y = noteToY(n);
         bool black = isBlackKey(n);
-        g.setColour(black ? colours::pianoBlackKey.withAlpha(0.3f) : juce::Colours::transparentBlack);
+        g.setColour(black ? colours::pianoBlackKey().withAlpha(0.3f) : juce::Colours::transparentBlack);
         g.fillRect((float)pianoKeyWidth, y, (float)(getWidth() - pianoKeyWidth), noteHeight);
-        g.setColour(colours::pianoGrid.withAlpha(0.3f));
+        g.setColour(colours::pianoGrid().withAlpha(0.3f));
         g.drawHorizontalLine((int)y, (float)pianoKeyWidth, (float)getWidth());
     }
 
@@ -204,8 +205,8 @@ void PianoRollEditor::paintNoteGrid(juce::Graphics& g)
         if (x < pianoKeyWidth) continue;
         bool isBar = (std::fmod(beat, 4.0) < 0.001);
         bool isBeat = (std::fmod(beat, 1.0) < 0.001);
-        g.setColour(isBar ? colours::pianoGrid.withAlpha(0.6f)
-                   : (isBeat ? colours::pianoGrid.withAlpha(0.3f) : colours::pianoGrid.withAlpha(0.1f)));
+        g.setColour(isBar ? colours::pianoGrid().withAlpha(0.6f)
+                   : (isBeat ? colours::pianoGrid().withAlpha(0.3f) : colours::pianoGrid().withAlpha(0.1f)));
         g.drawVerticalLine((int)x, (float)tabH, (float)getHeight());
     }
 }
@@ -222,7 +223,7 @@ void PianoRollEditor::paintNotes(juce::Graphics& g)
 
         bool selected = (i == selectedNote);
         float velAlpha = 0.5f + 0.5f * (note.velocity / 127.0f);
-        g.setColour(selected ? colours::accentBright : colours::noteBlock.withAlpha(velAlpha));
+        g.setColour(selected ? colours::accentBright() : colours::noteBlock().withAlpha(velAlpha));
         g.fillRoundedRectangle(x, y + 1.0f, w, noteHeight - 2.0f, 2.0f);
 
         g.setColour(juce::Colours::white.withAlpha(0.3f));
@@ -230,7 +231,7 @@ void PianoRollEditor::paintNotes(juce::Graphics& g)
 
         if (selected)
         {
-            g.setColour(colours::accentBright);
+            g.setColour(colours::accentBright());
             g.drawRoundedRectangle(x, y + 1.0f, w, noteHeight - 2.0f, 2.0f, 1.0f);
             g.setColour(juce::Colours::white.withAlpha(0.6f));
             g.fillRect(x + w - 3.0f, y + 2.0f, 2.0f, noteHeight - 4.0f);
@@ -249,12 +250,12 @@ void PianoRollEditor::paintExpressionView(juce::Graphics& g)
         float velH = (note.velocity / 127.0f) * (areaH - 20.0f);
         if (x < pianoKeyWidth || x > getWidth()) continue;
         float barY = getHeight() - velH - 10.0f;
-        g.setColour(colours::accent.withAlpha(0.7f));
+        g.setColour(colours::accent().withAlpha(0.7f));
         g.fillRect(x, barY, w, velH);
-        g.setColour(colours::accentBright);
+        g.setColour(colours::accentBright());
         g.fillRect(x, barY, w, 2.0f);
     }
-    g.setColour(colours::textDim); g.setFont(11.0f);
+    g.setColour(colours::textDim()); g.setFont(11.0f);
     g.drawText("Velocity", pianoKeyWidth + 4, tabH + 2, 60, 14, juce::Justification::centredLeft);
 }
 
@@ -262,9 +263,9 @@ void PianoRollEditor::paintAutomationView(juce::Graphics& g)
 {
     int tabH = 28;
     float areaH = (float)(getHeight() - tabH);
-    g.setColour(colours::textDim); g.setFont(11.0f);
+    g.setColour(colours::textDim()); g.setFont(11.0f);
     g.drawText("CC 1 (Mod Wheel)", pianoKeyWidth + 4, tabH + 2, 120, 14, juce::Justification::centredLeft);
-    g.setColour(colours::pianoGrid.withAlpha(0.3f));
+    g.setColour(colours::pianoGrid().withAlpha(0.3f));
     float centerY = tabH + areaH * 0.5f;
     g.drawHorizontalLine((int)centerY, (float)pianoKeyWidth, (float)getWidth());
 
@@ -273,10 +274,10 @@ void PianoRollEditor::paintAutomationView(juce::Graphics& g)
         float x = beatToX(beat);
         if (x < pianoKeyWidth) continue;
         bool isBar = (std::fmod(beat, 4.0) < 0.001);
-        g.setColour(isBar ? colours::pianoGrid.withAlpha(0.4f) : colours::pianoGrid.withAlpha(0.15f));
+        g.setColour(isBar ? colours::pianoGrid().withAlpha(0.4f) : colours::pianoGrid().withAlpha(0.15f));
         g.drawVerticalLine((int)x, (float)tabH, (float)getHeight());
     }
-    g.setColour(colours::textDim.withAlpha(0.5f)); g.setFont(10.0f);
+    g.setColour(colours::textDim().withAlpha(0.5f)); g.setFont(10.0f);
     g.drawText("Draw automation points by clicking",
                getLocalBounds().withTrimmedTop(tabH).withTrimmedLeft(pianoKeyWidth), juce::Justification::centred);
 }
@@ -324,6 +325,7 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
             if (e.position.x >= nx && e.position.x <= nx + nw && e.position.y >= ny && e.position.y <= ny + noteHeight)
             {
                 selectedNote = i;
+                dragOrigNote = note;
                 if (isNearRightEdge(e, i))
                 { resizingNote = true; resizeOrigLen = note.lengthBeats; dragStartX = e.position.x; }
                 else
@@ -334,9 +336,11 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
         }
         if (selectedNote >= 0 && e.mods.isRightButtonDown())
         {
+            // Undoable delete
+            processor.undoManager.perform(
+                new DeleteNoteAction(processor, editLaneIdx, editRegionIdx, selectedNote));
             currentClip.notes.erase(currentClip.notes.begin() + selectedNote);
             selectedNote = -1; draggingNote = false; resizingNote = false;
-            if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
         }
     }
     repaint();
@@ -371,8 +375,20 @@ void PianoRollEditor::mouseDrag(const juce::MouseEvent& e)
 
 void PianoRollEditor::mouseUp(const juce::MouseEvent&)
 {
-    if ((draggingNote || resizingNote) && onClipEdited)
-        onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+    if ((draggingNote || resizingNote) && selectedNote >= 0)
+    {
+        auto& note = currentClip.notes[selectedNote];
+        // Only record undo if the note actually changed
+        if (note.startBeat != dragOrigNote.startBeat ||
+            note.noteNumber != dragOrigNote.noteNumber ||
+            note.lengthBeats != dragOrigNote.lengthBeats)
+        {
+            processor.undoManager.perform(
+                new EditNoteAction(processor, editLaneIdx, editRegionIdx,
+                                   selectedNote, dragOrigNote, note));
+        }
+        if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+    }
     draggingNote = false;
     resizingNote = false;
 }
@@ -402,6 +418,9 @@ void PianoRollEditor::mouseDoubleClick(const juce::MouseEvent& e)
         NoteEvent ne;
         ne.startBeat = beat; ne.noteNumber = noteNum; ne.velocity = 100;
         ne.lengthBeats = noteLen; ne.channel = 1;
+        // Undoable add
+        processor.undoManager.perform(
+            new AddNoteAction(processor, editLaneIdx, editRegionIdx, ne));
         currentClip.notes.push_back(ne);
         selectedNote = (int)currentClip.notes.size() - 1;
         if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);

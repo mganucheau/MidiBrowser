@@ -1,33 +1,42 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <atomic>
 
 namespace pflow {
 
+// ── High contrast mode toggle ────────────────────────────────────────────────
+inline std::atomic<bool>& highContrastEnabled()
+{
+    static std::atomic<bool> enabled { false };
+    return enabled;
+}
+
 // ── Colour palette ───────────────────────────────────────────────────────────
+// High contrast palette: black background, bright saturated colours, strong borders
 namespace colours {
-    const juce::Colour bg            { 0xff1a1a2e };
-    const juce::Colour bgLight       { 0xff222240 };
-    const juce::Colour bgLighter     { 0xff2a2a50 };
-    const juce::Colour panel         { 0xff16162b };
-    const juce::Colour panelBorder   { 0xff333360 };
-    const juce::Colour accent        { 0xff6c63ff };
-    const juce::Colour accentDim     { 0xff4e47b3 };
-    const juce::Colour accentBright  { 0xff8a83ff };
-    const juce::Colour text          { 0xffe0e0e8 };
-    const juce::Colour textDim       { 0xffa0a0bb };
-    const juce::Colour textBright    { 0xffffffff };
-    const juce::Colour knobTrack     { 0xff3a3a60 };
-    const juce::Colour laneA         { 0xff3a7bd5 };
-    const juce::Colour laneB         { 0xff00d2ff };
-    const juce::Colour laneC         { 0xffff6b6b };
-    const juce::Colour laneD         { 0xff51cf66 };
-    const juce::Colour laneE         { 0xfffcc419 };
-    const juce::Colour pianoWhiteKey { 0xff2c2c4a };
-    const juce::Colour pianoBlackKey { 0xff1a1a30 };
-    const juce::Colour pianoGrid     { 0xff333355 };
-    const juce::Colour noteBlock     { 0xff6c63ff };
-    const juce::Colour selection     { 0x446c63ff };
-    const juce::Colour playhead      { 0xffffffff };
+    inline juce::Colour bg()            { return highContrastEnabled() ? juce::Colour(0xff000000) : juce::Colour(0xff1a1a2e); }
+    inline juce::Colour bgLight()       { return highContrastEnabled() ? juce::Colour(0xff111111) : juce::Colour(0xff222240); }
+    inline juce::Colour bgLighter()     { return highContrastEnabled() ? juce::Colour(0xff1a1a1a) : juce::Colour(0xff2a2a50); }
+    inline juce::Colour panel()         { return highContrastEnabled() ? juce::Colour(0xff0a0a0a) : juce::Colour(0xff16162b); }
+    inline juce::Colour panelBorder()   { return highContrastEnabled() ? juce::Colour(0xffaaaaaa) : juce::Colour(0xff333360); }
+    inline juce::Colour accent()        { return highContrastEnabled() ? juce::Colour(0xff44aaff) : juce::Colour(0xff6c63ff); }
+    inline juce::Colour accentDim()     { return highContrastEnabled() ? juce::Colour(0xff2288dd) : juce::Colour(0xff4e47b3); }
+    inline juce::Colour accentBright()  { return highContrastEnabled() ? juce::Colour(0xff66ccff) : juce::Colour(0xff8a83ff); }
+    inline juce::Colour text()          { return highContrastEnabled() ? juce::Colour(0xffffffff) : juce::Colour(0xffe0e0e8); }
+    inline juce::Colour textDim()       { return highContrastEnabled() ? juce::Colour(0xffcccccc) : juce::Colour(0xffa0a0bb); }
+    inline juce::Colour textBright()    { return juce::Colour(0xffffffff); }
+    inline juce::Colour knobTrack()     { return highContrastEnabled() ? juce::Colour(0xff555555) : juce::Colour(0xff3a3a60); }
+    inline juce::Colour laneA()         { return juce::Colour(0xff3a7bd5); }
+    inline juce::Colour laneB()         { return juce::Colour(0xff00d2ff); }
+    inline juce::Colour laneC()         { return juce::Colour(0xffff6b6b); }
+    inline juce::Colour laneD()         { return juce::Colour(0xff51cf66); }
+    inline juce::Colour laneE()         { return juce::Colour(0xfffcc419); }
+    inline juce::Colour pianoWhiteKey() { return highContrastEnabled() ? juce::Colour(0xff222222) : juce::Colour(0xff2c2c4a); }
+    inline juce::Colour pianoBlackKey() { return highContrastEnabled() ? juce::Colour(0xff0d0d0d) : juce::Colour(0xff1a1a30); }
+    inline juce::Colour pianoGrid()     { return highContrastEnabled() ? juce::Colour(0xff666666) : juce::Colour(0xff333355); }
+    inline juce::Colour noteBlock()     { return highContrastEnabled() ? juce::Colour(0xff44aaff) : juce::Colour(0xff6c63ff); }
+    inline juce::Colour selection()     { return highContrastEnabled() ? juce::Colour(0x6644aaff) : juce::Colour(0x446c63ff); }
+    inline juce::Colour playhead()      { return highContrastEnabled() ? juce::Colour(0xffffff00) : juce::Colour(0xffffffff); }
 }
 
 // ── Clip colour presets ──────────────────────────────────────────────────────
@@ -45,7 +54,7 @@ inline std::vector<juce::Colour> getClipColourPresets()
 // ── Metrics ──────────────────────────────────────────────────────────────────
 // ── Version ─────────────────────────────────────────────────────────────────
 namespace version {
-    constexpr const char* number = "0.1.0";
+    constexpr const char* number = "0.2.0";
     constexpr const char* name   = "PatternFlow";
     constexpr const char* desc   = "A MIDI composition and comping tool for creative producers. "
                                    "Arrange, layer, and reshape MIDI clips with per-note comping, "
