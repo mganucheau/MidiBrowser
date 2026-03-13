@@ -1,5 +1,6 @@
 #include "UndoActions.h"
 #include "PluginProcessor.h"
+#include "Theme.h"
 
 namespace pflow {
 
