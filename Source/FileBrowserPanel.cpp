@@ -35,8 +35,11 @@ FileBrowserPanel::FileBrowserPanel()
 
     fileTree = std::make_unique<juce::FileTreeComponent>(*dirContents);
     fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::panel());
+    fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
+    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
+    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, juce::Colours::white);
     fileTree->setDragAndDropDescription("MidiFileDrag");
-    fileTree->setItemHeight(20);
+    fileTree->setItemHeight(22);
     fileTree->addListener(this);
     addAndMakeVisible(*fileTree);
 }
@@ -65,6 +68,12 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     g.fillAll(colours::panel());
     g.setColour(colours::panelBorder());
     g.drawLine((float)getWidth(), 0.0f, (float)getWidth(), (float)getHeight(), 1.0f);
+
+    // Refresh file tree colours on each paint (handles theme toggle)
+    fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::panel());
+    fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
+    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
+    lblHeader.setColour(juce::Label::textColourId, colours::textDim());
 }
 
 void FileBrowserPanel::fileClicked(const juce::File& file, const juce::MouseEvent&)

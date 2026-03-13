@@ -54,6 +54,7 @@ public:
     static constexpr int rulerH = 24;
 
     juce::TextButton btnAddBars { "+4 Bars" };
+    juce::TextButton btnLoop    { "Loop" };
 
     int selLane   = -1;
     int selRegion = -1;
@@ -104,6 +105,7 @@ private:
     void paintBeatGrid(juce::Graphics&);
     void paintLoopMarkers(juce::Graphics&);
 
+    void updateLoopButton();
     void ensureBarsForBeat(double endBeat);
     void showClipContextMenu(int laneIdx, int regionIdx);
     void showLaneContextMenu(int laneIdx);

@@ -285,8 +285,8 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         return true;
     }
 
-    // Alt+Arrow: MOVE selected region (timeline shift or lane change)
-    if (key.getModifiers().isAltDown() && arrangementView.selLane >= 0 && arrangementView.selRegion >= 0 &&
+    // Arrow keys: move selected clip (left/right = timeline, up/down = between lanes)
+    if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0 &&
         (key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey ||
          key.getKeyCode() == juce::KeyPress::upKey || key.getKeyCode() == juce::KeyPress::downKey))
     {
@@ -342,62 +342,24 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         return true;
     }
 
-    // Arrow key navigation for regions (no modifier)
+    // Arrow keys with no selection: select first available region
     if ((key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey ||
          key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) &&
-        !key.getModifiers().isAltDown())
+        arrangementView.selLane < 0)
     {
         juce::ScopedLock sl(processorRef.laneLock);
         int numLanes = (int)processorRef.lanes.size();
-        if (numLanes == 0) return false;
-
-        if (arrangementView.selLane < 0)
+        for (int li = 0; li < numLanes; ++li)
         {
-            for (int li = 0; li < numLanes; ++li)
+            if (!processorRef.lanes[li].regions.empty())
             {
-                if (!processorRef.lanes[li].regions.empty())
-                {
-                    arrangementView.selLane = li;
-                    arrangementView.selRegion = 0;
-                    arrangementView.refresh();
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        int lane = arrangementView.selLane;
-        int reg = arrangementView.selRegion;
-
-        if (key == juce::KeyPress::leftKey)
-        {
-            if (reg > 0) reg--;
-        }
-        else if (key == juce::KeyPress::rightKey)
-        {
-            if (lane < numLanes && reg < (int)processorRef.lanes[lane].regions.size() - 1) reg++;
-        }
-        else if (key == juce::KeyPress::upKey)
-        {
-            for (int li = lane - 1; li >= 0; --li)
-            {
-                if (!processorRef.lanes[li].regions.empty())
-                { lane = li; reg = std::min(reg, (int)processorRef.lanes[li].regions.size() - 1); break; }
+                arrangementView.selLane = li;
+                arrangementView.selRegion = 0;
+                arrangementView.refresh();
+                return true;
             }
         }
-        else if (key == juce::KeyPress::downKey)
-        {
-            for (int li = lane + 1; li < numLanes; ++li)
-            {
-                if (!processorRef.lanes[li].regions.empty())
-                { lane = li; reg = std::min(reg, (int)processorRef.lanes[li].regions.size() - 1); break; }
-            }
-        }
-
-        arrangementView.selLane = lane;
-        arrangementView.selRegion = reg;
-        arrangementView.refresh();
-        return true;
+        return false;
     }
 
     // M key to mute/unmute selected region

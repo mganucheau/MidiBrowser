@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Theme.h"
 
 namespace pflow {
 
@@ -7,10 +8,14 @@ PatternFlowProcessor::PatternFlowProcessor()
     : AudioProcessor(BusesProperties()
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
-    CompLane defaultLane;
-    defaultLane.name   = "Lane 1";
-    defaultLane.colour = juce::Colour(0xff2979ff);
-    lanes.push_back(defaultLane);
+    auto presets = getClipColourPresets();
+    for (int i = 0; i < 4; ++i)
+    {
+        CompLane lane;
+        lane.name   = "Lane " + juce::String(i + 1);
+        lane.colour = presets[i % presets.size()];
+        lanes.push_back(lane);
+    }
 }
 
 double PatternFlowProcessor::snapBeat(double beat) const
@@ -76,7 +81,8 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     double secPerBeat     = 60.0 / bpm;
     double beatsPerSample = 1.0 / (sampleRate_ * secPerBeat);
-    double endBeat        = beatPos + buffer.getNumSamples() * beatsPerSample;
+    double blockBeats     = buffer.getNumSamples() * beatsPerSample;
+    double endBeat        = beatPos + blockBeats;
 
     // Detect transport jump - send all-notes-off
     if (lastBeatPos_ >= 0.0 && std::abs(beatPos - lastBeatPos_) > beatsPerSample * 2.0)
@@ -86,7 +92,50 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         activeNotes_.clear();
     }
 
-    generateMidiForBeatRange(beatPos, endBeat, generated, buffer.getNumSamples());
+    // Loop wrapping: map host beat position into the loop range
+    if (loopEnabled.load())
+    {
+        double loopStart = loopStartBeat.load();
+        double loopEnd   = loopEndBeat.load();
+        double loopLen   = loopEnd - loopStart;
+
+        if (loopLen > 0.0 && beatPos >= loopStart)
+        {
+            double mapped = loopStart + std::fmod(beatPos - loopStart, loopLen);
+
+            // Check if this block crosses the loop boundary
+            double mappedEnd = mapped + blockBeats;
+            if (mappedEnd > loopEnd)
+            {
+                // Split into two ranges: before and after the loop wrap
+                double firstLen  = loopEnd - mapped;
+                int firstSamples = std::max(1, (int)(firstLen / blockBeats * buffer.getNumSamples()));
+                int secondSamples = buffer.getNumSamples() - firstSamples;
+
+                generateMidiForBeatRange(mapped, loopEnd, generated, firstSamples);
+
+                // Send note-offs at wrap point
+                for (auto& an : activeNotes_)
+                    generated.addEvent(juce::MidiMessage::noteOff(an.channel, an.pitch), firstSamples);
+                activeNotes_.clear();
+
+                double secondLen = blockBeats - firstLen;
+                generateMidiForBeatRange(loopStart, loopStart + secondLen, generated, secondSamples);
+            }
+            else
+            {
+                generateMidiForBeatRange(mapped, mappedEnd, generated, buffer.getNumSamples());
+            }
+        }
+        else
+        {
+            generateMidiForBeatRange(beatPos, endBeat, generated, buffer.getNumSamples());
+        }
+    }
+    else
+    {
+        generateMidiForBeatRange(beatPos, endBeat, generated, buffer.getNumSamples());
+    }
     lastBeatPos_ = endBeat;
 
     for (const auto metadata : generated)

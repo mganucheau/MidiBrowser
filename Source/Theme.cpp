@@ -31,6 +31,22 @@ void PatternFlowLookAndFeel::refreshColours()
     setColour(juce::TextButton::buttonColourId,           colours::bgLighter());
     setColour(juce::TextButton::textColourOffId,          colours::text());
     setColour(juce::TextButton::textColourOnId,           colours::textBright());
+
+    // File tree / TreeView colours
+    setColour(juce::TreeView::backgroundColourId,         colours::panel());
+    setColour(juce::TreeView::linesColourId,              colours::panelBorder());
+    setColour(juce::TreeView::selectedItemBackgroundColourId, colours::accent().withAlpha(0.2f));
+    setColour(juce::TreeView::dragAndDropIndicatorColourId, colours::accent());
+
+    // DirectoryContentsDisplayComponent (file browser text)
+    setColour(juce::DirectoryContentsDisplayComponent::textColourId,    colours::text());
+    setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
+    setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, juce::Colours::white);
+
+    // Tooltip
+    setColour(juce::TooltipWindow::backgroundColourId,    colours::bgLight());
+    setColour(juce::TooltipWindow::textColourId,          colours::text());
+    setColour(juce::TooltipWindow::outlineColourId,       colours::panelBorder());
 }
 
 void PatternFlowLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y,

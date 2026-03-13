@@ -138,7 +138,7 @@ void ControlPanel::setupKnob(juce::Slider& knob, juce::Label& label, const juce:
     addAndMakeVisible(knob);
 
     label.setColour(juce::Label::textColourId, colours::textDim());
-    label.setFont(juce::Font(11.0f));
+    label.setFont(juce::Font(12.0f));
     label.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(label);
 }

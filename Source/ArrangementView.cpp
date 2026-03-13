@@ -17,12 +17,39 @@ ArrangementView::ArrangementView(PatternFlowProcessor& proc) : processor(proc)
         refresh();
     };
     addAndMakeVisible(btnAddBars);
+
+    // Loop toggle button
+    updateLoopButton();
+    btnLoop.setTooltip("Toggle loop playback (click ruler to set loop points)");
+    btnLoop.onClick = [this]
+    {
+        bool nowEnabled = !processor.loopEnabled.load();
+        processor.loopEnabled.store(nowEnabled);
+        if (nowEnabled && processor.loopEndBeat.load() <= processor.loopStartBeat.load())
+        {
+            // Set sensible defaults: loop the first 4 bars
+            processor.loopStartBeat.store(0.0);
+            processor.loopEndBeat.store(16.0);
+        }
+        updateLoopButton();
+        refresh();
+    };
+    addAndMakeVisible(btnLoop);
 }
 
 void ArrangementView::refresh()
 {
     rebuildClipBlocks();
     repaint();
+}
+
+void ArrangementView::updateLoopButton()
+{
+    bool loopOn = processor.loopEnabled.load();
+    btnLoop.setColour(juce::TextButton::buttonColourId,
+                      loopOn ? colours::accent() : colours::bgLighter());
+    btnLoop.setColour(juce::TextButton::textColourOffId,
+                      loopOn ? colours::textBright() : colours::text());
 }
 
 double ArrangementView::xToBeat(float x) const
@@ -165,21 +192,29 @@ void ArrangementView::paintLoopMarkers(juce::Graphics& g)
     float lx = beatToX(processor.loopStartBeat.load());
     float rx = beatToX(processor.loopEndBeat.load());
 
-    g.setColour(colours::accent().withAlpha(0.06f));
+    // Loop region highlight in ruler
+    g.setColour(colours::accent().withAlpha(0.25f));
+    g.fillRect(lx, 0.0f, rx - lx, (float)rulerH);
+
+    // Loop region highlight in arrangement (subtle)
+    g.setColour(colours::accent().withAlpha(0.04f));
     g.fillRect(lx, (float)rulerH, rx - lx, (float)(getHeight() - rulerH));
 
+    // Start/end markers
     g.setColour(colours::accent());
     g.fillRect(lx - 1, 0.0f, 3.0f, (float)rulerH);
     g.fillRect(rx - 1, 0.0f, 3.0f, (float)rulerH);
 
+    // Triangle handles (Ableton-style)
     juce::Path leftTri;
-    leftTri.addTriangle(lx, 0.0f, lx + 8.0f, 0.0f, lx, (float)rulerH * 0.6f);
+    leftTri.addTriangle(lx, 0.0f, lx + 10.0f, 0.0f, lx, (float)rulerH * 0.65f);
     g.fillPath(leftTri);
 
     juce::Path rightTri;
-    rightTri.addTriangle(rx, 0.0f, rx - 8.0f, 0.0f, rx, (float)rulerH * 0.6f);
+    rightTri.addTriangle(rx, 0.0f, rx - 10.0f, 0.0f, rx, (float)rulerH * 0.65f);
     g.fillPath(rightTri);
 
+    // Vertical lines through arrangement area
     g.setColour(colours::accent().withAlpha(0.4f));
     g.drawVerticalLine((int)lx, (float)rulerH, (float)getHeight());
     g.drawVerticalLine((int)rx, (float)rulerH, (float)getHeight());
@@ -661,6 +696,7 @@ void ArrangementView::mouseWheelMove(const juce::MouseEvent& e,
 void ArrangementView::resized()
 {
     btnAddBars.setBounds(getWidth() - 70, 2, 66, rulerH - 4);
+    btnLoop.setBounds(getWidth() - 140, 2, 46, rulerH - 4);
     refresh();
 }
 
