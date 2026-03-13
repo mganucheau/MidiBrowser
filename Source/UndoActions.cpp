@@ -256,4 +256,84 @@ bool SplitRegionAction::undo()
     return true;
 }
 
+// ── MoveRegionToLaneAction ──────────────────────────────────────────────────
+
+bool MoveRegionToLaneAction::perform()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (srcLaneIdx < 0 || srcLaneIdx >= (int)proc.lanes.size()) return false;
+    auto& srcLane = proc.lanes[srcLaneIdx];
+    if (srcRegionIdx < 0 || srcRegionIdx >= (int)srcLane.regions.size()) return false;
+
+    savedRegion = srcLane.regions[srcRegionIdx];
+    savedClipIdx = savedRegion.clipIndex;
+    if (savedClipIdx >= 0 && savedClipIdx < (int)srcLane.clips.size())
+        savedClip = srcLane.clips[savedClipIdx];
+
+    // Create new lane if needed
+    if (needsNewLane)
+    {
+        CompLane newLane;
+        newLane.name = "Lane " + juce::String(proc.lanes.size() + 1);
+        auto presets = getClipColourPresets();
+        newLane.colour = presets[proc.lanes.size() % presets.size()];
+        proc.lanes.push_back(newLane);
+    }
+
+    if (dstLaneIdx < 0 || dstLaneIdx >= (int)proc.lanes.size()) return false;
+    auto& dstLane = proc.lanes[dstLaneIdx];
+
+    // Add clip to destination lane
+    addedClipIdx = (int)dstLane.clips.size();
+    dstLane.clips.push_back(savedClip);
+
+    // Add region to destination lane with updated beat positions
+    CompRegion newRegion = savedRegion;
+    newRegion.startBeat = newStartBeat;
+    newRegion.endBeat = newEndBeat;
+    newRegion.clipIndex = addedClipIdx;
+    addedRegionIdx = (int)dstLane.regions.size();
+    dstLane.regions.push_back(newRegion);
+
+    // Remove from source lane
+    srcLane.removeRegion(srcRegionIdx);
+
+    return true;
+}
+
+bool MoveRegionToLaneAction::undo()
+{
+    juce::ScopedLock sl(proc.laneLock);
+
+    // Remove from destination
+    if (dstLaneIdx >= 0 && dstLaneIdx < (int)proc.lanes.size())
+    {
+        auto& dstLane = proc.lanes[dstLaneIdx];
+        if (addedRegionIdx >= 0 && addedRegionIdx < (int)dstLane.regions.size())
+            dstLane.regions.erase(dstLane.regions.begin() + addedRegionIdx);
+        if (addedClipIdx >= 0 && addedClipIdx < (int)dstLane.clips.size())
+            dstLane.clips.erase(dstLane.clips.begin() + addedClipIdx);
+    }
+
+    // Remove created lane if we made one
+    if (needsNewLane && dstLaneIdx < (int)proc.lanes.size())
+        proc.lanes.erase(proc.lanes.begin() + dstLaneIdx);
+
+    // Restore to source lane
+    if (srcLaneIdx >= 0 && srcLaneIdx < (int)proc.lanes.size())
+    {
+        auto& srcLane = proc.lanes[srcLaneIdx];
+        int clipIdx = (int)srcLane.clips.size();
+        srcLane.clips.push_back(savedClip);
+        CompRegion restored = savedRegion;
+        restored.clipIndex = clipIdx;
+        if (srcRegionIdx <= (int)srcLane.regions.size())
+            srcLane.regions.insert(srcLane.regions.begin() + srcRegionIdx, restored);
+        else
+            srcLane.regions.push_back(restored);
+    }
+
+    return true;
+}
+
 } // namespace pflow

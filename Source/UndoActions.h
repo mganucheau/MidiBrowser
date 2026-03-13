@@ -163,4 +163,30 @@ private:
     int addedRegionIdx = -1;
 };
 
+// ── Move region to a different lane ──────────────────────────────────────────
+class MoveRegionToLaneAction : public juce::UndoableAction
+{
+public:
+    MoveRegionToLaneAction(PatternFlowProcessor& p, int srcLane, int regionIdx,
+                           int dstLane, double newStart, double newEnd,
+                           bool createNewLane = false)
+        : proc(p), srcLaneIdx(srcLane), srcRegionIdx(regionIdx),
+          dstLaneIdx(dstLane), newStartBeat(newStart), newEndBeat(newEnd),
+          needsNewLane(createNewLane) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int srcLaneIdx, srcRegionIdx, dstLaneIdx;
+    double newStartBeat, newEndBeat;
+    bool needsNewLane;
+    CompRegion savedRegion;
+    MidiClip savedClip;
+    int savedClipIdx = -1;
+    int addedRegionIdx = -1;
+    int addedClipIdx = -1;
+};
+
 } // namespace pflow

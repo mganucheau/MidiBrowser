@@ -17,7 +17,7 @@ public:
     void releaseResources() override {}
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    bool isMidiEffect() const override { return false; }
+    bool isMidiEffect() const override { return true; }
     bool acceptsMidi()  const override { return true; }
     bool producesMidi() const override { return true; }
 

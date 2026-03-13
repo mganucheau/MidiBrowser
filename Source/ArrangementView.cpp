@@ -473,6 +473,8 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
             else
             {
                 draggingClip = true;
+                clipDragOrigLane = cb.laneIndex;
+                clipDragMouseYOffset = e.position.y - laneToY(cb.laneIndex);
                 juce::ScopedLock sl(processor.laneLock);
                 auto& reg = processor.lanes[cb.laneIndex].regions[cb.regionIndex];
                 clipDragOrigBeat = reg.startBeat;
@@ -547,11 +549,13 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
             region.startBeat = newBeat;
             region.endBeat   = newBeat + len;
         }
+        // Track which lane the mouse is hovering over for visual feedback
+        hoveredLane = yToLane(e.position.y);
         repaint();
     }
 }
 
-void ArrangementView::mouseUp(const juce::MouseEvent&)
+void ArrangementView::mouseUp(const juce::MouseEvent& e)
 {
     // Edge drag-to-loop undo
     if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
@@ -580,13 +584,37 @@ void ArrangementView::mouseUp(const juce::MouseEvent&)
 
     if (draggingClip && selLane >= 0 && selRegion >= 0)
     {
+        int targetLane = yToLane(e.position.y);
         juce::ScopedLock sl(processor.laneLock);
-        if (selLane < (int)processor.lanes.size() && selRegion < (int)processor.lanes[selLane].regions.size())
+        int numLanes = (int)processor.lanes.size();
+
+        if (selLane < numLanes && selRegion < (int)processor.lanes[selLane].regions.size())
         {
             auto& region = processor.lanes[selLane].regions[selRegion];
             double newStart = region.startBeat;
             double newEnd = region.endBeat;
-            if (std::abs(newStart - clipDragOrigBeat) > 0.001)
+
+            bool laneChanged = (targetLane != clipDragOrigLane);
+            bool beatChanged = std::abs(newStart - clipDragOrigBeat) > 0.001;
+
+            if (laneChanged)
+            {
+                // Revert the horizontal position change (undo action handles both)
+                region.startBeat = clipDragOrigBeat;
+                region.endBeat = clipDragOrigEnd;
+
+                bool createNew = (targetLane >= numLanes);
+                int dstLane = createNew ? numLanes : targetLane;
+                processor.undoManager.perform(
+                    new MoveRegionToLaneAction(processor, selLane, selRegion,
+                                               dstLane, newStart, newEnd, createNew));
+                selLane = dstLane;
+                selRegion = 0; // Will be at end of dest lane
+                // Find actual index
+                if (dstLane < (int)processor.lanes.size())
+                    selRegion = (int)processor.lanes[dstLane].regions.size() - 1;
+            }
+            else if (beatChanged)
             {
                 region.startBeat = clipDragOrigBeat;
                 region.endBeat = clipDragOrigEnd;
@@ -597,8 +625,10 @@ void ArrangementView::mouseUp(const juce::MouseEvent&)
             }
         }
     }
+    hoveredLane = -1;
     loopDragging = LoopDragTarget::None;
     draggingClip = false;
+    refresh();
 }
 
 void ArrangementView::mouseWheelMove(const juce::MouseEvent& e,

@@ -57,6 +57,9 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
+    // Clear incoming MIDI - we generate our own
+    midi.clear();
+
     if (!hostPlaying.load())
     {
         for (auto& an : activeNotes_)
@@ -68,6 +71,8 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     double bpm     = hostBpm.load();
     double beatPos = hostBeatPos.load();
+
+    if (bpm <= 0.0) bpm = 120.0;
 
     double secPerBeat     = 60.0 / bpm;
     double beatsPerSample = 1.0 / (sampleRate_ * secPerBeat);

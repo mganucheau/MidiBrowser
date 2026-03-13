@@ -4,6 +4,11 @@ namespace pflow {
 
 PatternFlowLookAndFeel::PatternFlowLookAndFeel()
 {
+    refreshColours();
+}
+
+void PatternFlowLookAndFeel::refreshColours()
+{
     setColour(juce::ResizableWindow::backgroundColourId,  colours::bg());
     setColour(juce::TextEditor::backgroundColourId,       colours::bgLight());
     setColour(juce::TextEditor::textColourId,             colours::text());
@@ -11,13 +16,21 @@ PatternFlowLookAndFeel::PatternFlowLookAndFeel()
     setColour(juce::ComboBox::backgroundColourId,         colours::bgLight());
     setColour(juce::ComboBox::textColourId,               colours::text());
     setColour(juce::ComboBox::outlineColourId,            colours::panelBorder());
+    setColour(juce::ComboBox::arrowColourId,              colours::text());
     setColour(juce::PopupMenu::backgroundColourId,        colours::bgLight());
     setColour(juce::PopupMenu::textColourId,              colours::text());
     setColour(juce::PopupMenu::highlightedBackgroundColourId, colours::accent());
+    setColour(juce::PopupMenu::highlightedTextColourId,   juce::Colours::white);
     setColour(juce::ScrollBar::thumbColourId,             colours::accentDim());
     setColour(juce::ListBox::backgroundColourId,          colours::panel());
     setColour(juce::ListBox::textColourId,                colours::text());
     setColour(juce::Label::textColourId,                  colours::text());
+    setColour(juce::ToggleButton::textColourId,           colours::text());
+    setColour(juce::ToggleButton::tickColourId,           colours::accent());
+    setColour(juce::ToggleButton::tickDisabledColourId,   colours::textDim());
+    setColour(juce::TextButton::buttonColourId,           colours::bgLighter());
+    setColour(juce::TextButton::textColourOffId,          colours::text());
+    setColour(juce::TextButton::textColourOnId,           colours::textBright());
 }
 
 void PatternFlowLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y,

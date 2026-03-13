@@ -145,18 +145,18 @@ void ControlPanel::setupKnob(juce::Slider& knob, juce::Label& label, const juce:
 
 void ControlPanel::resized()
 {
-    auto b = getLocalBounds().reduced(metrics::padding, 2);
+    auto b = getLocalBounds().reduced(metrics::padding, 4);
     int knobS = metrics::knobSize;
     int knobSpace = metrics::knobSpacing;
 
-    // Knobs
-    int x = b.getX();
-    int cy = b.getCentreY();
+    // ── Knobs on the left, vertically centered ──
+    int knobRowCY = b.getY() + (knobS / 2) + 2;
+    int x = b.getX() + 4;
 
     auto placeKnob = [&](juce::Slider& knob, juce::Label& lbl)
     {
-        knob.setBounds(x, cy - knobS / 2 - 2, knobS, knobS);
-        lbl.setBounds(x - 2, cy + knobS / 2 - 2, knobS + 4, metrics::knobLabelH);
+        knob.setBounds(x, knobRowCY - knobS / 2, knobS, knobS);
+        lbl.setBounds(x - 4, knobRowCY + knobS / 2 - 2, knobS + 8, metrics::knobLabelH);
         x += knobSpace;
     };
 
@@ -165,30 +165,31 @@ void ControlPanel::resized()
     placeKnob(knobFeel,          lblFeel);
     placeKnob(knobIntonation,    lblIntonation);
 
-    x += 8;
-
-    // Scale section
+    // ── Settings to the right of knobs, arranged in two rows ──
+    int settingsX = x + 12;
     int secH = 24;
-    btnScaleEnable.setBounds(x, cy - secH + 2, 60, secH - 2);
-    cmbScaleRoot.setBounds(x + 62, cy - secH + 2, 50, secH - 2);
-    cmbScaleType.setBounds(x + 114, cy - secH + 2, 115, secH - 2);
+    int topRowY = b.getY() + 4;
+    int botRowY = b.getBottom() - secH - 2;
 
-    // Root note
-    lblRootNote.setBounds(x, cy + 4, 34, secH - 4);
-    cmbRootNote.setBounds(x + 34, cy + 4, 58, secH - 4);
+    // Top row: Scale enable + root + type
+    btnScaleEnable.setBounds(settingsX, topRowY, 60, secH);
+    cmbScaleRoot.setBounds(settingsX + 62, topRowY, 50, secH);
+    cmbScaleType.setBounds(settingsX + 114, topRowY, 115, secH);
 
-    x += 236;
+    // Bottom row: Root note + Grid snap
+    lblRootNote.setBounds(settingsX, botRowY, 34, secH);
+    cmbRootNote.setBounds(settingsX + 34, botRowY, 58, secH);
 
-    // Split
-    btnSplitEnable.setBounds(x, cy - secH + 2, 55, secH - 2);
-    btnSplitEdit.setBounds(x + 57, cy - secH + 2, 55, secH - 2);
+    lblGridSnap.setBounds(settingsX + 100, botRowY, 30, secH);
+    cmbGridSnap.setBounds(settingsX + 130, botRowY, 60, secH);
 
-    // Grid snap (below split)
-    lblGridSnap.setBounds(x, cy + 4, 30, secH - 4);
-    cmbGridSnap.setBounds(x + 30, cy + 4, 60, secH - 4);
+    // Split section (right of scale)
+    int splitX = settingsX + 236;
+    btnSplitEnable.setBounds(splitX, topRowY, 55, secH);
+    btnSplitEdit.setBounds(splitX + 57, topRowY, 55, secH);
 
-    // Add lane (far right)
-    btnAddLane.setBounds(b.getRight() - 76, cy - 13, 72, 26);
+    // Add lane (far right, vertically centered)
+    btnAddLane.setBounds(b.getRight() - 76, b.getCentreY() - 13, 72, 26);
 }
 
 void ControlPanel::paint(juce::Graphics& g)

@@ -32,6 +32,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     btnTheme.onClick = [this]
     {
         darkModeEnabled().store(!darkModeEnabled().load());
+        lnf.refreshColours();
         updateThemeButton();
         repaint();
         controlPanel.repaint();
@@ -284,9 +285,67 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         return true;
     }
 
-    // Arrow key navigation for regions
-    if (key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey ||
-        key == juce::KeyPress::upKey || key == juce::KeyPress::downKey)
+    // Alt+Arrow: MOVE selected region (timeline shift or lane change)
+    if (key.getModifiers().isAltDown() && arrangementView.selLane >= 0 && arrangementView.selRegion >= 0 &&
+        (key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey ||
+         key.getKeyCode() == juce::KeyPress::upKey || key.getKeyCode() == juce::KeyPress::downKey))
+    {
+        juce::ScopedLock sl(processorRef.laneLock);
+        int numLanes = (int)processorRef.lanes.size();
+        int lane = arrangementView.selLane;
+        int reg = arrangementView.selRegion;
+        if (lane >= numLanes || reg >= (int)processorRef.lanes[lane].regions.size())
+            return true;
+
+        auto& region = processorRef.lanes[lane].regions[reg];
+        double len = region.endBeat - region.startBeat;
+
+        if (key.getKeyCode() == juce::KeyPress::leftKey)
+        {
+            double newStart = processorRef.snapBeat(std::max(0.0, region.startBeat - 1.0));
+            if (std::abs(newStart - region.startBeat) > 0.001)
+            {
+                double oldStart = region.startBeat, oldEnd = region.endBeat;
+                processorRef.undoManager.perform(
+                    new MoveRegionAction(processorRef, lane, reg,
+                                         oldStart, oldEnd, newStart, newStart + len));
+            }
+        }
+        else if (key.getKeyCode() == juce::KeyPress::rightKey)
+        {
+            double newStart = processorRef.snapBeat(region.startBeat + 1.0);
+            double oldStart = region.startBeat, oldEnd = region.endBeat;
+            processorRef.undoManager.perform(
+                new MoveRegionAction(processorRef, lane, reg,
+                                     oldStart, oldEnd, newStart, newStart + len));
+        }
+        else if (key.getKeyCode() == juce::KeyPress::upKey && lane > 0)
+        {
+            int dstLane = lane - 1;
+            double s = region.startBeat, e2 = region.endBeat;
+            processorRef.undoManager.perform(
+                new MoveRegionToLaneAction(processorRef, lane, reg, dstLane, s, e2, false));
+            arrangementView.selLane = dstLane;
+            arrangementView.selRegion = (int)processorRef.lanes[dstLane].regions.size() - 1;
+        }
+        else if (key.getKeyCode() == juce::KeyPress::downKey)
+        {
+            int dstLane = lane + 1;
+            bool createNew = (dstLane >= numLanes);
+            double s = region.startBeat, e2 = region.endBeat;
+            processorRef.undoManager.perform(
+                new MoveRegionToLaneAction(processorRef, lane, reg, dstLane, s, e2, createNew));
+            arrangementView.selLane = dstLane;
+            arrangementView.selRegion = (int)processorRef.lanes[dstLane].regions.size() - 1;
+        }
+        arrangementView.refresh();
+        return true;
+    }
+
+    // Arrow key navigation for regions (no modifier)
+    if ((key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey ||
+         key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) &&
+        !key.getModifiers().isAltDown())
     {
         juce::ScopedLock sl(processorRef.laneLock);
         int numLanes = (int)processorRef.lanes.size();

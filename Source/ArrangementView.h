@@ -77,6 +77,8 @@ private:
     double clipDragOrigBeat = 0.0;
     double clipDragOrigEnd = 0.0;
     double clipDragMouseOffset = 0.0;
+    int    clipDragOrigLane = -1;
+    float  clipDragMouseYOffset = 0.0f;
 
     // Region edge drag-to-loop
     enum class EdgeDragTarget { None, Start, End };
