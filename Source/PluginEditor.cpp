@@ -350,6 +350,82 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         return true;
     }
 
+    // Cmd+D: Duplicate selected region
+    if (key == juce::KeyPress('d', juce::ModifierKeys::commandModifier, 0))
+    {
+        if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
+        {
+            processorRef.undoManager.perform(
+                new DuplicateRegionAction(processorRef, arrangementView.selLane, arrangementView.selRegion));
+            arrangementView.refresh();
+        }
+        return true;
+    }
+
+    // Cmd+B: Split region at playhead
+    if (key == juce::KeyPress('b', juce::ModifierKeys::commandModifier, 0))
+    {
+        if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
+        {
+            double playBeat = processorRef.hostBeatPos.load();
+            juce::ScopedLock sl(processorRef.laneLock);
+            if (arrangementView.selLane < (int)processorRef.lanes.size())
+            {
+                auto& lane = processorRef.lanes[arrangementView.selLane];
+                if (arrangementView.selRegion < (int)lane.regions.size())
+                {
+                    auto& reg = lane.regions[arrangementView.selRegion];
+                    if (playBeat > reg.startBeat && playBeat < reg.endBeat)
+                        processorRef.undoManager.perform(
+                            new SplitRegionAction(processorRef, arrangementView.selLane,
+                                                  arrangementView.selRegion, playBeat));
+                }
+            }
+            arrangementView.refresh();
+        }
+        return true;
+    }
+
+    // Cmd+E: Export MIDI
+    if (key == juce::KeyPress('e', juce::ModifierKeys::commandModifier, 0))
+    {
+        exportMidi();
+        return true;
+    }
+
+    // Cmd+Q: Quantize selected notes in piano roll
+    if (key == juce::KeyPress('q', juce::ModifierKeys::commandModifier, 0))
+    {
+        if (pianoRoll.hasClip())
+            pianoRoll.quantizeSelectedNotes();
+        return true;
+    }
+
+    // Cmd+Shift+Up: Transpose selected notes up an octave
+    if (key == juce::KeyPress(juce::KeyPress::upKey,
+                              juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0))
+    {
+        if (pianoRoll.hasClip())
+            pianoRoll.transposeSelectedNotes(12);
+        return true;
+    }
+
+    // Cmd+Shift+Down: Transpose selected notes down an octave
+    if (key == juce::KeyPress(juce::KeyPress::downKey,
+                              juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0))
+    {
+        if (pianoRoll.hasClip())
+            pianoRoll.transposeSelectedNotes(-12);
+        return true;
+    }
+
+    // Cmd+0: Zoom to fit
+    if (key == juce::KeyPress('0', juce::ModifierKeys::commandModifier, 0))
+    {
+        zoomToFit();
+        return true;
+    }
+
     // Tab to cycle focus between panels
     if (key == juce::KeyPress::tabKey)
     {
@@ -414,6 +490,94 @@ void PatternFlowEditor::timerCallback()
     // Animate playhead
     if (processorRef.hostPlaying.load())
         arrangementView.repaint();
+}
+
+void PatternFlowEditor::exportMidi()
+{
+    auto chooser = std::make_shared<juce::FileChooser>(
+        "Export MIDI", juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+        "*.mid");
+
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+        [this, chooser](const juce::FileChooser& fc)
+    {
+        auto file = fc.getResult();
+        if (file == juce::File{}) return;
+        if (!file.hasFileExtension("mid")) file = file.withFileExtension("mid");
+
+        juce::MidiFile midiFile;
+        midiFile.setTicksPerQuarterNote(480);
+        double bpm = processorRef.hostBpm.load();
+        if (bpm <= 0) bpm = 120.0;
+
+        juce::ScopedLock sl(processorRef.laneLock);
+        for (int li = 0; li < (int)processorRef.lanes.size(); ++li)
+        {
+            auto& lane = processorRef.lanes[li];
+            if (lane.muted) continue;
+
+            juce::MidiMessageSequence track;
+            // Add track name
+            track.addEvent(juce::MidiMessage::textMetaEvent(3, lane.name));
+
+            for (auto& region : lane.regions)
+            {
+                if (region.muted) continue;
+                if (region.clipIndex < 0 || region.clipIndex >= (int)lane.clips.size()) continue;
+                auto& clip = lane.clips[region.clipIndex];
+                double regionLen = region.endBeat - region.startBeat;
+                double loopLen = clip.lengthBeats;
+                int loopCount = std::max(1, (int)std::ceil(regionLen / loopLen));
+
+                for (int loop = 0; loop < loopCount; ++loop)
+                {
+                    for (auto& note : clip.notes)
+                    {
+                        if (region.noteFilter >= 0 && note.noteNumber != region.noteFilter) continue;
+                        double noteBeat = loop * loopLen + note.startBeat;
+                        if (noteBeat >= regionLen) continue;
+                        double absStart = region.startBeat + noteBeat;
+                        double absEnd = std::min(absStart + note.lengthBeats,
+                                                 region.startBeat + regionLen);
+                        double startTick = absStart * 480.0;
+                        double endTick = absEnd * 480.0;
+                        track.addEvent(juce::MidiMessage::noteOn(note.channel, note.noteNumber, (juce::uint8)note.velocity), startTick);
+                        track.addEvent(juce::MidiMessage::noteOff(note.channel, note.noteNumber), endTick);
+                    }
+                }
+            }
+            track.sort();
+            track.updateMatchedPairs();
+            midiFile.addTrack(track);
+        }
+
+        juce::FileOutputStream stream(file);
+        if (stream.openedOk())
+        {
+            stream.setPosition(0);
+            stream.truncate();
+            midiFile.writeTo(stream);
+        }
+    });
+}
+
+void PatternFlowEditor::zoomToFit()
+{
+    juce::ScopedLock sl(processorRef.laneLock);
+    double maxBeat = 0.0;
+    for (auto& lane : processorRef.lanes)
+        for (auto& region : lane.regions)
+            maxBeat = std::max(maxBeat, region.endBeat);
+
+    if (maxBeat <= 0.0) maxBeat = processorRef.arrangementBars.load() * 4.0;
+
+    float availableW = (float)(arrangementView.getWidth() - metrics::laneHeaderW);
+    if (availableW <= 0) availableW = 400.0f;
+
+    arrangementView.beatsPerPixel = juce::jlimit(0.01f, 2.0f, (float)(maxBeat / (double)availableW));
+    arrangementView.scrollBeatOffset = 0.0f;
+    arrangementView.verticalScrollOffset = 0.0f;
+    arrangementView.refresh();
 }
 
 } // namespace pflow

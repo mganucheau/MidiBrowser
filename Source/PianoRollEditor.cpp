@@ -321,7 +321,32 @@ void PianoRollEditor::mouseMove(const juce::MouseEvent& e)
 void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
 {
     if (!clipLoaded) return;
-    selectedNote = -1; resizingNote = false;
+    selectedNote = -1; resizingNote = false; velocityDragNote = -1;
+
+    // Velocity bar dragging in Expression view
+    if (viewMode == EditorViewMode::Expression)
+    {
+        int tabH = 28;
+        float areaH = (float)(getHeight() - tabH);
+        for (int i = 0; i < (int)currentClip.notes.size(); ++i)
+        {
+            auto& note = currentClip.notes[i];
+            float x = beatToX(note.startBeat);
+            float w = std::max(3.0f, (float)note.lengthBeats * pixelsPerBeat * 0.5f);
+            if (e.position.x >= x && e.position.x <= x + w + 4.0f)
+            {
+                velocityDragNote = i;
+                velocityDragOrigVel = note.velocity;
+                velocityDragStartY = e.position.y;
+                dragOrigNote = note;
+                selectedNote = i;
+                repaint();
+                return;
+            }
+        }
+        repaint();
+        return;
+    }
 
     if (viewMode == EditorViewMode::Notes)
     {
@@ -379,7 +404,19 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
 
 void PianoRollEditor::mouseDrag(const juce::MouseEvent& e)
 {
-    if (!clipLoaded || selectedNote < 0) return;
+    if (!clipLoaded) return;
+
+    // Velocity dragging in Expression view
+    if (velocityDragNote >= 0 && velocityDragNote < (int)currentClip.notes.size())
+    {
+        float deltaY = velocityDragStartY - e.position.y;
+        int newVel = juce::jlimit(1, 127, velocityDragOrigVel + (int)(deltaY * 0.8f));
+        currentClip.notes[velocityDragNote].velocity = newVel;
+        repaint();
+        return;
+    }
+
+    if (selectedNote < 0) return;
 
     if (resizingNote)
     {
@@ -406,6 +443,21 @@ void PianoRollEditor::mouseDrag(const juce::MouseEvent& e)
 
 void PianoRollEditor::mouseUp(const juce::MouseEvent&)
 {
+    // Velocity drag complete
+    if (velocityDragNote >= 0 && velocityDragNote < (int)currentClip.notes.size())
+    {
+        auto& note = currentClip.notes[velocityDragNote];
+        if (note.velocity != dragOrigNote.velocity)
+        {
+            processor.undoManager.perform(
+                new EditNoteAction(processor, editLaneIdx, editRegionIdx,
+                                   velocityDragNote, dragOrigNote, note));
+            if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+        }
+        velocityDragNote = -1;
+        return;
+    }
+
     if ((draggingNote || resizingNote) && selectedNote >= 0)
     {
         auto& note = currentClip.notes[selectedNote];
@@ -513,6 +565,63 @@ bool PianoRollEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
     if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
     repaint();
     return true;
+}
+
+void PianoRollEditor::quantizeSelectedNotes()
+{
+    if (!clipLoaded) return;
+    std::set<int> toQuantize = selectedNotes;
+    if (toQuantize.empty() && selectedNote >= 0) toQuantize.insert(selectedNote);
+    if (toQuantize.empty())
+    {
+        // Quantize all notes if none selected
+        for (int i = 0; i < (int)currentClip.notes.size(); ++i)
+            toQuantize.insert(i);
+    }
+
+    for (int idx : toQuantize)
+    {
+        if (idx < 0 || idx >= (int)currentClip.notes.size()) continue;
+        NoteEvent oldNote = currentClip.notes[idx];
+        double snapped = processor.snapBeat(oldNote.startBeat);
+        if (std::abs(snapped - oldNote.startBeat) > 0.001)
+        {
+            currentClip.notes[idx].startBeat = snapped;
+            processor.undoManager.perform(
+                new EditNoteAction(processor, editLaneIdx, editRegionIdx,
+                                   idx, oldNote, currentClip.notes[idx]));
+        }
+    }
+    if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+    repaint();
+}
+
+void PianoRollEditor::transposeSelectedNotes(int semitones)
+{
+    if (!clipLoaded) return;
+    std::set<int> toTranspose = selectedNotes;
+    if (toTranspose.empty() && selectedNote >= 0) toTranspose.insert(selectedNote);
+    if (toTranspose.empty()) return;
+
+    // Validate
+    for (int idx : toTranspose)
+    {
+        if (idx < 0 || idx >= (int)currentClip.notes.size()) continue;
+        int newPitch = currentClip.notes[idx].noteNumber + semitones;
+        if (newPitch < 0 || newPitch > 127) return;
+    }
+
+    for (int idx : toTranspose)
+    {
+        if (idx < 0 || idx >= (int)currentClip.notes.size()) continue;
+        NoteEvent oldNote = currentClip.notes[idx];
+        currentClip.notes[idx].noteNumber = juce::jlimit(0, 127, oldNote.noteNumber + semitones);
+        processor.undoManager.perform(
+            new EditNoteAction(processor, editLaneIdx, editRegionIdx,
+                               idx, oldNote, currentClip.notes[idx]));
+    }
+    if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+    repaint();
 }
 
 } // namespace pflow

@@ -8,7 +8,7 @@ namespace pflow {
 
 class PatternFlowProcessor;
 
-// ── Top control bar: knobs, scale, split, root note ──────────────────────────
+// ── Top control bar: knobs, scale, split, root note, grid snap ──────────────
 class ControlPanel : public juce::Component,
                      public juce::Slider::Listener,
                      public juce::ComboBox::Listener
@@ -48,10 +48,14 @@ private:
     juce::ToggleButton btnSplitEnable { "Split" };
     juce::TextButton   btnSplitEdit   { "Edit..." };
 
+    // Grid snap selector
+    juce::ComboBox     cmbGridSnap;
+    juce::Label        lblGridSnap { {}, "Grid" };
+
     // New lane button
     juce::TextButton   btnAddLane { "+ Lane" };
 
-    void setupKnob(juce::Slider& knob, juce::Label& label);
+    void setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& tooltip);
 
 public:
     // Expose add-lane button callback

@@ -203,7 +203,24 @@ void ArrangementView::paintLaneHeaders(juce::Graphics& g)
         g.setColour(colours::text());
         g.setFont(13.0f);
         g.drawText(lane.name, 10, (int)y, metrics::laneHeaderW - 14,
-                   metrics::laneHeight, juce::Justification::centredLeft);
+                   (int)(metrics::laneHeight * 0.55f), juce::Justification::centredLeft);
+
+        // Mute / Solo buttons
+        float btnY = y + (float)metrics::laneHeight * 0.55f;
+        float btnW = 18.0f, btnH = 14.0f;
+        auto muteRect = juce::Rectangle<float>(10.0f, btnY, btnW, btnH);
+        g.setColour(lane.muted ? juce::Colour(0xffef5350) : colours::bgLighter());
+        g.fillRoundedRectangle(muteRect, 2.0f);
+        g.setColour(lane.muted ? juce::Colours::white : colours::textDim());
+        g.setFont(10.0f);
+        g.drawText("M", muteRect, juce::Justification::centred);
+
+        auto soloRect = juce::Rectangle<float>(32.0f, btnY, btnW, btnH);
+        g.setColour(lane.solo ? juce::Colour(0xffffc107) : colours::bgLighter());
+        g.fillRoundedRectangle(soloRect, 2.0f);
+        g.setColour(lane.solo ? juce::Colours::black : colours::textDim());
+        g.setFont(10.0f);
+        g.drawText("S", soloRect, juce::Justification::centred);
 
         g.setColour(colours::panelBorder());
         g.drawHorizontalLine((int)(y + metrics::laneHeight - 1), 0.0f, (float)getWidth());
@@ -382,16 +399,51 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
 
     selLane = -1; selRegion = -1; draggingClip = false; edgeDragging = EdgeDragTarget::None;
 
-    // Check if "+" add-lane area was clicked
+    // Check lane header clicks (M/S buttons, context menu, "+" area)
+    if (e.position.x < metrics::laneHeaderW)
     {
         juce::ScopedLock sl(processor.laneLock);
         int numLanes = (int)processor.lanes.size();
+
+        // "+" add-lane area
         float addY = laneToY(numLanes);
-        if (e.position.x < metrics::laneHeaderW && e.position.y >= addY && e.position.y < addY + metrics::laneHeight)
+        if (e.position.y >= addY && e.position.y < addY + metrics::laneHeight)
         {
             if (onAddLaneClicked) onAddLaneClicked();
             repaint();
             return;
+        }
+
+        // Check M/S buttons on each lane
+        for (int i = 0; i < numLanes; ++i)
+        {
+            float y = laneToY(i);
+            float btnY = y + (float)metrics::laneHeight * 0.55f;
+            float btnW = 18.0f, btnH = 14.0f;
+
+            auto muteRect = juce::Rectangle<float>(10.0f, btnY, btnW, btnH);
+            auto soloRect = juce::Rectangle<float>(32.0f, btnY, btnW, btnH);
+
+            if (muteRect.contains(e.position))
+            {
+                processor.lanes[i].muted = !processor.lanes[i].muted;
+                repaint();
+                return;
+            }
+            if (soloRect.contains(e.position))
+            {
+                processor.lanes[i].solo = !processor.lanes[i].solo;
+                repaint();
+                return;
+            }
+
+            // Right-click on lane header -> context menu
+            if (e.mods.isRightButtonDown() &&
+                e.position.y >= y && e.position.y < y + metrics::laneHeight)
+            {
+                showLaneContextMenu(i);
+                return;
+            }
         }
     }
 
@@ -712,6 +764,9 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
 
     { juce::ScopedLock sl(processor.laneLock); auto& region = processor.lanes[laneIdx].regions[regionIdx]; menu.addItem(1, region.muted ? "Unmute" : "Mute"); }
     menu.addItem(2, "Isolate Note...");
+    menu.addItem(4, "Duplicate Region");
+    menu.addItem(5, "Split at Playhead");
+    menu.addSeparator();
     menu.addItem(3, "Delete Region");
 
     menu.showMenuAsync(juce::PopupMenu::Options(), [this, laneIdx, regionIdx, presets](int result)
@@ -738,7 +793,49 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
               if (regionIdx >= (int)processor.lanes[laneIdx].regions.size()) return;
               processor.lanes[laneIdx].regions[regionIdx].noteFilter = (noteResult == 1000) ? -1 : (noteResult - 1001); repaint(); });
         }
+        else if (result == 4) { processor.undoManager.perform(new DuplicateRegionAction(processor, laneIdx, regionIdx)); }
+        else if (result == 5)
+        {
+            double playBeat = processor.hostBeatPos.load();
+            auto& reg = lane.regions[regionIdx];
+            if (playBeat > reg.startBeat && playBeat < reg.endBeat)
+                processor.undoManager.perform(new SplitRegionAction(processor, laneIdx, regionIdx, playBeat));
+        }
         else if (result == 3) { processor.undoManager.perform(new RemoveRegionAction(processor, laneIdx, regionIdx)); }
+        repaint();
+    });
+}
+
+void ArrangementView::showLaneContextMenu(int laneIdx)
+{
+    juce::PopupMenu menu;
+    {
+        juce::ScopedLock sl(processor.laneLock);
+        if (laneIdx < 0 || laneIdx >= (int)processor.lanes.size()) return;
+        auto& lane = processor.lanes[laneIdx];
+        menu.addItem(1, lane.muted ? "Unmute Lane" : "Mute Lane");
+        menu.addItem(2, lane.solo ? "Unsolo Lane" : "Solo Lane");
+    }
+    menu.addSeparator();
+
+    juce::PopupMenu colourMenu;
+    auto presets = getClipColourPresets();
+    for (int i = 0; i < (int)presets.size(); ++i)
+        colourMenu.addItem(100 + i, "Colour " + juce::String(i + 1));
+    menu.addSubMenu("Lane Colour", colourMenu);
+    menu.addSeparator();
+    menu.addItem(10, "Delete Lane");
+
+    menu.showMenuAsync(juce::PopupMenu::Options(), [this, laneIdx, presets](int result)
+    {
+        if (result == 0) return;
+        juce::ScopedLock sl(processor.laneLock);
+        if (laneIdx >= (int)processor.lanes.size()) return;
+
+        if (result == 1) processor.lanes[laneIdx].muted = !processor.lanes[laneIdx].muted;
+        else if (result == 2) processor.lanes[laneIdx].solo = !processor.lanes[laneIdx].solo;
+        else if (result >= 100 && result < 200) processor.lanes[laneIdx].colour = presets[result - 100];
+        else if (result == 10) processor.lanes.erase(processor.lanes.begin() + laneIdx);
         repaint();
     });
 }

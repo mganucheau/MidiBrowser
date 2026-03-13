@@ -96,8 +96,17 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
     juce::ScopedLock sl(laneLock);
     juce::ScopedLock sl2(splitLock);
 
+    // Check if any lane has solo enabled
+    bool anySolo = false;
+    for (auto& l : lanes)
+        if (l.solo) { anySolo = true; break; }
+
     for (auto& lane : lanes)
     {
+        // Lane-level mute/solo
+        if (lane.muted) continue;
+        if (anySolo && !lane.solo) continue;
+
         for (auto& region : lane.regions)
         {
             if (region.muted || region.clipIndex < 0 ||

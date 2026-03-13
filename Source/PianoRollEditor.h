@@ -35,6 +35,9 @@ public:
     std::function<void(const MidiClip&, int laneIdx, int regionIdx)> onClipEdited;
     std::function<void()> onCloseRequested;
 
+    void quantizeSelectedNotes();
+    void transposeSelectedNotes(int semitones);
+
 private:
     PatternFlowProcessor& processor;
     MidiClip     currentClip;
@@ -78,6 +81,11 @@ private:
     void paintNotes(juce::Graphics&);
     void paintExpressionView(juce::Graphics&);
     void paintAutomationView(juce::Graphics&);
+
+    // Velocity editing in Expression view
+    int  velocityDragNote = -1;
+    int  velocityDragOrigVel = 0;
+    float velocityDragStartY = 0.0f;
 
     static bool isBlackKey(int noteNum);
     bool isNearRightEdge(const juce::MouseEvent& e, int noteIdx) const;

@@ -70,6 +70,8 @@ struct CompLane
     std::vector<MidiClip>   clips;
     std::vector<CompRegion> regions;
     bool                    expanded = false;   // show sub-comp lanes?
+    bool                    muted    = false;
+    bool                    solo     = false;
 
     void addClipAtPosition(const MidiClip& clip, double beatPos);
     void removeRegion(int index);

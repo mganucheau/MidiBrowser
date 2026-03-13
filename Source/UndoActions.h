@@ -129,4 +129,38 @@ private:
     NoteEvent oldNoteState, newNoteState;
 };
 
+// ── Duplicate region ────────────────────────────────────────────────────────
+class DuplicateRegionAction : public juce::UndoableAction
+{
+public:
+    DuplicateRegionAction(PatternFlowProcessor& p, int lane, int region)
+        : proc(p), laneIdx(lane), regionIdx(region) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int laneIdx, regionIdx;
+    int addedRegionIdx = -1;
+};
+
+// ── Split region at beat ────────────────────────────────────────────────────
+class SplitRegionAction : public juce::UndoableAction
+{
+public:
+    SplitRegionAction(PatternFlowProcessor& p, int lane, int region, double splitBeat)
+        : proc(p), laneIdx(lane), regionIdx(region), splitAtBeat(splitBeat) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int laneIdx, regionIdx;
+    double splitAtBeat;
+    CompRegion origRegion;
+    int addedRegionIdx = -1;
+};
+
 } // namespace pflow

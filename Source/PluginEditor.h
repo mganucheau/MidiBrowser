@@ -42,6 +42,8 @@ private:
 
     void showAboutDialog();
     void updateThemeButton();
+    void exportMidi();
+    void zoomToFit();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PatternFlowEditor)
 };

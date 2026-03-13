@@ -104,6 +104,7 @@ private:
 
     void ensureBarsForBeat(double endBeat);
     void showClipContextMenu(int laneIdx, int regionIdx);
+    void showLaneContextMenu(int laneIdx);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ArrangementView)
 };

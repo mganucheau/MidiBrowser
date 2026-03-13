@@ -194,4 +194,66 @@ bool EditNoteAction::undo()
     return true;
 }
 
+// ── DuplicateRegionAction ──────────────────────────────────────────────────
+
+bool DuplicateRegionAction::perform()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[laneIdx];
+    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
+    auto& srcRegion = lane.regions[regionIdx];
+    double len = srcRegion.endBeat - srcRegion.startBeat;
+    CompRegion dup = srcRegion;
+    dup.startBeat = srcRegion.endBeat;
+    dup.endBeat = dup.startBeat + len;
+    addedRegionIdx = (int)lane.regions.size();
+    lane.regions.push_back(dup);
+    return true;
+}
+
+bool DuplicateRegionAction::undo()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[laneIdx];
+    if (addedRegionIdx >= 0 && addedRegionIdx < (int)lane.regions.size())
+        lane.regions.erase(lane.regions.begin() + addedRegionIdx);
+    return true;
+}
+
+// ── SplitRegionAction ──────────────────────────────────────────────────────
+
+bool SplitRegionAction::perform()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[laneIdx];
+    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
+    origRegion = lane.regions[regionIdx];
+    if (splitAtBeat <= origRegion.startBeat || splitAtBeat >= origRegion.endBeat) return false;
+    // Create second half
+    CompRegion secondHalf = origRegion;
+    secondHalf.startBeat = splitAtBeat;
+    // Trim first half
+    lane.regions[regionIdx].endBeat = splitAtBeat;
+    addedRegionIdx = (int)lane.regions.size();
+    lane.regions.push_back(secondHalf);
+    return true;
+}
+
+bool SplitRegionAction::undo()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[laneIdx];
+    // Remove the second half
+    if (addedRegionIdx >= 0 && addedRegionIdx < (int)lane.regions.size())
+        lane.regions.erase(lane.regions.begin() + addedRegionIdx);
+    // Restore original region
+    if (regionIdx >= 0 && regionIdx < (int)lane.regions.size())
+        lane.regions[regionIdx] = origRegion;
+    return true;
+}
+
 } // namespace pflow
