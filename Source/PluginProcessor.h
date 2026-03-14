@@ -100,7 +100,8 @@ private:
     std::vector<ActiveNote> activeNotes_;
 
     void generateMidiForBeatRange(double startBeat, double endBeat,
-                                  juce::MidiBuffer& output, int numSamples);
+                                  juce::MidiBuffer& output, int numSamples,
+                                  int sampleOffsetBase = 0);
 
     int applyHumanVelocity(int vel);
     double applyHumanTiming(double beatPos);

@@ -101,6 +101,20 @@ void ArrangementView::rebuildClipBlocks()
             clipBlocks.push_back(cb);
         }
     }
+
+    // During cross-lane drag, move the dragged clip's visual position to the hovered lane
+    if (draggingClip && selLane >= 0 && selRegion >= 0 && hoveredLane >= 0 && hoveredLane != selLane)
+    {
+        for (auto& cb : clipBlocks)
+        {
+            if (cb.laneIndex == selLane && cb.regionIndex == selRegion)
+            {
+                float newY = laneToY(hoveredLane);
+                cb.bounds.setY(newY + 2.0f);
+                break;
+            }
+        }
+    }
 }
 
 void ArrangementView::paint(juce::Graphics& g)

@@ -120,7 +120,7 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 activeNotes_.clear();
 
                 double secondLen = blockBeats - firstLen;
-                generateMidiForBeatRange(loopStart, loopStart + secondLen, generated, secondSamples);
+                generateMidiForBeatRange(loopStart, loopStart + secondLen, generated, secondSamples, firstSamples);
             }
             else
             {
@@ -145,7 +145,8 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                                                      double endBeat,
                                                      juce::MidiBuffer& output,
-                                                     int numSamples)
+                                                     int numSamples,
+                                                     int sampleOffsetBase)
 {
     juce::ScopedLock sl(laneLock);
     juce::ScopedLock sl2(splitLock);
@@ -186,8 +187,8 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                 if (noteGlobalStart >= startBeat && noteGlobalStart < endBeat)
                 {
                     double fraction = (noteGlobalStart - startBeat) / (endBeat - startBeat);
-                    int sampleOffset = juce::jlimit(0, numSamples - 1,
-                                                    (int)(fraction * numSamples));
+                    int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1,
+                                                                       (int)(fraction * numSamples));
 
                     int pitch = note.noteNumber + clip.rootNoteOffset;
                     if (scaleEnabled.load())
@@ -219,8 +220,8 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                 if (noteGlobalEnd >= startBeat && noteGlobalEnd < endBeat)
                 {
                     double fraction = (noteGlobalEnd - startBeat) / (endBeat - startBeat);
-                    int sampleOffset = juce::jlimit(0, numSamples - 1,
-                                                    (int)(fraction * numSamples));
+                    int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1,
+                                                                       (int)(fraction * numSamples));
 
                     int pitch = note.noteNumber + clip.rootNoteOffset;
                     if (scaleEnabled.load())
