@@ -130,14 +130,19 @@ void PianoRollEditor::paint(juce::Graphics& g)
 
     if (!clipLoaded)
     {
-        g.setColour(colours::text());
+        g.setColour(colours::textDim());
         g.setFont(13.0f);
-        g.drawText("Double-click any clip in the arrangement to open it here", getLocalBounds(), juce::Justification::centred);
+        g.drawText(juce::String::charToString(0x266B) + "  Double-click any clip to open it here",
+                   getLocalBounds(), juce::Justification::centred);
         return;
     }
 
     g.setColour(colours::panelBorder());
     g.drawHorizontalLine(0, 0.0f, (float)getWidth());
+
+    // Accent highlight at top edge
+    g.setColour(colours::accent().withAlpha(0.1f));
+    g.fillRect(0.0f, 0.0f, (float)getWidth(), 2.0f);
 
     switch (viewMode)
     {

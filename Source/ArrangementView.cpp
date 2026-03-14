@@ -148,21 +148,48 @@ void ArrangementView::paint(juce::Graphics& g)
 
 void ArrangementView::paintRuler(juce::Graphics& g)
 {
+    // Ruler background
     g.setColour(colours::bgLight());
     g.fillRect(metrics::laneHeaderW, 0, getWidth() - metrics::laneHeaderW, rulerH);
-    g.setColour(colours::panelBorder());
-    g.drawHorizontalLine(rulerH - 1, (float)metrics::laneHeaderW, (float)getWidth());
 
+    // Corner block (top-left, matching header area)
+    g.setColour(colours::bgLight());
+    g.fillRect(0, 0, metrics::laneHeaderW, rulerH);
+    g.setColour(colours::textDim().withAlpha(0.6f));
+    g.setFont(11.0f);
+    g.drawText(juce::String::charToString(0x23F1), 0, 0, metrics::laneHeaderW, rulerH,
+               juce::Justification::centred);
+
+    // Bottom separator
+    g.setColour(colours::panelBorder().withAlpha(0.6f));
+    g.drawHorizontalLine(rulerH - 1, 0.0f, (float)getWidth());
+
+    // Bar numbers with beat tick marks
     int totalBeats = processor.arrangementBars.load() * 4;
-    for (double beat = 0; beat <= totalBeats; beat += 4.0)
+    for (double beat = 0; beat <= totalBeats; beat += 1.0)
     {
         float x = beatToX(beat);
         if (x < metrics::laneHeaderW || x > getWidth()) continue;
-        g.setColour(colours::textDim());
-        g.setFont(12.0f);
-        int barNum = (int)(beat / 4.0) + 1;
-        g.drawText(juce::String(barNum), (int)x + 2, 0, 30, rulerH - 2,
-                   juce::Justification::centredLeft);
+        bool isBar = (std::fmod(beat, 4.0) < 0.001);
+
+        if (isBar)
+        {
+            // Bar number
+            g.setColour(colours::text());
+            g.setFont(11.0f);
+            int barNum = (int)(beat / 4.0) + 1;
+            g.drawText(juce::String(barNum), (int)x + 3, 1, 24, rulerH - 4,
+                       juce::Justification::centredLeft);
+            // Tick mark
+            g.setColour(colours::textDim().withAlpha(0.4f));
+            g.drawVerticalLine((int)x, (float)(rulerH - 6), (float)(rulerH - 1));
+        }
+        else
+        {
+            // Sub-beat tick
+            g.setColour(colours::textDim().withAlpha(0.2f));
+            g.drawVerticalLine((int)x, (float)(rulerH - 4), (float)(rulerH - 1));
+        }
     }
 }
 
@@ -304,43 +331,59 @@ void ArrangementView::paintLaneHeaders(juce::Graphics& g)
         float y = laneToY(i);
         auto& lane = processor.lanes[i];
 
+        // Lane header background
         g.setColour(colours::bgLight());
         g.fillRect(0.0f, y, (float)metrics::laneHeaderW, (float)metrics::laneHeight);
 
+        // Colour accent strip on left
         g.setColour(lane.colour);
-        g.fillRect(0.0f, y + 2.0f, 4.0f, (float)metrics::laneHeight - 4.0f);
+        g.fillRoundedRectangle(2.0f, y + 4.0f, 4.0f, (float)metrics::laneHeight - 8.0f, 2.0f);
 
+        // Lane icon (circle with lane colour)
+        float iconCX = 16.0f, iconCY = y + (float)metrics::laneHeight * 0.3f;
+        g.setColour(lane.colour.withAlpha(0.25f));
+        g.fillEllipse(iconCX - 5.0f, iconCY - 5.0f, 10.0f, 10.0f);
+        g.setColour(lane.colour);
+        g.fillEllipse(iconCX - 3.0f, iconCY - 3.0f, 6.0f, 6.0f);
+
+        // Lane name
         g.setColour(colours::text());
-        g.setFont(13.0f);
-        g.drawText(lane.name, 10, (int)y, metrics::laneHeaderW - 14,
-                   (int)(metrics::laneHeight * 0.55f), juce::Justification::centredLeft);
+        g.setFont(12.0f);
+        g.drawText(lane.name, 26, (int)y, metrics::laneHeaderW - 30,
+                   (int)(metrics::laneHeight * 0.5f), juce::Justification::centredLeft);
 
         // Mute / Solo buttons
         float btnY = y + (float)metrics::laneHeight * 0.55f;
-        float btnW = 18.0f, btnH = 14.0f;
-        auto muteRect = juce::Rectangle<float>(10.0f, btnY, btnW, btnH);
+        float btnW = 20.0f, btnH = 15.0f;
+        auto muteRect = juce::Rectangle<float>(12.0f, btnY, btnW, btnH);
         g.setColour(lane.muted ? juce::Colour(0xffef5350) : colours::bgLighter());
-        g.fillRoundedRectangle(muteRect, 2.0f);
+        g.fillRoundedRectangle(muteRect, 3.0f);
         g.setColour(lane.muted ? juce::Colours::white : colours::textDim());
-        g.setFont(10.0f);
+        g.setFont(9.0f);
         g.drawText("M", muteRect, juce::Justification::centred);
 
-        auto soloRect = juce::Rectangle<float>(32.0f, btnY, btnW, btnH);
+        auto soloRect = juce::Rectangle<float>(36.0f, btnY, btnW, btnH);
         g.setColour(lane.solo ? juce::Colour(0xffffc107) : colours::bgLighter());
-        g.fillRoundedRectangle(soloRect, 2.0f);
+        g.fillRoundedRectangle(soloRect, 3.0f);
         g.setColour(lane.solo ? juce::Colours::black : colours::textDim());
-        g.setFont(10.0f);
+        g.setFont(9.0f);
         g.drawText("S", soloRect, juce::Justification::centred);
 
-        g.setColour(colours::panelBorder());
+        // Volume icon
+        g.setColour(colours::textDim().withAlpha(0.5f));
+        g.setFont(10.0f);
+        g.drawText(juce::String::charToString(0x266B), (int)(metrics::laneHeaderW - 20), (int)btnY, 16, (int)btnH, juce::Justification::centred);
+
+        g.setColour(colours::panelBorder().withAlpha(0.5f));
         g.drawHorizontalLine((int)(y + metrics::laneHeight - 1), 0.0f, (float)getWidth());
     }
 
+    // "+" add lane area
     float addY = laneToY((int)processor.lanes.size());
-    g.setColour(colours::bgLight().withAlpha(0.3f));
+    g.setColour(colours::bgLight().withAlpha(0.2f));
     g.fillRect(0.0f, addY, (float)metrics::laneHeaderW, (float)metrics::laneHeight);
     g.setColour(colours::textDim());
-    g.setFont(20.0f);
+    g.setFont(18.0f);
     g.drawText("+", 0, (int)addY, metrics::laneHeaderW, metrics::laneHeight,
                juce::Justification::centred);
 }
@@ -357,8 +400,13 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
         bool selected = (cb.laneIndex == selLane && cb.regionIndex == selRegion);
 
         auto clipColour = clip.colour;
-        g.setColour(region.muted ? clipColour.withAlpha(0.2f) : clipColour.withAlpha(0.7f));
+
+        // Clip body with subtle gradient-like top highlight
+        g.setColour(region.muted ? clipColour.withAlpha(0.15f) : clipColour.withAlpha(0.65f));
         g.fillRoundedRectangle(cb.bounds, metrics::clipCorner);
+        // Top highlight strip for depth
+        g.setColour(juce::Colours::white.withAlpha(region.muted ? 0.03f : 0.08f));
+        g.fillRoundedRectangle(cb.bounds.getX(), cb.bounds.getY(), cb.bounds.getWidth(), 3.0f, metrics::clipCorner);
 
         if (!clip.notes.empty() && clip.lengthBeats > 0.0)
         {

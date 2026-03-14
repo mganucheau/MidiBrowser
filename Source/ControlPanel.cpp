@@ -119,7 +119,8 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     cmbGridSnap.addListener(this);
     addAndMakeVisible(cmbGridSnap);
 
-    // Add lane button
+    // Add lane button with icon
+    btnAddLane.setButtonText("+ Lane");
     btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent());
     btnAddLane.setColour(juce::TextButton::textColourOffId, colours::textBright());
     btnAddLane.setTooltip("Add a new lane (keyboard: click + in arrangement)");
@@ -195,8 +196,20 @@ void ControlPanel::resized()
 void ControlPanel::paint(juce::Graphics& g)
 {
     g.fillAll(colours::bgLight());
+
+    // Bottom separator
     g.setColour(colours::panelBorder());
     g.drawHorizontalLine(getHeight() - 1, 0.0f, (float)getWidth());
+
+    // Subtle accent line at top
+    g.setColour(colours::accent().withAlpha(0.12f));
+    g.fillRect(0.0f, 0.0f, (float)getWidth(), 2.0f);
+
+    // Section dividers between knobs and settings
+    auto b = getLocalBounds().reduced(metrics::padding, 4);
+    int dividerX = b.getX() + 4 + metrics::knobSpacing * 4 + 4;
+    g.setColour(colours::panelBorder().withAlpha(0.4f));
+    g.drawVerticalLine(dividerX, (float)(b.getY() + 4), (float)(b.getBottom() - 4));
 }
 
 void ControlPanel::refreshComponentColours()

@@ -38,7 +38,7 @@ private:
     // Title bar
     juce::Label lblTitle;
     juce::TextButton btnAbout { "i" };
-    juce::TextButton btnTheme { "Dark" };
+    juce::TextButton btnTheme { "Light" };
 
     void showAboutDialog();
     void updateThemeButton();

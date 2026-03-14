@@ -4,11 +4,12 @@ namespace pflow {
 
 FileBrowserPanel::FileBrowserPanel()
 {
-    lblHeader.setText("BROWSER", juce::dontSendNotification);
+    lblHeader.setText(juce::String::charToString(0x266B) + "  BROWSER", juce::dontSendNotification);
     lblHeader.setFont(juce::Font(13.0f, juce::Font::bold));
     lblHeader.setColour(juce::Label::textColourId, colours::textDim());
     addAndMakeVisible(lblHeader);
 
+    btnSetRoot.setButtonText(juce::String::charToString(0x1F4C2) + " Set Folder...");
     btnSetRoot.onClick = [this]
     {
         auto chooser = std::make_shared<juce::FileChooser>(
@@ -68,8 +69,14 @@ void FileBrowserPanel::resized()
 void FileBrowserPanel::paint(juce::Graphics& g)
 {
     g.fillAll(colours::panel());
+
+    // Right border separator
     g.setColour(colours::panelBorder());
-    g.drawLine((float)getWidth(), 0.0f, (float)getWidth(), (float)getHeight(), 1.0f);
+    g.drawLine((float)getWidth() - 0.5f, 0.0f, (float)getWidth() - 0.5f, (float)getHeight(), 1.0f);
+
+    // Subtle top accent line
+    g.setColour(colours::accent().withAlpha(0.15f));
+    g.fillRect(0.0f, 0.0f, (float)getWidth(), 2.0f);
 
     // Refresh file tree colours on each paint (handles theme toggle)
     fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::panel());

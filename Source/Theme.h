@@ -4,25 +4,25 @@
 
 namespace pflow {
 
-// ── Dark mode toggle (false = light mode default) ───────────────────────────
+// ── Dark mode toggle (true = dark mode default, matching DAW convention) ─────
 inline std::atomic<bool>& darkModeEnabled()
 {
-    static std::atomic<bool> enabled { false };
+    static std::atomic<bool> enabled { true };
     return enabled;
 }
 
 // ── Colour palette ───────────────────────────────────────────────────────────
-// Light mode: clean white/gray. Dark mode: standard dark gray palette.
+// Light mode: clean white/gray. Dark mode: deep navy DAW palette.
 // ── Core colour theme ────────────────────────────────────────────────────────
 //
 //  LIGHT MODE                          DARK MODE
 //  ──────────────────────────          ──────────────────────────
 //  Background:                         Background:
-//    bg           #EAEEF2                bg           #1A1D21
-//    bgLight      #F5F7FA                bgLight      #24272C
-//    bgLighter    #DDE3E9                bgLighter    #32373E
-//    panel        #F0F2F5                panel        #1F2227
-//    panelBorder  #BFC6CE                panelBorder  #3E444C
+//    bg           #EAEEF2                bg           #181B24
+//    bgLight      #F5F7FA                bgLight      #212636
+//    bgLighter    #DDE3E9                bgLighter    #2C3244
+//    panel        #F0F2F5                panel        #1C2030
+//    panelBorder  #BFC6CE                panelBorder  #333A4D
 //
 //  Accent (blue):                      Accent (blue):
 //    accent       #2563EB                accent       #5B9BD5
@@ -30,28 +30,28 @@ inline std::atomic<bool>& darkModeEnabled()
 //    accentBright #3B82F6                accentBright #7EC8FF
 //
 //  Text:                               Text:
-//    text         #1E293B                text         #E0E4E8
-//    textDim      #4B5563                textDim      #9CA3AF
+//    text         #1E293B                text         #D8DDE6
+//    textDim      #4B5563                textDim      #8890A0
 //    textBright   #0F172A                textBright   #FFFFFF
 //
 //  Knob:                               Knob:
-//    knobTrack    #C3CAD2                knobTrack    #484D54
+//    knobTrack    #C3CAD2                knobTrack    #3A4058
 //
 //  Piano roll:                         Piano roll:
-//    pianoWhite   #EDF0F3                pianoWhite   #353535
-//    pianoBlack   #D0D6DD                pianoBlack   #222222
-//    pianoGrid    #A8B0B9                pianoGrid    #555555
+//    pianoWhite   #EDF0F3                pianoWhite   #2A2F40
+//    pianoBlack   #D0D6DD                pianoBlack   #1E2234
+//    pianoGrid    #A8B0B9                pianoGrid    #404860
 //    noteBlock    #2563EB                noteBlock    #5B9BD5
 //    selection    #2563EB 40%            selection    #5B9BD5 40%
 //    playhead     #DC2626                playhead     #FFFFFF
 //
 namespace colours {
-    // Backgrounds
-    inline juce::Colour bg()            { return darkModeEnabled() ? juce::Colour(0xff1a1d21) : juce::Colour(0xffeaeef2); }
-    inline juce::Colour bgLight()       { return darkModeEnabled() ? juce::Colour(0xff24272c) : juce::Colour(0xfff5f7fa); }
-    inline juce::Colour bgLighter()     { return darkModeEnabled() ? juce::Colour(0xff32373e) : juce::Colour(0xffdde3e9); }
-    inline juce::Colour panel()         { return darkModeEnabled() ? juce::Colour(0xff1f2227) : juce::Colour(0xfff0f2f5); }
-    inline juce::Colour panelBorder()   { return darkModeEnabled() ? juce::Colour(0xff3e444c) : juce::Colour(0xffbfc6ce); }
+    // Backgrounds – deep navy with blue undertones (matching DAW reference)
+    inline juce::Colour bg()            { return darkModeEnabled() ? juce::Colour(0xff181b24) : juce::Colour(0xffeaeef2); }
+    inline juce::Colour bgLight()       { return darkModeEnabled() ? juce::Colour(0xff212636) : juce::Colour(0xfff5f7fa); }
+    inline juce::Colour bgLighter()     { return darkModeEnabled() ? juce::Colour(0xff2c3244) : juce::Colour(0xffdde3e9); }
+    inline juce::Colour panel()         { return darkModeEnabled() ? juce::Colour(0xff1c2030) : juce::Colour(0xfff0f2f5); }
+    inline juce::Colour panelBorder()   { return darkModeEnabled() ? juce::Colour(0xff333a4d) : juce::Colour(0xffbfc6ce); }
 
     // Accent (blue)
     inline juce::Colour accent()        { return darkModeEnabled() ? juce::Colour(0xff5b9bd5) : juce::Colour(0xff2563eb); }
@@ -59,38 +59,43 @@ namespace colours {
     inline juce::Colour accentBright()  { return darkModeEnabled() ? juce::Colour(0xff7ec8ff) : juce::Colour(0xff3b82f6); }
 
     // Text
-    inline juce::Colour text()          { return darkModeEnabled() ? juce::Colour(0xffe0e4e8) : juce::Colour(0xff1e293b); }
-    inline juce::Colour textDim()       { return darkModeEnabled() ? juce::Colour(0xff9ca3af) : juce::Colour(0xff4b5563); }
+    inline juce::Colour text()          { return darkModeEnabled() ? juce::Colour(0xffd8dde6) : juce::Colour(0xff1e293b); }
+    inline juce::Colour textDim()       { return darkModeEnabled() ? juce::Colour(0xff8890a0) : juce::Colour(0xff4b5563); }
     inline juce::Colour textBright()    { return darkModeEnabled() ? juce::Colour(0xffffffff) : juce::Colour(0xff0f172a); }
 
-    // Knob
-    inline juce::Colour knobTrack()     { return darkModeEnabled() ? juce::Colour(0xff484d54) : juce::Colour(0xffc3cad2); }
+    // Knob / slider track
+    inline juce::Colour knobTrack()     { return darkModeEnabled() ? juce::Colour(0xff3a4058) : juce::Colour(0xffc3cad2); }
 
-    // Lane colours
-    inline juce::Colour laneA()         { return juce::Colour(0xff2563eb); }
-    inline juce::Colour laneB()         { return juce::Colour(0xff0891b2); }
-    inline juce::Colour laneC()         { return juce::Colour(0xffdc2626); }
-    inline juce::Colour laneD()         { return juce::Colour(0xff16a34a); }
-    inline juce::Colour laneE()         { return juce::Colour(0xffeab308); }
+    // Lane colours – DAW mixer-strip palette (pink, green, blue, cyan, amber, purple)
+    inline juce::Colour laneA()         { return juce::Colour(0xffe85577); } // Coral-pink
+    inline juce::Colour laneB()         { return juce::Colour(0xff4caf50); } // Green
+    inline juce::Colour laneC()         { return juce::Colour(0xff4a90d9); } // Blue
+    inline juce::Colour laneD()         { return juce::Colour(0xff26c6da); } // Cyan
+    inline juce::Colour laneE()         { return juce::Colour(0xfffdd835); } // Amber
 
     // Piano roll
-    inline juce::Colour pianoWhiteKey() { return darkModeEnabled() ? juce::Colour(0xff353535) : juce::Colour(0xffedf0f3); }
-    inline juce::Colour pianoBlackKey() { return darkModeEnabled() ? juce::Colour(0xff222222) : juce::Colour(0xffd0d6dd); }
-    inline juce::Colour pianoGrid()     { return darkModeEnabled() ? juce::Colour(0xff555555) : juce::Colour(0xffa8b0b9); }
+    inline juce::Colour pianoWhiteKey() { return darkModeEnabled() ? juce::Colour(0xff2a2f40) : juce::Colour(0xffedf0f3); }
+    inline juce::Colour pianoBlackKey() { return darkModeEnabled() ? juce::Colour(0xff1e2234) : juce::Colour(0xffd0d6dd); }
+    inline juce::Colour pianoGrid()     { return darkModeEnabled() ? juce::Colour(0xff404860) : juce::Colour(0xffa8b0b9); }
     inline juce::Colour noteBlock()     { return darkModeEnabled() ? juce::Colour(0xff5b9bd5) : juce::Colour(0xff2563eb); }
     inline juce::Colour selection()     { return darkModeEnabled() ? juce::Colour(0x665b9bd5) : juce::Colour(0x662563eb); }
     inline juce::Colour playhead()      { return darkModeEnabled() ? juce::Colour(0xffffffff) : juce::Colour(0xffdc2626); }
 }
 
-// ── Clip colour presets ──────────────────────────────────────────────────────
+// ── Clip colour presets (DAW mixer-strip palette) ────────────────────────────
 inline std::vector<juce::Colour> getClipColourPresets()
 {
     return {
-        juce::Colour(0xff2979ff), juce::Colour(0xff00bcd4),
-        juce::Colour(0xffef5350), juce::Colour(0xff66bb6a),
-        juce::Colour(0xfffdd835), juce::Colour(0xffab47bc),
-        juce::Colour(0xffff7043), juce::Colour(0xff26a69a),
-        juce::Colour(0xffec407a), juce::Colour(0xff5c6bc0),
+        juce::Colour(0xffe85577), // Coral-pink
+        juce::Colour(0xff4caf50), // Green
+        juce::Colour(0xff4a90d9), // Blue
+        juce::Colour(0xff26c6da), // Cyan
+        juce::Colour(0xfffdd835), // Amber
+        juce::Colour(0xffab47bc), // Purple
+        juce::Colour(0xffff7043), // Orange
+        juce::Colour(0xff26a69a), // Teal
+        juce::Colour(0xffec407a), // Rose
+        juce::Colour(0xff5c6bc0), // Indigo
     };
 }
 
@@ -116,18 +121,18 @@ namespace metrics {
     constexpr int browserWidth      = 240;
     constexpr int controlPanelH     = 90;
     constexpr int pianoRollH        = 280;
-    constexpr int laneHeaderW       = 120;
-    constexpr int laneHeight        = 64;
-    constexpr int compLaneHeight    = 40;
-    constexpr int knobSize          = 56;
+    constexpr int laneHeaderW       = 130;
+    constexpr int laneHeight        = 60;
+    constexpr int compLaneHeight    = 36;
+    constexpr int knobSize          = 52;
     constexpr int knobLabelH        = 16;
-    constexpr int knobSpacing       = 72;
-    constexpr float cornerRadius    = 4.0f;
-    constexpr float clipCorner      = 3.0f;
-    constexpr int scrollbarW        = 8;
-    constexpr int buttonH           = 28;
-    constexpr int padding           = 8;
-    constexpr float browserFontSize = 11.0f;
+    constexpr int knobSpacing       = 68;
+    constexpr float cornerRadius    = 5.0f;
+    constexpr float clipCorner      = 4.0f;
+    constexpr int scrollbarW        = 7;
+    constexpr int buttonH           = 26;
+    constexpr int padding           = 10;
+    constexpr float browserFontSize = 11.5f;
 }
 
 // ── Custom LookAndFeel ───────────────────────────────────────────────────────

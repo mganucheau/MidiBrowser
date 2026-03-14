@@ -15,9 +15,9 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     setResizable(true, true);
     setResizeLimits(800, 480, 2400, 1600);
 
-    // Title
-    lblTitle.setText("PatternFlow", juce::dontSendNotification);
-    lblTitle.setFont(juce::Font(juce::FontOptions(16.0f).withStyle("Bold")));
+    // Title with music icon
+    lblTitle.setText(juce::String::charToString(0x266B) + " PatternFlow", juce::dontSendNotification);
+    lblTitle.setFont(juce::Font(juce::FontOptions(15.0f).withStyle("Bold")));
     lblTitle.setColour(juce::Label::textColourId, colours::accent());
     addAndMakeVisible(lblTitle);
 
@@ -151,6 +151,9 @@ PatternFlowEditor::~PatternFlowEditor()
 void PatternFlowEditor::paint(juce::Graphics& g)
 {
     g.fillAll(colours::bg());
+    // Subtle accent gradient at top edge
+    g.setColour(colours::accent().withAlpha(0.08f));
+    g.fillRect(0.0f, 0.0f, (float)getWidth(), 1.0f);
 }
 
 void PatternFlowEditor::showAboutDialog()
