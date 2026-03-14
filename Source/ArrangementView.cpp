@@ -7,6 +7,7 @@ namespace pflow {
 ArrangementView::ArrangementView(PatternFlowProcessor& proc) : processor(proc)
 {
     setOpaque(true);
+    setWantsKeyboardFocus(true);
 
     btnAddBars.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
     btnAddBars.setColour(juce::TextButton::textColourOffId, colours::text());
@@ -20,7 +21,7 @@ ArrangementView::ArrangementView(PatternFlowProcessor& proc) : processor(proc)
 
     // Loop toggle button
     updateLoopButton();
-    btnLoop.setTooltip("Toggle loop playback (click ruler to set loop points)");
+    btnLoop.setTooltip("Toggle loop (Cmd+L). Click-drag ruler to select range, then Cmd+L to loop it.");
     btnLoop.onClick = [this]
     {
         bool nowEnabled = !processor.loopEnabled.load();
@@ -123,6 +124,7 @@ void ArrangementView::paint(juce::Graphics& g)
     rebuildClipBlocks();
     paintBeatGrid(g);
     paintRuler(g);
+    paintTimeSelection(g);
     paintLoopMarkers(g);
     paintLaneHeaders(g);
     paintClipBlocks(g);
@@ -261,6 +263,36 @@ void ArrangementView::paintLoopMarkers(juce::Graphics& g)
     float midY = rH * 0.6f;
     for (float dx = lx + 14.0f; dx < rx - 14.0f; dx += 8.0f)
         g.fillRect(dx, midY - 1.0f, 4.0f, 2.0f);
+}
+
+void ArrangementView::paintTimeSelection(juce::Graphics& g)
+{
+    if (!hasTimeSelection) return;
+    // Don't draw selection when loop is active and covers the same range
+    if (processor.loopEnabled.load())
+    {
+        double ls = processor.loopStartBeat.load();
+        double le = processor.loopEndBeat.load();
+        if (std::abs(timeSelStartBeat - ls) < 0.01 && std::abs(timeSelEndBeat - le) < 0.01)
+            return;
+    }
+
+    float lx = beatToX(timeSelStartBeat);
+    float rx = beatToX(timeSelEndBeat);
+    float rH = (float)rulerH;
+
+    // Semi-transparent highlight in ruler
+    g.setColour(colours::accent().withAlpha(0.2f));
+    g.fillRect(lx, 0.0f, rx - lx, rH);
+
+    // Lighter highlight through arrangement area
+    g.setColour(colours::accent().withAlpha(0.04f));
+    g.fillRect(lx, rH, rx - lx, (float)(getHeight() - rulerH));
+
+    // Selection boundary lines
+    g.setColour(colours::accent().withAlpha(0.4f));
+    g.drawVerticalLine((int)lx, 0.0f, (float)getHeight());
+    g.drawVerticalLine((int)rx, 0.0f, (float)getHeight());
 }
 
 void ArrangementView::paintLaneHeaders(juce::Graphics& g)
@@ -442,21 +474,27 @@ bool ArrangementView::isNearRegionEdge(const juce::MouseEvent& e, const ClipBloc
 
 void ArrangementView::mouseMove(const juce::MouseEvent& e)
 {
-    if (processor.loopEnabled.load() && e.position.y < rulerH)
+    if (e.position.y < rulerH && e.position.x >= metrics::laneHeaderW)
     {
-        float lx = beatToX(processor.loopStartBeat.load());
-        float rx = beatToX(processor.loopEndBeat.load());
-        if (std::abs(e.position.x - lx) < 12 || std::abs(e.position.x - rx) < 12)
+        if (processor.loopEnabled.load())
         {
-            setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
-            return;
+            float lx = beatToX(processor.loopStartBeat.load());
+            float rx = beatToX(processor.loopEndBeat.load());
+            if (std::abs(e.position.x - lx) < 12 || std::abs(e.position.x - rx) < 12)
+            {
+                setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+                return;
+            }
+            // Body region - show move cursor
+            if (e.position.x > lx + 12 && e.position.x < rx - 12)
+            {
+                setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+                return;
+            }
         }
-        // Body region - show move cursor
-        if (e.position.x > lx + 12 && e.position.x < rx - 12)
-        {
-            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
-            return;
-        }
+        // Default ruler cursor: IBeam for time selection
+        setMouseCursor(juce::MouseCursor::IBeamCursor);
+        return;
     }
     // Check for region edges
     for (auto& cb : clipBlocks)
@@ -473,23 +511,39 @@ void ArrangementView::mouseMove(const juce::MouseEvent& e)
 
 void ArrangementView::mouseDown(const juce::MouseEvent& e)
 {
-    if (processor.loopEnabled.load() && e.position.y < rulerH)
+    if (e.position.y < rulerH && e.position.x >= metrics::laneHeaderW)
     {
-        float lx = beatToX(processor.loopStartBeat.load());
-        float rx = beatToX(processor.loopEndBeat.load());
-        if (std::abs(e.position.x - lx) < 12) { loopDragging = LoopDragTarget::Start; return; }
-        if (std::abs(e.position.x - rx) < 12) { loopDragging = LoopDragTarget::End; return; }
-        // Click inside loop region body - drag the whole loop
-        if (e.position.x > lx + 12 && e.position.x < rx - 12)
+        // Check loop handle interactions first (only when loop is active)
+        if (processor.loopEnabled.load())
         {
-            loopDragging = LoopDragTarget::Body;
-            loopDragBodyOffset = xToBeat(e.position.x) - processor.loopStartBeat.load();
-            loopDragBodyLength = processor.loopEndBeat.load() - processor.loopStartBeat.load();
-            return;
+            float lx = beatToX(processor.loopStartBeat.load());
+            float rx = beatToX(processor.loopEndBeat.load());
+            if (std::abs(e.position.x - lx) < 12) { loopDragging = LoopDragTarget::Start; return; }
+            if (std::abs(e.position.x - rx) < 12) { loopDragging = LoopDragTarget::End; return; }
+            // Click inside loop region body - drag the whole loop
+            if (e.position.x > lx + 12 && e.position.x < rx - 12)
+            {
+                loopDragging = LoopDragTarget::Body;
+                loopDragBodyOffset = xToBeat(e.position.x) - processor.loopStartBeat.load();
+                loopDragBodyLength = processor.loopEndBeat.load() - processor.loopStartBeat.load();
+                return;
+            }
         }
+
+        // Click in ruler area starts a time range selection (Ableton-style)
+        double beat = std::max(0.0, xToBeat(e.position.x));
+        beat = processor.snapBeat(beat);
+        rulerDragging = true;
+        rulerDragStartBeat = beat;
+        hasTimeSelection = false;
+        timeSelStartBeat = beat;
+        timeSelEndBeat = beat;
+        repaint();
+        return;
     }
 
     selLane = -1; selRegion = -1; draggingClip = false; edgeDragging = EdgeDragTarget::None;
+    hasTimeSelection = false; // Clear ruler selection when clicking in arrangement
 
     // Check lane header clicks (M/S buttons, context menu, "+" area)
     if (e.position.x < metrics::laneHeaderW)
@@ -598,6 +652,18 @@ void ArrangementView::mouseDoubleClick(const juce::MouseEvent& e)
 
 void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 {
+    // Ruler time range selection drag
+    if (rulerDragging)
+    {
+        double beat = std::max(0.0, xToBeat(e.position.x));
+        beat = processor.snapBeat(beat);
+        timeSelStartBeat = std::min(rulerDragStartBeat, beat);
+        timeSelEndBeat = std::max(rulerDragStartBeat, beat);
+        hasTimeSelection = (timeSelEndBeat - timeSelStartBeat) > 0.01;
+        repaint();
+        return;
+    }
+
     if (loopDragging != LoopDragTarget::None)
     {
         double beat = std::max(0.0, xToBeat(e.position.x));
@@ -725,6 +791,7 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
     }
     hoveredLane = -1;
     loopDragging = LoopDragTarget::None;
+    rulerDragging = false;
     draggingClip = false;
     refresh();
 }
@@ -933,6 +1000,113 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
         else if (result == 3) { processor.undoManager.perform(new RemoveRegionAction(processor, laneIdx, regionIdx)); }
         repaint();
     });
+}
+
+// ── Ableton-style Cmd+L Loop ─────────────────────────────────────────────────
+
+void ArrangementView::setLoopToSelection()
+{
+    if (!hasTimeSelection || timeSelEndBeat <= timeSelStartBeat) return;
+
+    processor.loopStartBeat.store(timeSelStartBeat);
+    processor.loopEndBeat.store(timeSelEndBeat);
+    processor.loopEnabled.store(true);
+    updateLoopButton();
+    refresh();
+}
+
+void ArrangementView::setLoopToSelectedClip()
+{
+    if (selLane < 0 || selRegion < 0) return;
+
+    juce::ScopedLock sl(processor.laneLock);
+    if (selLane >= (int)processor.lanes.size()) return;
+    auto& lane = processor.lanes[selLane];
+    if (selRegion >= (int)lane.regions.size()) return;
+
+    auto& region = lane.regions[selRegion];
+    processor.loopStartBeat.store(region.startBeat);
+    processor.loopEndBeat.store(region.endBeat);
+    processor.loopEnabled.store(true);
+    updateLoopButton();
+    refresh();
+}
+
+void ArrangementView::toggleLoopFromContext()
+{
+    // If we have a time range selection, set loop to that range
+    if (hasTimeSelection && (timeSelEndBeat - timeSelStartBeat) > 0.01)
+    {
+        double ls = processor.loopStartBeat.load();
+        double le = processor.loopEndBeat.load();
+        bool loopOn = processor.loopEnabled.load();
+
+        // If loop is already set to exactly this selection, toggle it off
+        if (loopOn &&
+            std::abs(ls - timeSelStartBeat) < 0.01 &&
+            std::abs(le - timeSelEndBeat) < 0.01)
+        {
+            processor.loopEnabled.store(false);
+            updateLoopButton();
+            refresh();
+            return;
+        }
+
+        setLoopToSelection();
+        return;
+    }
+
+    // If a clip is selected, set loop to that clip's region
+    if (selLane >= 0 && selRegion >= 0)
+    {
+        juce::ScopedLock sl(processor.laneLock);
+        if (selLane < (int)processor.lanes.size())
+        {
+            auto& lane = processor.lanes[selLane];
+            if (selRegion < (int)lane.regions.size())
+            {
+                auto& region = lane.regions[selRegion];
+                double ls = processor.loopStartBeat.load();
+                double le = processor.loopEndBeat.load();
+                bool loopOn = processor.loopEnabled.load();
+
+                // If loop is already set to this clip, toggle off
+                if (loopOn &&
+                    std::abs(ls - region.startBeat) < 0.01 &&
+                    std::abs(le - region.endBeat) < 0.01)
+                {
+                    processor.loopEnabled.store(false);
+                    updateLoopButton();
+                    refresh();
+                    return;
+                }
+            }
+        }
+        setLoopToSelectedClip();
+        return;
+    }
+
+    // No selection: just toggle loop on/off
+    bool nowEnabled = !processor.loopEnabled.load();
+    processor.loopEnabled.store(nowEnabled);
+    if (nowEnabled && processor.loopEndBeat.load() <= processor.loopStartBeat.load())
+    {
+        processor.loopStartBeat.store(0.0);
+        processor.loopEndBeat.store(16.0);
+    }
+    updateLoopButton();
+    refresh();
+}
+
+bool ArrangementView::keyPressed(const juce::KeyPress& key)
+{
+    // Cmd+L / Ctrl+L: Ableton-style loop from selection
+    if (key == juce::KeyPress('l', juce::ModifierKeys::commandModifier, 0))
+    {
+        toggleLoopFromContext();
+        return true;
+    }
+    return false;
 }
 
 void ArrangementView::showLaneContextMenu(int laneIdx)

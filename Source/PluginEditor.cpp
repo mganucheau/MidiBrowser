@@ -417,6 +417,13 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         return true;
     }
 
+    // Cmd+L: Toggle loop from selection/clip (Ableton-style)
+    if (key == juce::KeyPress('l', juce::ModifierKeys::commandModifier, 0))
+    {
+        arrangementView.toggleLoopFromContext();
+        return true;
+    }
+
     // Cmd+E: Export MIDI
     if (key == juce::KeyPress('e', juce::ModifierKeys::commandModifier, 0))
     {

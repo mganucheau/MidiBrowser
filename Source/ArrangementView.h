@@ -51,6 +51,7 @@ public:
     void refresh();
     void refreshComponentColours();
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    bool keyPressed(const juce::KeyPress& key) override;
 
     static constexpr int rulerH = 24;
 
@@ -59,6 +60,15 @@ public:
 
     int selLane   = -1;
     int selRegion = -1;
+
+    // Time range selection (for Cmd+L loop-from-selection)
+    bool   hasTimeSelection    = false;
+    double timeSelStartBeat    = 0.0;
+    double timeSelEndBeat      = 0.0;
+
+    void setLoopToSelection();
+    void setLoopToSelectedClip();
+    void toggleLoopFromContext();
 
     float verticalScrollOffset = 0.0f;
 
@@ -76,6 +86,10 @@ private:
     LoopDragTarget loopDragging = LoopDragTarget::None;
     double loopDragBodyOffset = 0.0;
     double loopDragBodyLength = 0.0;
+
+    // Ruler time range selection drag
+    bool  rulerDragging = false;
+    double rulerDragStartBeat = 0.0;
 
     bool  draggingClip = false;
     double clipDragOrigBeat = 0.0;
@@ -107,6 +121,7 @@ private:
     void paintDropIndicator(juce::Graphics&);
     void paintBeatGrid(juce::Graphics&);
     void paintLoopMarkers(juce::Graphics&);
+    void paintTimeSelection(juce::Graphics&);
 
     void updateLoopButton();
     void ensureBarsForBeat(double endBeat);
