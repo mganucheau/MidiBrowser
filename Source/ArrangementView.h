@@ -82,6 +82,9 @@ private:
     int   dropLaneIdx   = -1;
     bool  draggingOver  = false;
 
+    // Playhead dragging
+    bool draggingPlayhead = false;
+
     enum class LoopDragTarget { None, Start, End, Body };
     LoopDragTarget loopDragging = LoopDragTarget::None;
     double loopDragBodyOffset = 0.0;

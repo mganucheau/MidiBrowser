@@ -411,9 +411,13 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
     {
         if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
         {
-            double playBeat = processorRef.loopEnabled.load()
-                ? processorRef.mappedBeatPos.load()
-                : processorRef.hostBeatPos.load();
+            double playBeat;
+            if (processorRef.hostPlaying.load())
+                playBeat = processorRef.loopEnabled.load()
+                    ? processorRef.mappedBeatPos.load()
+                    : processorRef.hostBeatPos.load();
+            else
+                playBeat = processorRef.editPlayheadBeat.load();
             juce::ScopedLock sl(processorRef.laneLock);
             if (arrangementView.selLane < (int)processorRef.lanes.size())
             {

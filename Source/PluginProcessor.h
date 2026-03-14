@@ -92,6 +92,9 @@ public:
     // Loop-wrapped beat position for visual playhead display
     std::atomic<double>    mappedBeatPos { 0.0 };
 
+    // User-positionable edit playhead (used when host is stopped)
+    std::atomic<double>    editPlayheadBeat { 0.0 };
+
     // Last file browser directory (persisted across sessions)
     juce::String lastBrowserDir;
 

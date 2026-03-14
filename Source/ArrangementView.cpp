@@ -487,16 +487,31 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
 
 void ArrangementView::paintPlayhead(juce::Graphics& g)
 {
+    double beat;
     if (processor.hostPlaying.load())
     {
-        // Use loop-wrapped position when looping, raw host position otherwise
-        double beat = processor.loopEnabled.load()
+        beat = processor.loopEnabled.load()
             ? processor.mappedBeatPos.load()
             : processor.hostBeatPos.load();
-        float x = beatToX(beat);
-        g.setColour(colours::playhead().withAlpha(0.8f));
-        g.drawVerticalLine((int)x, 0.0f, (float)getHeight());
     }
+    else
+    {
+        beat = processor.editPlayheadBeat.load();
+    }
+
+    float x = beatToX(beat);
+    auto phCol = colours::playhead();
+
+    // Vertical line through entire height
+    g.setColour(phCol.withAlpha(0.8f));
+    g.drawVerticalLine((int)x, 0.0f, (float)getHeight());
+
+    // Draggable triangle handle in ruler area (points down)
+    juce::Path tri;
+    float triW = 8.0f, triH = 8.0f;
+    tri.addTriangle(x - triW, 0.0f, x + triW, 0.0f, x, triH);
+    g.setColour(phCol);
+    g.fillPath(tri);
 }
 
 void ArrangementView::paintDropIndicator(juce::Graphics& g)
@@ -528,6 +543,14 @@ void ArrangementView::mouseMove(const juce::MouseEvent& e)
 {
     if (e.position.y < rulerH && e.position.x >= metrics::laneHeaderW)
     {
+        // Check playhead triangle handle
+        float phX = beatToX(processor.editPlayheadBeat.load());
+        if (std::abs(e.position.x - phX) < 10 && e.position.y < 12)
+        {
+            setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+            return;
+        }
+
         if (processor.loopEnabled.load())
         {
             float lx = beatToX(processor.loopStartBeat.load());
@@ -565,6 +588,14 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
 {
     if (e.position.y < rulerH && e.position.x >= metrics::laneHeaderW)
     {
+        // Check playhead triangle handle drag (top portion of ruler)
+        float phX = beatToX(processor.editPlayheadBeat.load());
+        if (std::abs(e.position.x - phX) < 10 && e.position.y < 12)
+        {
+            draggingPlayhead = true;
+            return;
+        }
+
         // Check loop handle interactions first (only when loop is active)
         if (processor.loopEnabled.load())
         {
@@ -582,9 +613,10 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
             }
         }
 
-        // Click in ruler area starts a time range selection (Ableton-style)
+        // Click in ruler area: set playhead AND start time range selection
         double beat = std::max(0.0, xToBeat(e.position.x));
         beat = processor.snapBeat(beat);
+        processor.editPlayheadBeat.store(beat);
         rulerDragging = true;
         rulerDragStartBeat = beat;
         hasTimeSelection = false;
@@ -704,6 +736,16 @@ void ArrangementView::mouseDoubleClick(const juce::MouseEvent& e)
 
 void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 {
+    // Playhead drag
+    if (draggingPlayhead)
+    {
+        double beat = std::max(0.0, xToBeat(e.position.x));
+        beat = processor.snapBeat(beat);
+        processor.editPlayheadBeat.store(beat);
+        repaint();
+        return;
+    }
+
     // Ruler time range selection drag
     if (rulerDragging)
     {
@@ -773,6 +815,8 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 
 void ArrangementView::mouseUp(const juce::MouseEvent& e)
 {
+    if (draggingPlayhead) { draggingPlayhead = false; return; }
+
     // Edge drag-to-loop undo
     if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
     {
