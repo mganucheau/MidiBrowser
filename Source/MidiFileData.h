@@ -28,6 +28,9 @@ struct MidiClip
     // Scale / transpose helpers
     int  rootNoteOffset = 0;  // semitones from original
 
+    // Clip start offset: draggable start point within the clip (beats)
+    double clipStartOffset = 0.0;
+
     juce::MidiMessageSequence toMidiSequence(double bpm) const;
 
     // Get notes filtered by note number (for per-note comping)

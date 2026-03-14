@@ -441,7 +441,11 @@ void ArrangementView::paintPlayhead(juce::Graphics& g)
 {
     if (processor.hostPlaying.load())
     {
-        float x = beatToX(processor.hostBeatPos.load());
+        // Use loop-wrapped position when looping, raw host position otherwise
+        double beat = processor.loopEnabled.load()
+            ? processor.mappedBeatPos.load()
+            : processor.hostBeatPos.load();
+        float x = beatToX(beat);
         g.setColour(colours::playhead().withAlpha(0.8f));
         g.drawVerticalLine((int)x, 0.0f, (float)getHeight());
     }

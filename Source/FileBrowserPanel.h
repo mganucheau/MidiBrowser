@@ -27,6 +27,7 @@ public:
     // Callbacks
     std::function<void(const MidiClip&)>           onClipDoubleClicked;
     std::function<void(const juce::File&)>         onFileDragStarted;
+    std::function<void(const juce::String&)>       onDirectoryChanged;
 
     // Set root directory
     void setRootDirectory(const juce::File& dir);

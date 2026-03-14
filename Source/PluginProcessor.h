@@ -89,6 +89,12 @@ public:
     std::atomic<double>    hostBeatPos  { 0.0 };
     std::atomic<bool>      hostPlaying  { false };
 
+    // Loop-wrapped beat position for visual playhead display
+    std::atomic<double>    mappedBeatPos { 0.0 };
+
+    // Last file browser directory (persisted across sessions)
+    juce::String lastBrowserDir;
+
     struct TransportInfo { double bpm; double beatPos; bool playing; };
     TransportInfo getTransport() const;
 

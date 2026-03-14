@@ -102,6 +102,7 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         if (loopLen > 0.0 && beatPos >= loopStart)
         {
             double mapped = loopStart + std::fmod(beatPos - loopStart, loopLen);
+            mappedBeatPos.store(mapped);
 
             // Check if this block crosses the loop boundary
             double mappedEnd = mapped + blockBeats;
@@ -121,6 +122,7 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
                 double secondLen = blockBeats - firstLen;
                 generateMidiForBeatRange(loopStart, loopStart + secondLen, generated, secondSamples, firstSamples);
+                mappedBeatPos.store(loopStart + secondLen);
             }
             else
             {
@@ -129,11 +131,13 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
         else
         {
+            mappedBeatPos.store(beatPos);
             generateMidiForBeatRange(beatPos, endBeat, generated, buffer.getNumSamples());
         }
     }
     else
     {
+        mappedBeatPos.store(beatPos);
         generateMidiForBeatRange(beatPos, endBeat, generated, buffer.getNumSamples());
     }
     lastBeatPos_ = endBeat;
@@ -180,7 +184,12 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
                 if (region.noteFilter >= 0 && note.noteNumber != region.noteFilter)
                     continue;
 
-                double noteGlobalStart = region.startBeat + loop * loopLen + note.startBeat;
+                // Apply clip start offset: shift note positions and wrap within clip
+                double adjustedStart = note.startBeat - clip.clipStartOffset;
+                if (adjustedStart < 0.0)
+                    adjustedStart += loopLen;
+
+                double noteGlobalStart = region.startBeat + loop * loopLen + adjustedStart;
                 if (noteGlobalStart >= region.endBeat) continue;
                 double noteGlobalEnd   = noteGlobalStart + note.lengthBeats;
 
@@ -301,6 +310,7 @@ void PatternFlowProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("loopEnabled",  loopEnabled.load());
     xml.setAttribute("loopStartBeat", loopStartBeat.load());
     xml.setAttribute("loopEndBeat",  loopEndBeat.load());
+    xml.setAttribute("lastBrowserDir", lastBrowserDir);
 
     // Serialize lanes and clips
     {
@@ -322,6 +332,7 @@ void PatternFlowProcessor::getStateInformation(juce::MemoryBlock& dest)
                 clipXml->setAttribute("lengthBeats", clip.lengthBeats);
                 clipXml->setAttribute("colour", (int)clip.colour.getARGB());
                 clipXml->setAttribute("rootNoteOffset", clip.rootNoteOffset);
+                clipXml->setAttribute("clipStartOffset", clip.clipStartOffset);
 
                 auto* notesXml = clipXml->createNewChildElement("Notes");
                 for (auto& note : clip.notes)
@@ -382,6 +393,7 @@ void PatternFlowProcessor::setStateInformation(const void* data, int sizeInBytes
         loopEnabled  .store(xml->getBoolAttribute("loopEnabled", false));
         loopStartBeat.store(xml->getDoubleAttribute("loopStartBeat", 0.0));
         loopEndBeat  .store(xml->getDoubleAttribute("loopEndBeat", 32.0));
+        lastBrowserDir = xml->getStringAttribute("lastBrowserDir", "");
 
         // Restore lanes and clips
         if (auto* lanesXml = xml->getChildByName("Lanes"))
@@ -406,6 +418,7 @@ void PatternFlowProcessor::setStateInformation(const void* data, int sizeInBytes
                         clip.lengthBeats    = clipXml->getDoubleAttribute("lengthBeats", 4.0);
                         clip.colour         = juce::Colour((juce::uint32)clipXml->getIntAttribute("colour", (int)0xff3a7bd5));
                         clip.rootNoteOffset = clipXml->getIntAttribute("rootNoteOffset", 0);
+                        clip.clipStartOffset = clipXml->getDoubleAttribute("clipStartOffset", 0.0);
 
                         if (auto* notesXml = clipXml->getChildByName("Notes"))
                         {

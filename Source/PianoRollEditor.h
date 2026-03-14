@@ -83,6 +83,14 @@ private:
     void paintExpressionView(juce::Graphics&);
     void paintAutomationView(juce::Graphics&);
 
+    // Clip start offset line dragging
+    bool  draggingStartLine = false;
+    float startLineDragStartX = 0.0f;
+    double startLineDragOrigOffset = 0.0;
+
+    void paintStartLine(juce::Graphics&);
+    bool isNearStartLine(float x) const;
+
     // Velocity editing in Expression view
     int  velocityDragNote = -1;
     int  velocityDragOrigVel = 0;

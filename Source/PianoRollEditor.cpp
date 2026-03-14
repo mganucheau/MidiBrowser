@@ -145,6 +145,7 @@ void PianoRollEditor::paint(juce::Graphics& g)
         case EditorViewMode::Expression: paintNoteGrid(g); paintExpressionView(g); break;
         case EditorViewMode::Automation: paintAutomationView(g); break;
     }
+    paintStartLine(g);
     paintPianoKeys(g);
 }
 
@@ -290,6 +291,34 @@ void PianoRollEditor::paintAutomationView(juce::Graphics& g)
                getLocalBounds().withTrimmedTop(tabH).withTrimmedLeft(pianoKeyWidth), juce::Justification::centred);
 }
 
+void PianoRollEditor::paintStartLine(juce::Graphics& g)
+{
+    if (!clipLoaded) return;
+
+    float startLineX = beatToX(currentClip.clipStartOffset);
+    if (startLineX < pianoKeyWidth || startLineX > getWidth()) return;
+
+    int tabH = 28;
+
+    // Vertical line
+    g.setColour(colours::playhead().withAlpha(0.7f));
+    g.drawVerticalLine((int)startLineX, (float)tabH, (float)getHeight());
+
+    // Draggable handle at top (small triangle pointing right)
+    juce::Path handle;
+    handle.addTriangle(startLineX - 5.0f, (float)tabH,
+                       startLineX + 5.0f, (float)tabH + 5.0f,
+                       startLineX - 5.0f, (float)tabH + 10.0f);
+    g.setColour(colours::playhead());
+    g.fillPath(handle);
+}
+
+bool PianoRollEditor::isNearStartLine(float x) const
+{
+    float startLineX = beatToX(currentClip.clipStartOffset);
+    return std::abs(x - startLineX) < 8.0f;
+}
+
 void PianoRollEditor::refreshComponentColours()
 {
     auto activeTab = [this](juce::TextButton& btn, EditorViewMode mode)
@@ -322,6 +351,14 @@ void PianoRollEditor::resized()
 void PianoRollEditor::mouseMove(const juce::MouseEvent& e)
 {
     if (!clipLoaded || viewMode != EditorViewMode::Notes) return;
+
+    // Check start line handle
+    if (e.position.x >= pianoKeyWidth && isNearStartLine(e.position.x) && e.position.y <= 38.0f)
+    {
+        setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+        return;
+    }
+
     for (int i = 0; i < (int)currentClip.notes.size(); ++i)
     {
         auto& note = currentClip.notes[i];
@@ -338,7 +375,17 @@ void PianoRollEditor::mouseMove(const juce::MouseEvent& e)
 void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
 {
     if (!clipLoaded) return;
-    selectedNote = -1; resizingNote = false; velocityDragNote = -1;
+    selectedNote = -1; resizingNote = false; velocityDragNote = -1; draggingStartLine = false;
+
+    // Check for start line drag (near handle at top of line)
+    if (viewMode == EditorViewMode::Notes && e.position.x >= pianoKeyWidth &&
+        isNearStartLine(e.position.x) && e.position.y <= 38.0f)
+    {
+        draggingStartLine = true;
+        startLineDragStartX = e.position.x;
+        startLineDragOrigOffset = currentClip.clipStartOffset;
+        return;
+    }
 
     // Velocity bar dragging in Expression view
     if (viewMode == EditorViewMode::Expression)
@@ -423,6 +470,16 @@ void PianoRollEditor::mouseDrag(const juce::MouseEvent& e)
 {
     if (!clipLoaded) return;
 
+    // Start line dragging
+    if (draggingStartLine)
+    {
+        double beat = std::max(0.0, xToBeat(e.position.x));
+        beat = processor.snapBeat(beat);
+        currentClip.clipStartOffset = juce::jlimit(0.0, currentClip.lengthBeats - 0.25, beat);
+        repaint();
+        return;
+    }
+
     // Velocity dragging in Expression view
     if (velocityDragNote >= 0 && velocityDragNote < (int)currentClip.notes.size())
     {
@@ -460,6 +517,14 @@ void PianoRollEditor::mouseDrag(const juce::MouseEvent& e)
 
 void PianoRollEditor::mouseUp(const juce::MouseEvent&)
 {
+    // Start line drag complete
+    if (draggingStartLine)
+    {
+        draggingStartLine = false;
+        if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+        return;
+    }
+
     // Velocity drag complete
     if (velocityDragNote >= 0 && velocityDragNote < (int)currentClip.notes.size())
     {

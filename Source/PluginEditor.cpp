@@ -90,7 +90,17 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     };
     addAndMakeVisible(controlPanel);
 
-    // File browser
+    // File browser - restore last directory
+    if (processorRef.lastBrowserDir.isNotEmpty())
+    {
+        juce::File dir(processorRef.lastBrowserDir);
+        if (dir.isDirectory())
+            fileBrowser.setRootDirectory(dir);
+    }
+    fileBrowser.onDirectoryChanged = [this](const juce::String& path)
+    {
+        processorRef.lastBrowserDir = path;
+    };
     fileBrowser.onClipDoubleClicked = [this](const MidiClip& clip)
     {
         pianoRoll.setClip(clip);
@@ -398,7 +408,9 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
     {
         if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
         {
-            double playBeat = processorRef.hostBeatPos.load();
+            double playBeat = processorRef.loopEnabled.load()
+                ? processorRef.mappedBeatPos.load()
+                : processorRef.hostBeatPos.load();
             juce::ScopedLock sl(processorRef.laneLock);
             if (arrangementView.selLane < (int)processorRef.lanes.size())
             {

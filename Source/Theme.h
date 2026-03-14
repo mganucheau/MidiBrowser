@@ -96,7 +96,7 @@ inline std::vector<juce::Colour> getClipColourPresets()
 
 // ── Version ─────────────────────────────────────────────────────────────────
 namespace version {
-    constexpr const char* number = "0.3.0";
+    constexpr const char* number = "0.4.0";
     constexpr const char* name   = "PatternFlow";
     constexpr const char* desc   = "A MIDI composition and comping tool for creative producers. "
                                    "Arrange, layer, and reshape MIDI clips with per-note comping, "

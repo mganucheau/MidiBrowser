@@ -53,6 +53,8 @@ void FileBrowserPanel::setRootDirectory(const juce::File& dir)
 {
     dirContents->setDirectory(dir, true, true);
     fileTree->refresh();
+    if (onDirectoryChanged)
+        onDirectoryChanged(dir.getFullPathName());
 }
 
 void FileBrowserPanel::resized()
