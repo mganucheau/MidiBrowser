@@ -76,6 +76,15 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     lblHeader.setColour(juce::Label::textColourId, colours::textDim());
 }
 
+void FileBrowserPanel::refreshComponentColours()
+{
+    fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::panel());
+    fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
+    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
+    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, juce::Colours::white);
+    lblHeader.setColour(juce::Label::textColourId, colours::textDim());
+}
+
 void FileBrowserPanel::fileClicked(const juce::File& file, const juce::MouseEvent&)
 {
     if (file.hasFileExtension("mid;midi"))

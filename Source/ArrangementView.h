@@ -49,6 +49,7 @@ public:
     int openPianoRollRegion = -1;
 
     void refresh();
+    void refreshComponentColours();
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     static constexpr int rulerH = 24;
@@ -71,8 +72,10 @@ private:
     int   dropLaneIdx   = -1;
     bool  draggingOver  = false;
 
-    enum class LoopDragTarget { None, Start, End };
+    enum class LoopDragTarget { None, Start, End, Body };
     LoopDragTarget loopDragging = LoopDragTarget::None;
+    double loopDragBodyOffset = 0.0;
+    double loopDragBodyLength = 0.0;
 
     bool  draggingClip = false;
     double clipDragOrigBeat = 0.0;

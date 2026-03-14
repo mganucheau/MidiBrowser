@@ -34,6 +34,16 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         darkModeEnabled().store(!darkModeEnabled().load());
         lnf.refreshColours();
         updateThemeButton();
+
+        // Update per-component colors for all panels
+        lblTitle.setColour(juce::Label::textColourId, colours::accent());
+        btnAbout.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+        btnAbout.setColour(juce::TextButton::textColourOffId, colours::textDim());
+        controlPanel.refreshComponentColours();
+        fileBrowser.refreshComponentColours();
+        arrangementView.refreshComponentColours();
+        pianoRoll.refreshComponentColours();
+
         repaint();
         controlPanel.repaint();
         fileBrowser.repaint();

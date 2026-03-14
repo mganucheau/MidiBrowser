@@ -18,6 +18,7 @@ public:
 
     void resized() override;
     void paint(juce::Graphics&) override;
+    void refreshComponentColours();
 
     void sliderValueChanged(juce::Slider*) override;
     void comboBoxChanged(juce::ComboBox*) override;

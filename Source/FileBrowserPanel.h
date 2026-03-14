@@ -16,6 +16,7 @@ public:
 
     void resized() override;
     void paint(juce::Graphics&) override;
+    void refreshComponentColours();
 
     // FileBrowserListener
     void selectionChanged() override {}

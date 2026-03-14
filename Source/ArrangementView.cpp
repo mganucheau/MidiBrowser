@@ -43,6 +43,13 @@ void ArrangementView::refresh()
     repaint();
 }
 
+void ArrangementView::refreshComponentColours()
+{
+    btnAddBars.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnAddBars.setColour(juce::TextButton::textColourOffId, colours::text());
+    updateLoopButton();
+}
+
 void ArrangementView::updateLoopButton()
 {
     bool loopOn = processor.loopEnabled.load();
@@ -191,33 +198,55 @@ void ArrangementView::paintLoopMarkers(juce::Graphics& g)
 
     float lx = beatToX(processor.loopStartBeat.load());
     float rx = beatToX(processor.loopEndBeat.load());
+    float rH = (float)rulerH;
+    auto accentCol = colours::accent();
 
-    // Loop region highlight in ruler
-    g.setColour(colours::accent().withAlpha(0.25f));
-    g.fillRect(lx, 0.0f, rx - lx, (float)rulerH);
+    // ── Loop region highlight in ruler (Ableton-style solid brace) ──
+    g.setColour(accentCol.withAlpha(0.35f));
+    g.fillRect(lx, 0.0f, rx - lx, rH);
 
-    // Loop region highlight in arrangement (subtle)
-    g.setColour(colours::accent().withAlpha(0.04f));
-    g.fillRect(lx, (float)rulerH, rx - lx, (float)(getHeight() - rulerH));
+    // Top bar connecting the brackets
+    g.setColour(accentCol);
+    g.fillRect(lx, 0.0f, rx - lx, 3.0f);
 
-    // Start/end markers
-    g.setColour(colours::accent());
-    g.fillRect(lx - 1, 0.0f, 3.0f, (float)rulerH);
-    g.fillRect(rx - 1, 0.0f, 3.0f, (float)rulerH);
+    // ── Loop region highlight in arrangement ──
+    g.setColour(accentCol.withAlpha(0.06f));
+    g.fillRect(lx, rH, rx - lx, (float)(getHeight() - rulerH));
 
-    // Triangle handles (Ableton-style)
-    juce::Path leftTri;
-    leftTri.addTriangle(lx, 0.0f, lx + 10.0f, 0.0f, lx, (float)rulerH * 0.65f);
-    g.fillPath(leftTri);
+    // ── Left bracket handle (Ableton-style L-bracket) ──
+    g.setColour(accentCol);
+    // Vertical bar
+    g.fillRect(lx - 1.0f, 0.0f, 4.0f, rH);
+    // Horizontal tab at top
+    g.fillRect(lx - 1.0f, 0.0f, 12.0f, 3.0f);
+    // Triangle flag
+    juce::Path leftFlag;
+    leftFlag.addTriangle(lx, 3.0f, lx + 10.0f, 3.0f, lx, rH * 0.7f);
+    g.setColour(accentCol.withAlpha(0.6f));
+    g.fillPath(leftFlag);
 
-    juce::Path rightTri;
-    rightTri.addTriangle(rx, 0.0f, rx - 10.0f, 0.0f, rx, (float)rulerH * 0.65f);
-    g.fillPath(rightTri);
+    // ── Right bracket handle (Ableton-style reversed L-bracket) ──
+    g.setColour(accentCol);
+    // Vertical bar
+    g.fillRect(rx - 2.0f, 0.0f, 4.0f, rH);
+    // Horizontal tab at top
+    g.fillRect(rx - 11.0f, 0.0f, 12.0f, 3.0f);
+    // Triangle flag
+    juce::Path rightFlag;
+    rightFlag.addTriangle(rx, 3.0f, rx - 10.0f, 3.0f, rx, rH * 0.7f);
+    g.setColour(accentCol.withAlpha(0.6f));
+    g.fillPath(rightFlag);
 
-    // Vertical lines through arrangement area
-    g.setColour(colours::accent().withAlpha(0.4f));
-    g.drawVerticalLine((int)lx, (float)rulerH, (float)getHeight());
-    g.drawVerticalLine((int)rx, (float)rulerH, (float)getHeight());
+    // ── Vertical boundary lines through arrangement area ──
+    g.setColour(accentCol.withAlpha(0.5f));
+    g.drawVerticalLine((int)lx, rH, (float)getHeight());
+    g.drawVerticalLine((int)rx, rH, (float)getHeight());
+
+    // ── Dashed pattern inside ruler body for drag affordance ──
+    g.setColour(accentCol.withAlpha(0.15f));
+    float midY = rH * 0.6f;
+    for (float dx = lx + 14.0f; dx < rx - 14.0f; dx += 8.0f)
+        g.fillRect(dx, midY - 1.0f, 4.0f, 2.0f);
 }
 
 void ArrangementView::paintLaneHeaders(juce::Graphics& g)
@@ -408,6 +437,12 @@ void ArrangementView::mouseMove(const juce::MouseEvent& e)
             setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
             return;
         }
+        // Body region - show move cursor
+        if (e.position.x > lx + 12 && e.position.x < rx - 12)
+        {
+            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+            return;
+        }
     }
     // Check for region edges
     for (auto& cb : clipBlocks)
@@ -430,6 +465,14 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
         float rx = beatToX(processor.loopEndBeat.load());
         if (std::abs(e.position.x - lx) < 12) { loopDragging = LoopDragTarget::Start; return; }
         if (std::abs(e.position.x - rx) < 12) { loopDragging = LoopDragTarget::End; return; }
+        // Click inside loop region body - drag the whole loop
+        if (e.position.x > lx + 12 && e.position.x < rx - 12)
+        {
+            loopDragging = LoopDragTarget::Body;
+            loopDragBodyOffset = xToBeat(e.position.x) - processor.loopStartBeat.load();
+            loopDragBodyLength = processor.loopEndBeat.load() - processor.loopStartBeat.load();
+            return;
+        }
     }
 
     selLane = -1; selRegion = -1; draggingClip = false; edgeDragging = EdgeDragTarget::None;
@@ -547,8 +590,14 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         beat = processor.snapBeat(beat);
         if (loopDragging == LoopDragTarget::Start)
             processor.loopStartBeat.store(std::min(beat, processor.loopEndBeat.load() - 1.0));
-        else
+        else if (loopDragging == LoopDragTarget::End)
             processor.loopEndBeat.store(std::max(beat, processor.loopStartBeat.load() + 1.0));
+        else if (loopDragging == LoopDragTarget::Body)
+        {
+            double newStart = std::max(0.0, processor.snapBeat(beat - loopDragBodyOffset));
+            processor.loopStartBeat.store(newStart);
+            processor.loopEndBeat.store(newStart + loopDragBodyLength);
+        }
         repaint();
         return;
     }

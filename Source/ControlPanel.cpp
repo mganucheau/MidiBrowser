@@ -199,6 +199,29 @@ void ControlPanel::paint(juce::Graphics& g)
     g.drawHorizontalLine(getHeight() - 1, 0.0f, (float)getWidth());
 }
 
+void ControlPanel::refreshComponentColours()
+{
+    // Toggle buttons
+    btnScaleEnable.setColour(juce::ToggleButton::textColourId, colours::text());
+    btnScaleEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
+    btnSplitEnable.setColour(juce::ToggleButton::textColourId, colours::text());
+    btnSplitEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
+
+    // Labels
+    lblRootNote.setColour(juce::Label::textColourId, colours::textDim());
+    lblGridSnap.setColour(juce::Label::textColourId, colours::textDim());
+    lblHumanTiming.setColour(juce::Label::textColourId, colours::textDim());
+    lblHumanVelocity.setColour(juce::Label::textColourId, colours::textDim());
+    lblFeel.setColour(juce::Label::textColourId, colours::textDim());
+    lblIntonation.setColour(juce::Label::textColourId, colours::textDim());
+
+    // Buttons
+    btnSplitEdit.setColour(juce::TextButton::buttonColourId, colours::bgLight());
+    btnSplitEdit.setColour(juce::TextButton::textColourOffId, colours::text());
+    btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent());
+    btnAddLane.setColour(juce::TextButton::textColourOffId, colours::textBright());
+}
+
 void ControlPanel::sliderValueChanged(juce::Slider* slider)
 {
     if (slider == &knobHumanTiming)

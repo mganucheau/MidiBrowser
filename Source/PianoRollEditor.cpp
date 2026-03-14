@@ -290,6 +290,23 @@ void PianoRollEditor::paintAutomationView(juce::Graphics& g)
                getLocalBounds().withTrimmedTop(tabH).withTrimmedLeft(pianoKeyWidth), juce::Justification::centred);
 }
 
+void PianoRollEditor::refreshComponentColours()
+{
+    auto activeTab = [this](juce::TextButton& btn, EditorViewMode mode)
+    {
+        btn.setColour(juce::TextButton::buttonColourId,
+                      viewMode == mode ? colours::accent() : colours::bgLight());
+        btn.setColour(juce::TextButton::textColourOffId,
+                      viewMode == mode ? colours::textBright() : colours::textDim());
+    };
+    activeTab(btnNotes, EditorViewMode::Notes);
+    activeTab(btnExpression, EditorViewMode::Expression);
+    activeTab(btnAutomation, EditorViewMode::Automation);
+
+    btnClose.setColour(juce::TextButton::buttonColourId, colours::bgLight());
+    btnClose.setColour(juce::TextButton::textColourOffId, colours::textDim());
+}
+
 void PianoRollEditor::resized()
 {
     int tabH = 24; int tabW = 70; int x = pianoKeyWidth + 4;
