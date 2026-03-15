@@ -111,6 +111,45 @@ MidiClip parseMidiFile(const juce::File& file)
     return clip;
 }
 
+// ── Write MIDI file ─────────────────────────────────────────────────────────
+
+bool writeMidiFile(const MidiClip& clip, const juce::File& file, double bpm)
+{
+    if (clip.notes.empty()) return false;
+
+    juce::MidiFile midiFile;
+    int ticksPerBeat = 480;
+    midiFile.setTicksPerQuarterNote(ticksPerBeat);
+
+    juce::MidiMessageSequence track;
+
+    // Tempo meta event at tick 0
+    track.addEvent(juce::MidiMessage::tempoMetaEvent(
+        (int)(60000000.0 / bpm)), 0.0);
+
+    // Track name
+    track.addEvent(juce::MidiMessage::textMetaEvent(3, clip.name), 0.0);
+
+    for (auto& n : clip.notes)
+    {
+        double onTick  = n.startBeat * ticksPerBeat;
+        double offTick = (n.startBeat + n.lengthBeats) * ticksPerBeat;
+        int pitch = juce::jlimit(0, 127, n.noteNumber);
+
+        track.addEvent(juce::MidiMessage::noteOn(n.channel, pitch, (juce::uint8)n.velocity), onTick);
+        track.addEvent(juce::MidiMessage::noteOff(n.channel, pitch), offTick);
+    }
+
+    track.updateMatchedPairs();
+    midiFile.addTrack(track);
+
+    file.deleteFile();
+    juce::FileOutputStream out(file);
+    if (!out.openedOk()) return false;
+
+    return midiFile.writeTo(out, 0);
+}
+
 // ── Scale helpers ────────────────────────────────────────────────────────────
 
 juce::String scaleTypeName(ScaleType s)

@@ -111,6 +111,11 @@ private:
 
     bool isNearRegionEdge(const juce::MouseEvent& e, const ClipBlock& cb, EdgeDragTarget& which) const;
 
+    // Master clip external drag-to-DAW
+    bool draggingMasterClip = false;
+    bool masterDragInitiated = false;
+    juce::Point<float> masterDragStartPos;
+
     double xToBeat(float x) const;
     float  beatToX(double beat) const;
     int    yToLane(float y) const;

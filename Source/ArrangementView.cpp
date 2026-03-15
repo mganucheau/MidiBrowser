@@ -513,7 +513,17 @@ void ArrangementView::paintMasterLane(juce::Graphics& g)
     g.setColour(colours::textBright());
     g.setFont(12.0f);
     g.drawText("MASTER", 10, (int)y, metrics::laneHeaderW - 14,
-               (int)lH, juce::Justification::centredLeft);
+               (int)(lH * 0.6f), juce::Justification::centredLeft);
+
+    // Drag hint when there are notes
+    if (!processor.masterClip.notes.empty())
+    {
+        g.setColour(colours::textDim());
+        g.setFont(9.0f);
+        g.drawText("Drag to DAW", 10, (int)(y + lH * 0.55f),
+                   metrics::laneHeaderW - 14, (int)(lH * 0.35f),
+                   juce::Justification::centredLeft);
+    }
 
     // Bottom border
     g.setColour(colours::panelBorder().withAlpha(0.6f));
@@ -637,6 +647,18 @@ void ArrangementView::mouseMove(const juce::MouseEvent& e)
         setMouseCursor(juce::MouseCursor::IBeamCursor);
         return;
     }
+    // Master lane: show drag cursor when hoverable
+    {
+        float my = masterLaneY();
+        float lH = (float)metrics::laneHeight;
+        if (e.position.y >= my && e.position.y < my + lH
+            && e.position.x >= metrics::laneHeaderW
+            && !processor.masterClip.notes.empty())
+        {
+            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+            return;
+        }
+    }
     // Check for region edges
     for (auto& cb : clipBlocks)
     {
@@ -694,6 +716,21 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
 
     selLane = -1; selRegion = -1; draggingClip = false; edgeDragging = EdgeDragTarget::None;
     hasTimeSelection = false; // Clear ruler selection when clicking in arrangement
+    draggingMasterClip = false; masterDragInitiated = false;
+
+    // Master lane click: prepare for drag-to-DAW
+    {
+        float my = masterLaneY();
+        float lH = (float)metrics::laneHeight;
+        if (e.position.y >= my && e.position.y < my + lH
+            && e.position.x >= metrics::laneHeaderW
+            && !processor.masterClip.notes.empty())
+        {
+            draggingMasterClip = true;
+            masterDragStartPos = e.position;
+            return;
+        }
+    }
 
     // Check lane header clicks (M/S buttons, context menu, "+" area)
     if (e.position.x < metrics::laneHeaderW)
@@ -802,6 +839,38 @@ void ArrangementView::mouseDoubleClick(const juce::MouseEvent& e)
 
 void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 {
+    // Master clip drag-to-DAW
+    if (draggingMasterClip && !masterDragInitiated)
+    {
+        auto dist = e.position.getDistanceFrom(masterDragStartPos);
+        if (dist > 5.0f)
+        {
+            masterDragInitiated = true;
+            draggingMasterClip = false;
+
+            // Write master clip to a temp .mid file
+            auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+            auto tempFile = tempDir.getChildFile("PatternFlow-Master.mid");
+
+            double bpm = processor.hostBpm.load();
+            if (bpm <= 0.0) bpm = 120.0;
+
+            bool written = false;
+            {
+                juce::ScopedLock sl(processor.laneLock);
+                written = writeMidiFile(processor.masterClip, tempFile, bpm);
+            }
+            if (written)
+            {
+                juce::StringArray files;
+                files.add(tempFile.getFullPathName());
+                juce::DragAndDropContainer::performExternalDragDropOfFiles(files, false);
+            }
+            return;
+        }
+        return;
+    }
+
     // Playhead drag
     if (draggingPlayhead)
     {
@@ -882,6 +951,7 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 void ArrangementView::mouseUp(const juce::MouseEvent& e)
 {
     if (draggingPlayhead) { draggingPlayhead = false; return; }
+    if (draggingMasterClip) { draggingMasterClip = false; masterDragInitiated = false; return; }
 
     // Edge drag-to-loop undo
     if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)

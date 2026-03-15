@@ -41,6 +41,9 @@ struct MidiClip
 // ── Parse a standard MIDI file ───────────────────────────────────────────────
 MidiClip parseMidiFile(const juce::File& file);
 
+// ── Write a MidiClip to a standard MIDI file ────────────────────────────────
+bool writeMidiFile(const MidiClip& clip, const juce::File& file, double bpm = 120.0);
+
 // ── Scale definitions ────────────────────────────────────────────────────────
 enum class ScaleType
 {
