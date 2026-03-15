@@ -291,6 +291,69 @@ PatternFlowProcessor::TransportInfo PatternFlowProcessor::getTransport() const
     return { hostBpm.load(), hostBeatPos.load(), hostPlaying.load() };
 }
 
+// ── Master clip rebuild ──────────────────────────────────────────────────────
+
+void PatternFlowProcessor::rebuildMasterClip()
+{
+    juce::ScopedLock sl(laneLock);
+
+    masterClip.notes.clear();
+    masterClip.name = "Master";
+    masterClip.colour = juce::Colour(0xff888888);
+
+    int totalBeats = arrangementBars.load() * 4;
+    masterClip.lengthBeats = (double)totalBeats;
+
+    bool anySolo = false;
+    for (auto& lane : lanes)
+        if (lane.solo) { anySolo = true; break; }
+
+    for (auto& lane : lanes)
+    {
+        if (lane.muted) continue;
+        if (anySolo && !lane.solo) continue;
+
+        for (auto& region : lane.regions)
+        {
+            if (region.muted || region.clipIndex < 0 ||
+                region.clipIndex >= (int)lane.clips.size())
+                continue;
+
+            auto& clip = lane.clips[region.clipIndex];
+            double regionLen = region.endBeat - region.startBeat;
+            if (regionLen <= 0.0 || clip.lengthBeats <= 0.0) continue;
+
+            int loopCount = std::max(1, (int)std::ceil(regionLen / clip.lengthBeats));
+
+            for (int loop = 0; loop < loopCount; ++loop)
+            {
+                double loopOffset = loop * clip.lengthBeats;
+                for (auto& note : clip.notes)
+                {
+                    if (region.noteFilter >= 0 && note.noteNumber != region.noteFilter)
+                        continue;
+
+                    double adjustedStart = note.startBeat - clip.clipStartOffset;
+                    if (adjustedStart < 0.0) adjustedStart += clip.lengthBeats;
+
+                    double globalStart = region.startBeat + loopOffset + adjustedStart;
+                    if (globalStart >= region.endBeat) continue;
+
+                    double globalEnd = std::min(globalStart + note.lengthBeats, region.endBeat);
+
+                    NoteEvent merged;
+                    merged.noteNumber  = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);
+                    merged.velocity    = note.velocity;
+                    merged.startBeat   = globalStart;
+                    merged.lengthBeats = globalEnd - globalStart;
+                    merged.channel     = note.channel;
+                    masterClip.notes.push_back(merged);
+                }
+            }
+        }
+    }
+}
+
 // ── State persistence ────────────────────────────────────────────────────────
 
 void PatternFlowProcessor::getStateInformation(juce::MemoryBlock& dest)
@@ -470,6 +533,7 @@ void PatternFlowProcessor::setStateInformation(const void* data, int sizeInBytes
             }
         }
     }
+    rebuildMasterClip();
 }
 
 juce::AudioProcessorEditor* PatternFlowProcessor::createEditor()

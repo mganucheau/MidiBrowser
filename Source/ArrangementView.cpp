@@ -26,11 +26,14 @@ ArrangementView::ArrangementView(PatternFlowProcessor& proc) : processor(proc)
     {
         bool nowEnabled = !processor.loopEnabled.load();
         processor.loopEnabled.store(nowEnabled);
-        if (nowEnabled && processor.loopEndBeat.load() <= processor.loopStartBeat.load())
+        if (nowEnabled)
         {
-            // Set sensible defaults: loop the first 4 bars
-            processor.loopStartBeat.store(0.0);
-            processor.loopEndBeat.store(16.0);
+            if (processor.loopEndBeat.load() <= processor.loopStartBeat.load())
+            {
+                processor.loopStartBeat.store(0.0);
+                processor.loopEndBeat.store(16.0);
+            }
+            processor.editPlayheadBeat.store(processor.loopStartBeat.load());
         }
         updateLoopButton();
         refresh();
@@ -40,6 +43,7 @@ ArrangementView::ArrangementView(PatternFlowProcessor& proc) : processor(proc)
 
 void ArrangementView::refresh()
 {
+    processor.rebuildMasterClip();
     rebuildClipBlocks();
     repaint();
 }
@@ -72,12 +76,18 @@ float ArrangementView::beatToX(double beat) const
 
 int ArrangementView::yToLane(float y) const
 {
-    return std::max(0, (int)((y + verticalScrollOffset - rulerH) / metrics::laneHeight));
+    return std::max(0, (int)((y + verticalScrollOffset - rulerH - metrics::laneHeight) / metrics::laneHeight));
 }
 
 float ArrangementView::laneToY(int lane) const
 {
-    return (float)(lane * metrics::laneHeight) + rulerH - verticalScrollOffset;
+    // Lane 0 starts below the master lane
+    return (float)((lane + 1) * metrics::laneHeight) + rulerH - verticalScrollOffset;
+}
+
+float ArrangementView::masterLaneY() const
+{
+    return (float)rulerH - verticalScrollOffset;
 }
 
 void ArrangementView::rebuildClipBlocks()
@@ -126,6 +136,7 @@ void ArrangementView::paint(juce::Graphics& g)
     paintRuler(g);
     paintTimeSelection(g);
     paintLoopMarkers(g);
+    paintMasterLane(g);
     paintLaneHeaders(g);
     paintClipBlocks(g);
     paintPlayhead(g);
@@ -482,6 +493,61 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
         g.setColour(textCol);
         g.setFont(11.0f);
         g.drawText(clip.name, cb.bounds.reduced(4.0f, 2.0f), juce::Justification::topLeft, true);
+    }
+}
+
+void ArrangementView::paintMasterLane(juce::Graphics& g)
+{
+    float y = masterLaneY();
+    float lH = (float)metrics::laneHeight;
+
+    // Master lane header
+    g.setColour(colours::bgLight().brighter(0.05f));
+    g.fillRect(0.0f, y, (float)metrics::laneHeaderW, lH);
+
+    // Accent strip
+    g.setColour(juce::Colour(0xffaaaaaa));
+    g.fillRoundedRectangle(2.0f, y + 4.0f, 4.0f, lH - 8.0f, 2.0f);
+
+    // Label
+    g.setColour(colours::textBright());
+    g.setFont(12.0f);
+    g.drawText("MASTER", 10, (int)y, metrics::laneHeaderW - 14,
+               (int)lH, juce::Justification::centredLeft);
+
+    // Bottom border
+    g.setColour(colours::panelBorder().withAlpha(0.6f));
+    g.drawHorizontalLine((int)(y + lH - 1), 0.0f, (float)getWidth());
+
+    // Master clip content area
+    auto& mc = processor.masterClip;
+    if (mc.notes.empty()) return;
+
+    int totalBeats = processor.arrangementBars.load() * 4;
+    float clipX = beatToX(0.0);
+    float clipEndX = beatToX((double)totalBeats);
+    float clipW = clipEndX - clipX;
+    float clipY = y + 2.0f;
+    float clipH = lH - 4.0f;
+
+    // Subtle background for the clip area
+    g.setColour(juce::Colour(0xff888888).withAlpha(0.15f));
+    g.fillRect(clipX, clipY, clipW, clipH);
+
+    // Draw note preview
+    int minNote = 127, maxNote = 0;
+    for (auto& n : mc.notes) { minNote = std::min(minNote, n.noteNumber); maxNote = std::max(maxNote, n.noteNumber); }
+    int noteRange = std::max(1, maxNote - minNote + 1);
+
+    g.setColour(juce::Colours::white.withAlpha(0.45f));
+    for (auto& n : mc.notes)
+    {
+        float nx = beatToX(n.startBeat);
+        float nw = std::max(1.0f, (float)(n.lengthBeats / beatsPerPixel));
+        float ny = clipY + clipH - ((float)(n.noteNumber - minNote + 1) / noteRange) * (clipH - 4.0f) - 2.0f;
+        float nh = std::max(1.0f, (clipH - 4.0f) / noteRange);
+        if (nx + nw < clipX || nx > clipEndX) continue;
+        g.fillRect(nx, ny, nw, nh);
     }
 }
 
@@ -1107,6 +1173,7 @@ void ArrangementView::setLoopToSelection()
     processor.loopStartBeat.store(timeSelStartBeat);
     processor.loopEndBeat.store(timeSelEndBeat);
     processor.loopEnabled.store(true);
+    processor.editPlayheadBeat.store(timeSelStartBeat);
     updateLoopButton();
     refresh();
 }
@@ -1124,6 +1191,7 @@ void ArrangementView::setLoopToSelectedClip()
     processor.loopStartBeat.store(region.startBeat);
     processor.loopEndBeat.store(region.endBeat);
     processor.loopEnabled.store(true);
+    processor.editPlayheadBeat.store(region.startBeat);
     updateLoopButton();
     refresh();
 }
@@ -1185,10 +1253,14 @@ void ArrangementView::toggleLoopFromContext()
     // No selection: just toggle loop on/off
     bool nowEnabled = !processor.loopEnabled.load();
     processor.loopEnabled.store(nowEnabled);
-    if (nowEnabled && processor.loopEndBeat.load() <= processor.loopStartBeat.load())
+    if (nowEnabled)
     {
-        processor.loopStartBeat.store(0.0);
-        processor.loopEndBeat.store(16.0);
+        if (processor.loopEndBeat.load() <= processor.loopStartBeat.load())
+        {
+            processor.loopStartBeat.store(0.0);
+            processor.loopEndBeat.store(16.0);
+        }
+        processor.editPlayheadBeat.store(processor.loopStartBeat.load());
     }
     updateLoopButton();
     refresh();

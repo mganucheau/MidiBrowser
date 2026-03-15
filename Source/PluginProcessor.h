@@ -95,6 +95,10 @@ public:
     // User-positionable edit playhead (used when host is stopped)
     std::atomic<double>    editPlayheadBeat { 0.0 };
 
+    // Master lane: merged MIDI clip from all lanes (visual summary + output source)
+    MidiClip masterClip;
+    void rebuildMasterClip();
+
     // Last file browser directory (persisted across sessions)
     juce::String lastBrowserDir;
 

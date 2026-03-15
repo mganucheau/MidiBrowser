@@ -115,12 +115,14 @@ private:
     float  beatToX(double beat) const;
     int    yToLane(float y) const;
     float  laneToY(int lane) const;
+    float  masterLaneY() const;
 
     void rebuildClipBlocks();
     void paintRuler(juce::Graphics&);
     void paintLaneHeaders(juce::Graphics&);
     void paintClipBlocks(juce::Graphics&);
     void paintPlayhead(juce::Graphics&);
+    void paintMasterLane(juce::Graphics&);
     void paintDropIndicator(juce::Graphics&);
     void paintBeatGrid(juce::Graphics&);
     void paintLoopMarkers(juce::Graphics&);
