@@ -9,11 +9,10 @@ PatternFlowProcessor::PatternFlowProcessor()
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
     auto presets = getClipColourPresets();
-    for (int i = 0; i < 4; ++i)
     {
         CompLane lane;
-        lane.name   = "Lane " + juce::String(i + 1);
-        lane.colour = presets[i % presets.size()];
+        lane.name   = "Lane 1";
+        lane.colour = presets[0];
         lanes.push_back(lane);
     }
 }

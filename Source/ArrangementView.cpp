@@ -353,9 +353,15 @@ void ArrangementView::paintLaneHeaders(juce::Graphics& g)
         float y = laneToY(i);
         auto& lane = processor.lanes[i];
 
-        // Lane header background
-        g.setColour(colours::bgLight());
+        // Lane header background (highlight if selected)
+        bool isSelected = (i == selLane && selRegion < 0);
+        g.setColour(isSelected ? colours::bgLight().brighter(0.25f) : colours::bgLight());
         g.fillRect(0.0f, y, (float)metrics::laneHeaderW, (float)metrics::laneHeight);
+        if (isSelected)
+        {
+            g.setColour(lane.colour.withAlpha(0.3f));
+            g.fillRect(0.0f, y, (float)metrics::laneHeaderW, (float)metrics::laneHeight);
+        }
 
         // Colour accent strip on left
         g.setColour(lane.colour);
@@ -786,6 +792,16 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
                 e.position.y >= y && e.position.y < y + metrics::laneHeight)
             {
                 showLaneContextMenu(i);
+                return;
+            }
+
+            // Left-click on lane header -> select the lane
+            if (!e.mods.isRightButtonDown() &&
+                e.position.y >= y && e.position.y < y + metrics::laneHeight)
+            {
+                selLane = i;
+                selRegion = -1;
+                repaint();
                 return;
             }
         }
@@ -1355,6 +1371,37 @@ bool ArrangementView::keyPressed(const juce::KeyPress& key)
         toggleLoopFromContext();
         return true;
     }
+
+    // Delete / Backspace: delete selected lane or selected clip
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    {
+        juce::ScopedLock sl(processor.laneLock);
+
+        // If a clip/region is selected, delete it
+        if (selLane >= 0 && selRegion >= 0
+            && selLane < (int)processor.lanes.size()
+            && selRegion < (int)processor.lanes[selLane].regions.size())
+        {
+            processor.lanes[selLane].regions.erase(
+                processor.lanes[selLane].regions.begin() + selRegion);
+            selRegion = -1;
+            refresh();
+            return true;
+        }
+
+        // If a lane is selected (but no region), delete the lane
+        if (selLane >= 0 && selRegion < 0
+            && selLane < (int)processor.lanes.size())
+        {
+            processor.lanes.erase(processor.lanes.begin() + selLane);
+            selLane = -1;
+            refresh();
+            return true;
+        }
+
+        return true;
+    }
+
     return false;
 }
 
