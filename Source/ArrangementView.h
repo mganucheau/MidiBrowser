@@ -49,6 +49,7 @@ public:
     int openPianoRollRegion = -1;
 
     void refresh();
+    void zoomToFitSession();
     void refreshComponentColours();
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed(const juce::KeyPress& key) override;

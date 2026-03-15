@@ -53,6 +53,10 @@ private:
     juce::ComboBox     cmbGridSnap;
     juce::Label        lblGridSnap { {}, "Grid" };
 
+    // Session bars selector
+    juce::ComboBox     cmbSessionBars;
+    juce::Label        lblSessionBars { {}, "Bars" };
+
     // New lane button
     juce::TextButton   btnAddLane { "+ Lane" };
 
@@ -61,6 +65,7 @@ private:
 public:
     // Expose add-lane button callback
     std::function<void()> onAddLane;
+    std::function<void(int bars)> onSessionBarsChanged;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ControlPanel)
 };

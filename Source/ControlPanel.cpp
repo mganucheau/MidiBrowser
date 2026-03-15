@@ -119,6 +119,19 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     cmbGridSnap.addListener(this);
     addAndMakeVisible(cmbGridSnap);
 
+    // Session bars selector
+    lblSessionBars.setColour(juce::Label::textColourId, colours::textDim());
+    lblSessionBars.setFont(juce::Font(12.0f));
+    addAndMakeVisible(lblSessionBars);
+
+    const int barOptions[] = { 4, 8, 16, 32, 64, 128 };
+    for (int i = 0; i < 6; ++i)
+        cmbSessionBars.addItem(juce::String(barOptions[i]), i + 1);
+    cmbSessionBars.setSelectedId(2); // 8 bars default
+    cmbSessionBars.setTooltip("Session length in bars");
+    cmbSessionBars.addListener(this);
+    addAndMakeVisible(cmbSessionBars);
+
     // Add lane button with icon
     btnAddLane.setButtonText("+ Lane");
     btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent());
@@ -184,6 +197,9 @@ void ControlPanel::resized()
     lblGridSnap.setBounds(settingsX + 100, botRowY, 30, secH);
     cmbGridSnap.setBounds(settingsX + 130, botRowY, 60, secH);
 
+    lblSessionBars.setBounds(settingsX + 198, botRowY, 30, secH);
+    cmbSessionBars.setBounds(settingsX + 228, botRowY, 58, secH);
+
     // Split section (right of scale)
     int splitX = settingsX + 236;
     btnSplitEnable.setBounds(splitX, topRowY, 55, secH);
@@ -223,6 +239,7 @@ void ControlPanel::refreshComponentColours()
     // Labels
     lblRootNote.setColour(juce::Label::textColourId, colours::textDim());
     lblGridSnap.setColour(juce::Label::textColourId, colours::textDim());
+    lblSessionBars.setColour(juce::Label::textColourId, colours::textDim());
     lblHumanTiming.setColour(juce::Label::textColourId, colours::textDim());
     lblHumanVelocity.setColour(juce::Label::textColourId, colours::textDim());
     lblFeel.setColour(juce::Label::textColourId, colours::textDim());
@@ -272,6 +289,18 @@ void ControlPanel::comboBoxChanged(juce::ComboBox* combo)
             case 7: gs = GS::Sixteenth;    break;
         }
         processor.gridSnap.store((int)gs);
+    }
+    else if (combo == &cmbSessionBars)
+    {
+        const int barOptions[] = { 4, 8, 16, 32, 64, 128 };
+        int idx = combo->getSelectedId() - 1;
+        if (idx >= 0 && idx < 6)
+        {
+            int bars = barOptions[idx];
+            processor.arrangementBars.store(bars);
+            processor.loopEndBeat.store((double)(bars * 4));
+            if (onSessionBarsChanged) onSessionBarsChanged(bars);
+        }
     }
 }
 

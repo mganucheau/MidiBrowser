@@ -48,6 +48,17 @@ void ArrangementView::refresh()
     repaint();
 }
 
+void ArrangementView::zoomToFitSession()
+{
+    int totalBeats = processor.arrangementBars.load() * 4;
+    float availableW = (float)(getWidth() - metrics::laneHeaderW);
+    if (availableW <= 0) availableW = 400.0f;
+
+    beatsPerPixel = (float)totalBeats / availableW;
+    scrollBeatOffset = 0.0f;
+    refresh();
+}
+
 void ArrangementView::refreshComponentColours()
 {
     btnAddBars.setColour(juce::TextButton::buttonColourId, colours::bgLighter());

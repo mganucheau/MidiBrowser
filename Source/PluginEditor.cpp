@@ -88,6 +88,10 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         processorRef.lanes.push_back(newLane);
         arrangementView.refresh();
     };
+    controlPanel.onSessionBarsChanged = [this](int /*bars*/)
+    {
+        arrangementView.zoomToFitSession();
+    };
     addAndMakeVisible(controlPanel);
 
     // File browser - restore last directory
