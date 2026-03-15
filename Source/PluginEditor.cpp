@@ -92,6 +92,19 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     {
         arrangementView.zoomToFitSession();
     };
+    controlPanel.onRecordToggle = [this]
+    {
+        if (processorRef.recording.load())
+        {
+            processorRef.stopRecording();
+        }
+        else
+        {
+            processorRef.startRecording();
+        }
+        controlPanel.updateRecordButton();
+        arrangementView.refresh();
+    };
     addAndMakeVisible(controlPanel);
 
     // File browser - restore last directory
@@ -551,6 +564,17 @@ void PatternFlowEditor::timerCallback()
     // Animate playhead
     if (processorRef.hostPlaying.load())
         arrangementView.repaint();
+
+    // Update record button state (recording may auto-stop when transport stops)
+    static bool lastRecState = false;
+    bool recNow = processorRef.recording.load();
+    if (recNow != lastRecState)
+    {
+        lastRecState = recNow;
+        controlPanel.updateRecordButton();
+        if (!recNow)
+            arrangementView.refresh();
+    }
 }
 
 void PatternFlowEditor::exportMidi()

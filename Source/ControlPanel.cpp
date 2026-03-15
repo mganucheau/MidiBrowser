@@ -124,8 +124,8 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     lblSessionBars.setFont(juce::Font(12.0f));
     addAndMakeVisible(lblSessionBars);
 
-    const int barOptions[] = { 4, 8, 16, 32, 64, 128 };
-    for (int i = 0; i < 6; ++i)
+    const int barOptions[] = { 4, 8, 16, 32, 64 };
+    for (int i = 0; i < 5; ++i)
         cmbSessionBars.addItem(juce::String(barOptions[i]), i + 1);
     cmbSessionBars.setSelectedId(2); // 8 bars default
     cmbSessionBars.setTooltip("Session length in bars");
@@ -139,6 +139,12 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     btnAddLane.setTooltip("Add a new lane (keyboard: click + in arrangement)");
     btnAddLane.onClick = [this] { if (onAddLane) onAddLane(); };
     addAndMakeVisible(btnAddLane);
+
+    // Record button
+    updateRecordButton();
+    btnRecord.setTooltip("Toggle MIDI recording into a new lane");
+    btnRecord.onClick = [this] { if (onRecordToggle) onRecordToggle(); };
+    addAndMakeVisible(btnRecord);
 }
 
 void ControlPanel::setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& tooltip)
@@ -205,7 +211,8 @@ void ControlPanel::resized()
     btnSplitEnable.setBounds(splitX, topRowY, 55, secH);
     btnSplitEdit.setBounds(splitX + 57, topRowY, 55, secH);
 
-    // Add lane (far right, vertically centered)
+    // Record button + Add lane (far right, vertically centered)
+    btnRecord.setBounds(b.getRight() - 152, b.getCentreY() - 13, 52, 26);
     btnAddLane.setBounds(b.getRight() - 76, b.getCentreY() - 13, 72, 26);
 }
 
@@ -226,6 +233,23 @@ void ControlPanel::paint(juce::Graphics& g)
     int dividerX = b.getX() + 4 + metrics::knobSpacing * 4 + 4;
     g.setColour(colours::panelBorder().withAlpha(0.4f));
     g.drawVerticalLine(dividerX, (float)(b.getY() + 4), (float)(b.getBottom() - 4));
+}
+
+void ControlPanel::updateRecordButton()
+{
+    bool isRec = processor.recording.load();
+    if (isRec)
+    {
+        btnRecord.setButtonText("Stop");
+        btnRecord.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffdc2626));
+        btnRecord.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    }
+    else
+    {
+        btnRecord.setButtonText("Rec");
+        btnRecord.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff8b2020));
+        btnRecord.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    }
 }
 
 void ControlPanel::refreshComponentColours()
@@ -292,9 +316,9 @@ void ControlPanel::comboBoxChanged(juce::ComboBox* combo)
     }
     else if (combo == &cmbSessionBars)
     {
-        const int barOptions[] = { 4, 8, 16, 32, 64, 128 };
+        const int barOptions[] = { 4, 8, 16, 32, 64 };
         int idx = combo->getSelectedId() - 1;
-        if (idx >= 0 && idx < 6)
+        if (idx >= 0 && idx < 5)
         {
             int bars = barOptions[idx];
             processor.arrangementBars.store(bars);

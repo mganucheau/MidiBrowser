@@ -60,12 +60,18 @@ private:
     // New lane button
     juce::TextButton   btnAddLane { "+ Lane" };
 
+    // Record button
+    juce::TextButton   btnRecord { "Rec" };
+
     void setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& tooltip);
 
 public:
-    // Expose add-lane button callback
+    // Expose callbacks
     std::function<void()> onAddLane;
     std::function<void(int bars)> onSessionBarsChanged;
+    std::function<void()> onRecordToggle;
+
+    void updateRecordButton();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ControlPanel)
 };

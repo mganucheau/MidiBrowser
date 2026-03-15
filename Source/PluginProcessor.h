@@ -99,6 +99,21 @@ public:
     MidiClip masterClip;
     void rebuildMasterClip();
 
+    // ── Recording ─────────────────────────────────────────────────────────────
+    std::atomic<bool>   recording       { false };
+    std::atomic<bool>   recordingArmed  { false };  // armed, waiting for play
+
+    // Recorded note data (protected by laneLock)
+    struct RecordingNote { int noteNumber; int velocity; int channel; double startBeat; };
+    std::vector<RecordingNote> recordingActiveNotes;  // notes currently held
+    int  recordingLaneIndex = -1;     // lane being recorded into
+    double recordingStartBeat = 0.0;  // beat at which current clip started
+    int  recordingClipCount = 0;      // clips created so far in this recording
+
+    void startRecording();
+    void stopRecording();
+    void finaliseRecordingClip();      // commit current clip to lane
+
     // Last file browser directory (persisted across sessions)
     juce::String lastBrowserDir;
 

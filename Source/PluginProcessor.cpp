@@ -62,11 +62,117 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
+    // ── Recording: capture incoming MIDI before clearing ────────────────────
+    if (recording.load() && hostPlaying.load())
+    {
+        double bpmRec   = hostBpm.load();
+        double beatRec  = hostBeatPos.load();
+        if (bpmRec <= 0.0) bpmRec = 120.0;
+        double secPerBeatRec = 60.0 / bpmRec;
+        double beatsPerSampleRec = 1.0 / (sampleRate_ * secPerBeatRec);
+
+        for (const auto metadata : midi)
+        {
+            auto msg = metadata.getMessage();
+            double noteBeat = beatRec + metadata.samplePosition * beatsPerSampleRec;
+
+            if (msg.isNoteOn())
+            {
+                double sessionLenBeats = (double)(arrangementBars.load() * 4);
+                double localBeat = noteBeat - recordingStartBeat;
+
+                // If we've gone past session length, finalise clip and start new lane
+                if (localBeat >= sessionLenBeats)
+                {
+                    finaliseRecordingClip();
+                    // Start a new recording lane
+                    recordingStartBeat = noteBeat;
+                    recordingClipCount++;
+                    {
+                        juce::ScopedLock sl(laneLock);
+                        CompLane newLane;
+                        auto presets = getClipColourPresets();
+                        int idx = (int)lanes.size();
+                        newLane.name   = "Rec " + juce::String(recordingClipCount + 1);
+                        newLane.colour = presets[idx % presets.size()];
+
+                        // Create empty clip and region for the new lane
+                        MidiClip recClip;
+                        recClip.name = "Recording";
+                        recClip.colour = newLane.colour;
+                        recClip.lengthBeats = sessionLenBeats;
+                        newLane.clips.push_back(recClip);
+
+                        CompRegion recRegion;
+                        recRegion.startBeat = 0.0;
+                        recRegion.endBeat   = sessionLenBeats;
+                        recRegion.clipIndex = 0;
+                        newLane.regions.push_back(recRegion);
+
+                        lanes.push_back(newLane);
+                        recordingLaneIndex = idx;
+                    }
+                }
+
+                juce::ScopedLock sl(laneLock);
+                recordingActiveNotes.push_back({
+                    msg.getNoteNumber(), msg.getVelocity(),
+                    msg.getChannel(), noteBeat
+                });
+            }
+            else if (msg.isNoteOff())
+            {
+                juce::ScopedLock sl(laneLock);
+                int pitch = msg.getNoteNumber();
+                int chan  = msg.getChannel();
+                for (int i = (int)recordingActiveNotes.size() - 1; i >= 0; --i)
+                {
+                    auto& rn = recordingActiveNotes[i];
+                    if (rn.noteNumber == pitch && rn.channel == chan)
+                    {
+                        // Write completed note to the recording lane's clip
+                        if (recordingLaneIndex >= 0 && recordingLaneIndex < (int)lanes.size())
+                        {
+                            auto& lane = lanes[recordingLaneIndex];
+                            if (!lane.clips.empty())
+                            {
+                                NoteEvent ne;
+                                ne.noteNumber  = rn.noteNumber;
+                                ne.velocity    = rn.velocity;
+                                ne.channel     = rn.channel;
+                                ne.startBeat   = rn.startBeat - recordingStartBeat;
+                                ne.lengthBeats = std::max(0.01, noteBeat - rn.startBeat);
+                                lane.clips.back().notes.push_back(ne);
+
+                                // Update clip length if needed
+                                double noteEnd = ne.startBeat + ne.lengthBeats;
+                                if (noteEnd > lane.clips.back().lengthBeats)
+                                {
+                                    double quantLen = std::ceil(noteEnd / 4.0) * 4.0;
+                                    lane.clips.back().lengthBeats = quantLen;
+                                    // Also update the region end
+                                    if (!lane.regions.empty())
+                                        lane.regions.back().endBeat = quantLen;
+                                }
+                            }
+                        }
+                        recordingActiveNotes.erase(recordingActiveNotes.begin() + i);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     // Clear incoming MIDI - we generate our own
     midi.clear();
 
     if (!hostPlaying.load())
     {
+        // If recording was active, stop it when transport stops
+        if (recording.load())
+            stopRecording();
+
         for (auto& an : activeNotes_)
             midi.addEvent(juce::MidiMessage::noteOff(an.channel, an.pitch), 0);
         activeNotes_.clear();
@@ -289,6 +395,131 @@ double PatternFlowProcessor::applyHumanTiming(double beatPos)
 PatternFlowProcessor::TransportInfo PatternFlowProcessor::getTransport() const
 {
     return { hostBpm.load(), hostBeatPos.load(), hostPlaying.load() };
+}
+
+// ── Recording ────────────────────────────────────────────────────────────────
+
+void PatternFlowProcessor::startRecording()
+{
+    juce::ScopedLock sl(laneLock);
+
+    recordingActiveNotes.clear();
+    recordingClipCount = 0;
+
+    // Create a new lane for recording
+    CompLane recLane;
+    auto presets = getClipColourPresets();
+    int idx = (int)lanes.size();
+    recLane.name   = "Rec 1";
+    recLane.colour = presets[idx % presets.size()];
+
+    // Create an empty clip in the lane
+    MidiClip recClip;
+    recClip.name = "Recording";
+    recClip.colour = recLane.colour;
+    recClip.lengthBeats = (double)(arrangementBars.load() * 4);
+    recLane.clips.push_back(recClip);
+
+    // Create a region spanning session length
+    CompRegion recRegion;
+    recRegion.startBeat = 0.0;
+    recRegion.endBeat   = recClip.lengthBeats;
+    recRegion.clipIndex = 0;
+    recLane.regions.push_back(recRegion);
+
+    lanes.push_back(recLane);
+    recordingLaneIndex = idx;
+
+    double beatPos = hostBeatPos.load();
+    recordingStartBeat = hostPlaying.load() ? beatPos : 0.0;
+
+    recording.store(true);
+}
+
+void PatternFlowProcessor::stopRecording()
+{
+    if (!recording.load()) return;
+
+    recording.store(false);
+
+    juce::ScopedLock sl(laneLock);
+
+    // Finalise any remaining held notes at the current beat position
+    double currentBeat = hostBeatPos.load();
+    if (recordingLaneIndex >= 0 && recordingLaneIndex < (int)lanes.size())
+    {
+        auto& lane = lanes[recordingLaneIndex];
+        if (!lane.clips.empty())
+        {
+            for (auto& rn : recordingActiveNotes)
+            {
+                NoteEvent ne;
+                ne.noteNumber  = rn.noteNumber;
+                ne.velocity    = rn.velocity;
+                ne.channel     = rn.channel;
+                ne.startBeat   = rn.startBeat - recordingStartBeat;
+                ne.lengthBeats = std::max(0.01, currentBeat - rn.startBeat);
+                lane.clips.back().notes.push_back(ne);
+            }
+
+            // Trim clip length to actual content
+            double maxEnd = 0.0;
+            for (auto& n : lane.clips.back().notes)
+                maxEnd = std::max(maxEnd, n.startBeat + n.lengthBeats);
+            if (maxEnd > 0.0)
+            {
+                double quantLen = std::ceil(maxEnd / 4.0) * 4.0;
+                lane.clips.back().lengthBeats = quantLen;
+                if (!lane.regions.empty())
+                    lane.regions.back().endBeat = quantLen;
+            }
+        }
+    }
+
+    recordingActiveNotes.clear();
+    recordingLaneIndex = -1;
+    recordingClipCount = 0;
+}
+
+void PatternFlowProcessor::finaliseRecordingClip()
+{
+    // Called when recording overflows past session length - finalise current clip
+    juce::ScopedLock sl(laneLock);
+
+    if (recordingLaneIndex < 0 || recordingLaneIndex >= (int)lanes.size())
+        return;
+
+    auto& lane = lanes[recordingLaneIndex];
+    if (lane.clips.empty()) return;
+
+    // Close any still-held notes at the session boundary
+    double sessionLen = (double)(arrangementBars.load() * 4);
+    for (auto& rn : recordingActiveNotes)
+    {
+        NoteEvent ne;
+        ne.noteNumber  = rn.noteNumber;
+        ne.velocity    = rn.velocity;
+        ne.channel     = rn.channel;
+        ne.startBeat   = rn.startBeat - recordingStartBeat;
+        ne.lengthBeats = std::max(0.01, sessionLen - ne.startBeat);
+        lane.clips.back().notes.push_back(ne);
+    }
+
+    // Trim clip
+    double maxEnd = 0.0;
+    for (auto& n : lane.clips.back().notes)
+        maxEnd = std::max(maxEnd, n.startBeat + n.lengthBeats);
+    if (maxEnd > 0.0)
+    {
+        double quantLen = std::ceil(maxEnd / 4.0) * 4.0;
+        lane.clips.back().lengthBeats = quantLen;
+        if (!lane.regions.empty())
+            lane.regions.back().endBeat = quantLen;
+    }
+
+    // Keep the active notes list - they'll be re-opened in the new clip
+    // But update their start beats to 0 (relative to new clip start)
+    // (this happens in the caller which sets recordingStartBeat)
 }
 
 // ── Master clip rebuild ──────────────────────────────────────────────────────
