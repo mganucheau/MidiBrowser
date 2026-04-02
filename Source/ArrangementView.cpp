@@ -108,10 +108,10 @@ void ArrangementView::rebuildClipBlocks()
 
     for (int li = 0; li < (int)processor.lanes.size(); ++li)
     {
-        auto& lane = processor.lanes[li];
+        auto& lane = processor.lanes[static_cast<size_t>(li)];
         for (int ri = 0; ri < (int)lane.regions.size(); ++ri)
         {
-            auto& r = lane.regions[ri];
+            auto& r = lane.regions[static_cast<size_t>(ri)];
             float x1 = beatToX(r.startBeat);
             float x2 = beatToX(r.endBeat);
             float y  = laneToY(li);
@@ -351,7 +351,7 @@ void ArrangementView::paintLaneHeaders(juce::Graphics& g)
     for (int i = 0; i < (int)processor.lanes.size(); ++i)
     {
         float y = laneToY(i);
-        auto& lane = processor.lanes[i];
+        auto& lane = processor.lanes[static_cast<size_t>(i)];
 
         // Lane header background (highlight if selected)
         bool isSelected = (i == selLane && selRegion < 0);
@@ -422,9 +422,9 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
 
     for (auto& cb : clipBlocks)
     {
-        auto& lane = processor.lanes[cb.laneIndex];
-        auto& region = lane.regions[cb.regionIndex];
-        auto& clip = lane.clips[region.clipIndex];
+        auto& lane = processor.lanes[static_cast<size_t>(cb.laneIndex)];
+        auto& region = lane.regions[static_cast<size_t>(cb.regionIndex)];
+        auto& clip = lane.clips[static_cast<size_t>(region.clipIndex)];
         bool selected = (cb.laneIndex == selLane && cb.regionIndex == selRegion);
 
         auto clipColour = clip.colour;
@@ -776,13 +776,13 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
 
             if (muteRect.contains(e.position))
             {
-                processor.lanes[i].muted = !processor.lanes[i].muted;
+                processor.lanes[static_cast<size_t>(i)].muted = !processor.lanes[static_cast<size_t>(i)].muted;
                 repaint();
                 return;
             }
             if (soloRect.contains(e.position))
             {
-                processor.lanes[i].solo = !processor.lanes[i].solo;
+                processor.lanes[static_cast<size_t>(i)].solo = !processor.lanes[static_cast<size_t>(i)].solo;
                 repaint();
                 return;
             }
@@ -818,7 +818,7 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
             edgeDragLane = cb.laneIndex;
             edgeDragRegion = cb.regionIndex;
             juce::ScopedLock sl(processor.laneLock);
-            auto& reg = processor.lanes[cb.laneIndex].regions[cb.regionIndex];
+            auto& reg = processor.lanes[static_cast<size_t>(cb.laneIndex)].regions[static_cast<size_t>(cb.regionIndex)];
             edgeDragOrigStart = reg.startBeat;
             edgeDragOrigEnd = reg.endBeat;
             repaint();
@@ -836,7 +836,7 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
                 clipDragOrigLane = cb.laneIndex;
                 clipDragMouseYOffset = e.position.y - laneToY(cb.laneIndex);
                 juce::ScopedLock sl(processor.laneLock);
-                auto& reg = processor.lanes[cb.laneIndex].regions[cb.regionIndex];
+                auto& reg = processor.lanes[static_cast<size_t>(cb.laneIndex)].regions[static_cast<size_t>(cb.regionIndex)];
                 clipDragOrigBeat = reg.startBeat;
                 clipDragOrigEnd = reg.endBeat;
                 clipDragMouseOffset = xToBeat(e.position.x) - clipDragOrigBeat;
@@ -854,9 +854,9 @@ void ArrangementView::mouseDoubleClick(const juce::MouseEvent& e)
         if (cb.bounds.contains(e.position))
         {
             juce::ScopedLock sl(processor.laneLock);
-            auto& lane = processor.lanes[cb.laneIndex];
-            auto& region = lane.regions[cb.regionIndex];
-            auto& clip = lane.clips[region.clipIndex];
+            auto& lane = processor.lanes[static_cast<size_t>(cb.laneIndex)];
+            auto& region = lane.regions[static_cast<size_t>(cb.regionIndex)];
+            auto& clip = lane.clips[static_cast<size_t>(region.clipIndex)];
             if (onClipDoubleClicked)
                 onClipDoubleClicked(clip, cb.laneIndex, cb.regionIndex);
             return;
@@ -945,9 +945,9 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         beat = processor.snapBeat(beat);
         juce::ScopedLock sl(processor.laneLock);
         if (edgeDragLane < (int)processor.lanes.size() &&
-            edgeDragRegion < (int)processor.lanes[edgeDragLane].regions.size())
+            edgeDragRegion < (int)processor.lanes[static_cast<size_t>(edgeDragLane)].regions.size())
         {
-            auto& region = processor.lanes[edgeDragLane].regions[edgeDragRegion];
+            auto& region = processor.lanes[static_cast<size_t>(edgeDragLane)].regions[static_cast<size_t>(edgeDragRegion)];
             if (edgeDragging == EdgeDragTarget::Start)
                 region.startBeat = std::min(beat, region.endBeat - 0.25);
             else
@@ -962,9 +962,9 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         double newBeat = std::max(0.0, xToBeat(e.position.x) - clipDragMouseOffset);
         newBeat = processor.snapBeat(newBeat);
         juce::ScopedLock sl(processor.laneLock);
-        if (selLane < (int)processor.lanes.size() && selRegion < (int)processor.lanes[selLane].regions.size())
+        if (selLane < (int)processor.lanes.size() && selRegion < (int)processor.lanes[static_cast<size_t>(selLane)].regions.size())
         {
-            auto& region = processor.lanes[selLane].regions[selRegion];
+            auto& region = processor.lanes[static_cast<size_t>(selLane)].regions[static_cast<size_t>(selRegion)];
             double len = region.endBeat - region.startBeat;
             region.startBeat = newBeat;
             region.endBeat   = newBeat + len;
@@ -985,9 +985,9 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
     {
         juce::ScopedLock sl(processor.laneLock);
         if (edgeDragLane < (int)processor.lanes.size() &&
-            edgeDragRegion < (int)processor.lanes[edgeDragLane].regions.size())
+            edgeDragRegion < (int)processor.lanes[static_cast<size_t>(edgeDragLane)].regions.size())
         {
-            auto& region = processor.lanes[edgeDragLane].regions[edgeDragRegion];
+            auto& region = processor.lanes[static_cast<size_t>(edgeDragLane)].regions[static_cast<size_t>(edgeDragRegion)];
             double newStart = region.startBeat;
             double newEnd = region.endBeat;
             if (std::abs(newStart - edgeDragOrigStart) > 0.001 ||
@@ -1011,9 +1011,9 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
         juce::ScopedLock sl(processor.laneLock);
         int numLanes = (int)processor.lanes.size();
 
-        if (selLane < numLanes && selRegion < (int)processor.lanes[selLane].regions.size())
+        if (selLane < numLanes && selRegion < (int)processor.lanes[static_cast<size_t>(selLane)].regions.size())
         {
-            auto& region = processor.lanes[selLane].regions[selRegion];
+            auto& region = processor.lanes[static_cast<size_t>(selLane)].regions[static_cast<size_t>(selRegion)];
             double newStart = region.startBeat;
             double newEnd = region.endBeat;
 
@@ -1035,7 +1035,7 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
                 selRegion = 0; // Will be at end of dest lane
                 // Find actual index
                 if (dstLane < (int)processor.lanes.size())
-                    selRegion = (int)processor.lanes[dstLane].regions.size() - 1;
+                    selRegion = (int)processor.lanes[static_cast<size_t>(dstLane)].regions.size() - 1;
             }
             else if (beatChanged)
             {
@@ -1136,14 +1136,14 @@ void ArrangementView::itemDropped(const SourceDetails& details)
         if (lane >= numLanes) { addClipToNewLane(clip, beat); }
         else
         {
-            auto& targetLane = processor.lanes[lane];
+            auto& targetLane = processor.lanes[static_cast<size_t>(lane)];
             bool droppedOnSameClip = false;
             for (int ri = 0; ri < (int)targetLane.regions.size(); ++ri)
             {
                 auto& region = targetLane.regions[ri];
                 if (beat >= region.startBeat && beat < region.endBeat)
                 {
-                    auto& existingClip = targetLane.clips[region.clipIndex];
+                    auto& existingClip = targetLane.clips[static_cast<size_t>(region.clipIndex)];
                     if (existingClip.filePath == clip.filePath)
                     {
                         droppedOnSameClip = true;
@@ -1184,8 +1184,8 @@ void ArrangementView::addClipToLane(const MidiClip& clip, int laneIndex, double 
     {
         auto presets = getClipColourPresets();
         MidiClip colouredClip = clip;
-        colouredClip.colour = presets[processor.lanes[laneIndex].clips.size() % presets.size()];
-        processor.lanes[laneIndex].addClipAtPosition(colouredClip, beatPos);
+        colouredClip.colour = presets[processor.lanes[static_cast<size_t>(laneIndex)].clips.size() % presets.size()];
+        processor.lanes[static_cast<size_t>(laneIndex)].addClipAtPosition(colouredClip, beatPos);
         ensureBarsForBeat(beatPos + clip.lengthBeats);
     }
 }
@@ -1196,7 +1196,7 @@ void ArrangementView::addClipToNewLane(const MidiClip& clip, double beatPos)
     auto presets = getClipColourPresets();
     int idx = (int)processor.lanes.size();
     newLane.name   = "Lane " + juce::String(idx + 1);
-    newLane.colour = presets[idx % presets.size()];
+    newLane.colour = presets[static_cast<size_t>(idx) % presets.size()];
     MidiClip colouredClip = clip;
     colouredClip.colour = newLane.colour;
     newLane.addClipAtPosition(colouredClip, beatPos);
@@ -1217,7 +1217,7 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
     menu.addSubMenu("Lane Colour", laneColourMenu);
     menu.addSeparator();
 
-    { juce::ScopedLock sl(processor.laneLock); auto& region = processor.lanes[laneIdx].regions[regionIdx]; menu.addItem(1, region.muted ? "Unmute" : "Mute"); }
+    { juce::ScopedLock sl(processor.laneLock); auto& region = processor.lanes[static_cast<size_t>(laneIdx)].regions[static_cast<size_t>(regionIdx)]; menu.addItem(1, region.muted ? "Unmute" : "Mute"); }
     menu.addItem(2, "Isolate Note...");
     menu.addItem(4, "Duplicate Region");
     menu.addItem(5, "Split at Playhead");
@@ -1229,30 +1229,30 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
         if (result == 0) return;
         juce::ScopedLock sl(processor.laneLock);
         if (laneIdx >= (int)processor.lanes.size()) return;
-        auto& lane = processor.lanes[laneIdx];
+        auto& lane = processor.lanes[static_cast<size_t>(laneIdx)];
         if (regionIdx >= (int)lane.regions.size()) return;
 
         if (result >= 100 && result < 200)
-        { auto& clip = lane.clips[lane.regions[regionIdx].clipIndex]; clip.colour = presets[result - 100]; }
-        else if (result >= 200 && result < 300) lane.colour = presets[result - 200];
+        { auto& clip = lane.clips[static_cast<size_t>(lane.regions[static_cast<size_t>(regionIdx)].clipIndex)]; clip.colour = presets[static_cast<size_t>(result - 100)]; }
+        else if (result >= 200 && result < 300) lane.colour = presets[static_cast<size_t>(result - 200)];
         else if (result == 1) { processor.undoManager.perform(new ToggleMuteAction(processor, laneIdx, regionIdx)); }
         else if (result == 2)
         {
-            auto& region = lane.regions[regionIdx]; auto& clip = lane.clips[region.clipIndex];
+            auto& region = lane.regions[static_cast<size_t>(regionIdx)]; auto& clip = lane.clips[static_cast<size_t>(region.clipIndex)];
             auto pitches = clip.getDistinctPitches();
             juce::PopupMenu noteMenu; noteMenu.addItem(1000, "All Notes");
             for (int p : pitches) { auto noteName = juce::MidiMessage::getMidiNoteName(p, true, true, 3); noteMenu.addItem(1001 + p, noteName); }
             noteMenu.showMenuAsync(juce::PopupMenu::Options(), [this, laneIdx, regionIdx](int noteResult)
             { if (noteResult == 0) return; juce::ScopedLock sl2(processor.laneLock);
               if (laneIdx >= (int)processor.lanes.size()) return;
-              if (regionIdx >= (int)processor.lanes[laneIdx].regions.size()) return;
-              processor.lanes[laneIdx].regions[regionIdx].noteFilter = (noteResult == 1000) ? -1 : (noteResult - 1001); repaint(); });
+              if (regionIdx >= (int)processor.lanes[static_cast<size_t>(laneIdx)].regions.size()) return;
+              processor.lanes[static_cast<size_t>(laneIdx)].regions[static_cast<size_t>(regionIdx)].noteFilter = (noteResult == 1000) ? -1 : (noteResult - 1001); repaint(); });
         }
         else if (result == 4) { processor.undoManager.perform(new DuplicateRegionAction(processor, laneIdx, regionIdx)); }
         else if (result == 5)
         {
             double playBeat = processor.hostBeatPos.load();
-            auto& reg = lane.regions[regionIdx];
+            auto& reg = lane.regions[static_cast<size_t>(regionIdx)];
             if (playBeat > reg.startBeat && playBeat < reg.endBeat)
                 processor.undoManager.perform(new SplitRegionAction(processor, laneIdx, regionIdx, playBeat));
         }

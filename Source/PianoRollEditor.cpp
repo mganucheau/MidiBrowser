@@ -88,24 +88,24 @@ float PianoRollEditor::noteToY(int noteNum) const
 {
     int tabH = 28;
     float areaH = (float)(getHeight() - tabH);
-    return tabH + areaH - (float)(noteNum - scrollNoteY + 1) * noteHeight;
+    return (float)tabH + areaH - (float)(noteNum - scrollNoteY + 1) * noteHeight;
 }
 
 int PianoRollEditor::yToNote(float y) const
 {
     int tabH = 28;
     float areaH = (float)(getHeight() - tabH);
-    return scrollNoteY + (int)((areaH - (y - tabH)) / noteHeight);
+    return scrollNoteY + (int)((areaH - (y - (float)tabH)) / noteHeight);
 }
 
 float PianoRollEditor::beatToX(double beat) const
 {
-    return pianoKeyWidth + (float)(beat - scrollBeatX) * pixelsPerBeat;
+    return (float)pianoKeyWidth + (float)(beat - scrollBeatX) * pixelsPerBeat;
 }
 
 double PianoRollEditor::xToBeat(float x) const
 {
-    return (double)(x - pianoKeyWidth) / pixelsPerBeat + scrollBeatX;
+    return (double)(x - (float)pianoKeyWidth) / pixelsPerBeat + scrollBeatX;
 }
 
 bool PianoRollEditor::isBlackKey(int noteNum)
@@ -116,7 +116,7 @@ bool PianoRollEditor::isBlackKey(int noteNum)
 
 bool PianoRollEditor::isNearRightEdge(const juce::MouseEvent& e, int noteIdx) const
 {
-    auto& note = currentClip.notes[noteIdx];
+    auto& note = currentClip.notes[static_cast<size_t>(noteIdx)];
     float nx = beatToX(note.startBeat);
     float nw = std::max(8.0f, (float)note.lengthBeats * pixelsPerBeat);
     return std::abs(e.position.x - (nx + nw)) < 6.0f;
@@ -213,10 +213,10 @@ void PianoRollEditor::paintNoteGrid(juce::Graphics& g)
         default:              gridDiv = 0.25; break;
     }
 
-    for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + getWidth() / pixelsPerBeat + 1; beat += gridDiv)
+    for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + (float)getWidth() / pixelsPerBeat + 1; beat += gridDiv)
     {
         float x = beatToX(beat);
-        if (x < pianoKeyWidth) continue;
+        if (x < (float)pianoKeyWidth) continue;
         bool isBar = (std::fmod(beat, 4.0) < 0.001);
         bool isBeat = (std::fmod(beat, 1.0) < 0.001);
         g.setColour(isBar ? colours::pianoGrid().withAlpha(0.6f)
@@ -229,14 +229,14 @@ void PianoRollEditor::paintNotes(juce::Graphics& g)
 {
     for (int i = 0; i < (int)currentClip.notes.size(); ++i)
     {
-        auto& note = currentClip.notes[i];
+        auto& note = currentClip.notes[static_cast<size_t>(i)];
         float x = beatToX(note.startBeat);
         float y = noteToY(note.noteNumber);
         float w = std::max(4.0f, (float)note.lengthBeats * pixelsPerBeat);
-        if (x + w < pianoKeyWidth || x > getWidth()) continue;
+        if (x + w < (float)pianoKeyWidth || x > (float)getWidth()) continue;
 
         bool selected = (i == selectedNote) || (selectedNotes.count(i) > 0);
-        float velAlpha = 0.5f + 0.5f * (note.velocity / 127.0f);
+        float velAlpha = 0.5f + 0.5f * ((float)note.velocity / 127.0f);
         g.setColour(selected ? colours::accentBright() : colours::noteBlock().withAlpha(velAlpha));
         g.fillRoundedRectangle(x, y + 1.0f, w, noteHeight - 2.0f, 2.0f);
 
@@ -261,9 +261,9 @@ void PianoRollEditor::paintExpressionView(juce::Graphics& g)
     {
         float x = beatToX(note.startBeat);
         float w = std::max(3.0f, (float)note.lengthBeats * pixelsPerBeat * 0.5f);
-        float velH = (note.velocity / 127.0f) * (areaH - 20.0f);
-        if (x < pianoKeyWidth || x > getWidth()) continue;
-        float barY = getHeight() - velH - 10.0f;
+        float velH = ((float)note.velocity / 127.0f) * (areaH - 20.0f);
+        if (x < (float)pianoKeyWidth || x > (float)getWidth()) continue;
+        float barY = (float)getHeight() - velH - 10.0f;
         g.setColour(colours::accent().withAlpha(0.7f));
         g.fillRect(x, barY, w, velH);
         g.setColour(colours::accentBright());
@@ -283,10 +283,10 @@ void PianoRollEditor::paintAutomationView(juce::Graphics& g)
     float centerY = tabH + areaH * 0.5f;
     g.drawHorizontalLine((int)centerY, (float)pianoKeyWidth, (float)getWidth());
 
-    for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + getWidth() / pixelsPerBeat + 1; beat += 1.0)
+    for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + (float)getWidth() / pixelsPerBeat + 1; beat += 1.0)
     {
         float x = beatToX(beat);
-        if (x < pianoKeyWidth) continue;
+        if (x < (float)pianoKeyWidth) continue;
         bool isBar = (std::fmod(beat, 4.0) < 0.001);
         g.setColour(isBar ? colours::pianoGrid().withAlpha(0.4f) : colours::pianoGrid().withAlpha(0.15f));
         g.drawVerticalLine((int)x, (float)tabH, (float)getHeight());
@@ -301,7 +301,7 @@ void PianoRollEditor::paintStartLine(juce::Graphics& g)
     if (!clipLoaded) return;
 
     float startLineX = beatToX(currentClip.clipStartOffset);
-    if (startLineX < pianoKeyWidth || startLineX > getWidth()) return;
+    if (startLineX < (float)pianoKeyWidth || startLineX > (float)getWidth()) return;
 
     int tabH = 28;
 
@@ -358,7 +358,7 @@ void PianoRollEditor::mouseMove(const juce::MouseEvent& e)
     if (!clipLoaded || viewMode != EditorViewMode::Notes) return;
 
     // Check start line handle
-    if (e.position.x >= pianoKeyWidth && isNearStartLine(e.position.x) && e.position.y <= 38.0f)
+    if (e.position.x >= (float)pianoKeyWidth && isNearStartLine(e.position.x) && e.position.y <= 38.0f)
     {
         setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
         return;
@@ -366,7 +366,7 @@ void PianoRollEditor::mouseMove(const juce::MouseEvent& e)
 
     for (int i = 0; i < (int)currentClip.notes.size(); ++i)
     {
-        auto& note = currentClip.notes[i];
+        auto& note = currentClip.notes[static_cast<size_t>(i)];
         float nx = beatToX(note.startBeat); float ny = noteToY(note.noteNumber);
         float nw = std::max(8.0f, (float)note.lengthBeats * pixelsPerBeat);
         if (e.position.y >= ny && e.position.y <= ny + noteHeight && e.position.x >= nx && e.position.x <= nx + nw)
@@ -383,7 +383,7 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
     selectedNote = -1; resizingNote = false; velocityDragNote = -1; draggingStartLine = false;
 
     // Check for start line drag (near handle at top of line)
-    if (viewMode == EditorViewMode::Notes && e.position.x >= pianoKeyWidth &&
+    if (viewMode == EditorViewMode::Notes && e.position.x >= (float)pianoKeyWidth &&
         isNearStartLine(e.position.x) && e.position.y <= 38.0f)
     {
         draggingStartLine = true;
@@ -399,7 +399,7 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
         float areaH = (float)(getHeight() - tabH);
         for (int i = 0; i < (int)currentClip.notes.size(); ++i)
         {
-            auto& note = currentClip.notes[i];
+            auto& note = currentClip.notes[static_cast<size_t>(i)];
             float x = beatToX(note.startBeat);
             float w = std::max(3.0f, (float)note.lengthBeats * pixelsPerBeat * 0.5f);
             if (e.position.x >= x && e.position.x <= x + w + 4.0f)
@@ -420,13 +420,13 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
     if (viewMode == EditorViewMode::Notes)
     {
         // Piano key click: select all notes on that pitch
-        if (e.position.x < pianoKeyWidth && e.position.y >= 28)
+        if (e.position.x < (float)pianoKeyWidth && e.position.y >= 28)
         {
             int pitch = yToNote(e.position.y);
             selectedNotes.clear();
             for (int i = 0; i < (int)currentClip.notes.size(); ++i)
             {
-                if (currentClip.notes[i].noteNumber == pitch)
+                if (currentClip.notes[static_cast<size_t>(i)].noteNumber == pitch)
                     selectedNotes.insert(i);
             }
             if (!selectedNotes.empty())
@@ -441,7 +441,7 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
 
         for (int i = 0; i < (int)currentClip.notes.size(); ++i)
         {
-            auto& note = currentClip.notes[i];
+            auto& note = currentClip.notes[static_cast<size_t>(i)];
             float nx = beatToX(note.startBeat); float ny = noteToY(note.noteNumber);
             float nw = std::max(8.0f, (float)note.lengthBeats * pixelsPerBeat);
             if (e.position.x >= nx && e.position.x <= nx + nw && e.position.y >= ny && e.position.y <= ny + noteHeight)
@@ -490,7 +490,7 @@ void PianoRollEditor::mouseDrag(const juce::MouseEvent& e)
     {
         float deltaY = velocityDragStartY - e.position.y;
         int newVel = juce::jlimit(1, 127, velocityDragOrigVel + (int)(deltaY * 0.8f));
-        currentClip.notes[velocityDragNote].velocity = newVel;
+        currentClip.notes[static_cast<size_t>(velocityDragNote)].velocity = newVel;
         repaint();
         return;
     }
