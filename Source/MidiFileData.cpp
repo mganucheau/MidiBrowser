@@ -52,33 +52,27 @@ MidiClip parseMidiFile(const juce::File& file)
     juce::MidiFile midiFile;
     if (!midiFile.readFrom(stream)) return clip;
 
-    midiFile.convertTimestampTicksToSeconds();
+    // Use ticks directly — do NOT call convertTimestampTicksToSeconds().
+    // Ticks / ticksPerQuarterNote = beat positions directly, with no
+    // tempo-dependent conversion errors that cause gaps or wrong lengths.
+    short tpqn = midiFile.getTimeFormat();
+    bool useTicks = (tpqn > 0);
+    double ticksPerBeat = (double)tpqn;
 
-    double bpm = 120.0; // default
-    // Try to read tempo from the file
-    if (midiFile.getNumTracks() > 0)
+    if (!useTicks)
     {
-        auto* track = midiFile.getTrack(0);
-        for (int i = 0; i < track->getNumEvents(); ++i)
-        {
-            auto& ev = track->getEventPointer(i)->message;
-            if (ev.isTempoMetaEvent())
-            {
-                bpm = 60.0 / ev.getTempoSecondsPerQuarterNote();
-                break;
-            }
-        }
+        // SMPTE format (rare) — fall back to seconds-based conversion
+        midiFile.convertTimestampTicksToSeconds();
     }
 
-    double secPerBeat = 60.0 / bpm;
     double maxBeat = 0.0;
+    double trackEndBeat = 0.0;
 
     for (int t = 0; t < midiFile.getNumTracks(); ++t)
     {
         auto* trackPtr = midiFile.getTrack(t);
         if (trackPtr == nullptr) continue;
 
-        // getTrack() returns const* in newer JUCE; copy so we can update pairs
         juce::MidiMessageSequence track(*trackPtr);
         track.updateMatchedPairs();
 
@@ -87,18 +81,39 @@ MidiClip parseMidiFile(const juce::File& file)
             auto* evHolder = track.getEventPointer(i);
             auto& msg = evHolder->message;
 
+            // Track the last event of any kind (including end-of-track meta)
+            // to determine the true MIDI file length
+            if (useTicks)
+                trackEndBeat = std::max(trackEndBeat, msg.getTimeStamp() / ticksPerBeat);
+            else
+                trackEndBeat = std::max(trackEndBeat, msg.getTimeStamp() / 0.5); // assume 120 BPM
+
             if (msg.isNoteOn())
             {
                 NoteEvent ne;
                 ne.noteNumber = msg.getNoteNumber();
                 ne.velocity   = msg.getVelocity();
                 ne.channel    = msg.getChannel();
-                ne.startBeat  = msg.getTimeStamp() / secPerBeat;
 
-                if (evHolder->noteOffObject != nullptr)
-                    ne.lengthBeats = (evHolder->noteOffObject->message.getTimeStamp() - msg.getTimeStamp()) / secPerBeat;
+                if (useTicks)
+                {
+                    ne.startBeat = msg.getTimeStamp() / ticksPerBeat;
+                    if (evHolder->noteOffObject != nullptr)
+                        ne.lengthBeats = (evHolder->noteOffObject->message.getTimeStamp()
+                                          - msg.getTimeStamp()) / ticksPerBeat;
+                    else
+                        ne.lengthBeats = 0.25;
+                }
                 else
-                    ne.lengthBeats = 0.25;
+                {
+                    double secPerBeat = 0.5; // 60/120
+                    ne.startBeat = msg.getTimeStamp() / secPerBeat;
+                    if (evHolder->noteOffObject != nullptr)
+                        ne.lengthBeats = (evHolder->noteOffObject->message.getTimeStamp()
+                                          - msg.getTimeStamp()) / secPerBeat;
+                    else
+                        ne.lengthBeats = 0.25;
+                }
 
                 clip.notes.push_back(ne);
                 maxBeat = std::max(maxBeat, ne.startBeat + ne.lengthBeats);
@@ -106,8 +121,30 @@ MidiClip parseMidiFile(const juce::File& file)
         }
     }
 
-    // Quantise clip length to whole bars (4 beats)
-    clip.lengthBeats = std::max(4.0, std::ceil(maxBeat / 4.0) * 4.0);
+    // Use the end-of-track timestamp if it's on a clean bar boundary and
+    // covers all notes. Otherwise fall back to the last note-off position.
+    double barLen = 4.0;
+    double effectiveEnd = maxBeat;
+
+    if (trackEndBeat >= maxBeat)
+    {
+        double trackBars = trackEndBeat / barLen;
+        double trackRounded = std::round(trackBars);
+        if (trackRounded > 0.0 && std::abs(trackBars - trackRounded) < 0.01)
+            effectiveEnd = trackRounded * barLen;
+        else
+            effectiveEnd = trackEndBeat;
+    }
+
+    // Quantise to whole bars, snapping near-integer values to avoid
+    // an extra bar from floating-point overshoot (e.g. 8.001 -> 8)
+    double bars = effectiveEnd / barLen;
+    double rounded = std::round(bars);
+    if (std::abs(bars - rounded) < 0.01 && rounded > 0.0)
+        bars = rounded;
+    else
+        bars = std::ceil(bars);
+    clip.lengthBeats = std::max(barLen, bars * barLen);
     return clip;
 }
 
