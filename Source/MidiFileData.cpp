@@ -66,7 +66,6 @@ MidiClip parseMidiFile(const juce::File& file)
     }
 
     double maxBeat = 0.0;
-    double trackEndBeat = 0.0;
 
     for (int t = 0; t < midiFile.getNumTracks(); ++t)
     {
@@ -80,13 +79,6 @@ MidiClip parseMidiFile(const juce::File& file)
         {
             auto* evHolder = track.getEventPointer(i);
             auto& msg = evHolder->message;
-
-            // Track the last event of any kind (including end-of-track meta)
-            // to determine the true MIDI file length
-            if (useTicks)
-                trackEndBeat = std::max(trackEndBeat, msg.getTimeStamp() / ticksPerBeat);
-            else
-                trackEndBeat = std::max(trackEndBeat, msg.getTimeStamp() / 0.5); // assume 120 BPM
 
             if (msg.isNoteOn())
             {
@@ -121,30 +113,24 @@ MidiClip parseMidiFile(const juce::File& file)
         }
     }
 
-    // Use the end-of-track timestamp if it's on a clean bar boundary and
-    // covers all notes. Otherwise fall back to the last note-off position.
+    // Round maxBeat up to the nearest bar (4 beats), but snap to the
+    // nearest bar if within tolerance (avoids 8.001 -> 12 instead of 8).
     double barLen = 4.0;
-    double effectiveEnd = maxBeat;
-
-    if (trackEndBeat >= maxBeat)
-    {
-        double trackBars = trackEndBeat / barLen;
-        double trackRounded = std::round(trackBars);
-        if (trackRounded > 0.0 && std::abs(trackBars - trackRounded) < 0.01)
-            effectiveEnd = trackRounded * barLen;
-        else
-            effectiveEnd = trackEndBeat;
-    }
-
-    // Quantise to whole bars, snapping near-integer values to avoid
-    // an extra bar from floating-point overshoot (e.g. 8.001 -> 8)
-    double bars = effectiveEnd / barLen;
+    double bars = maxBeat / barLen;
     double rounded = std::round(bars);
-    if (std::abs(bars - rounded) < 0.01 && rounded > 0.0)
-        bars = rounded;
+    if (rounded > 0.0 && std::abs(bars - rounded) < 0.05)
+        bars = rounded;  // snap: e.g. 1.998 -> 2, 2.003 -> 2
     else
-        bars = std::ceil(bars);
+        bars = std::ceil(bars);  // round up to next whole bar
     clip.lengthBeats = std::max(barLen, bars * barLen);
+
+    DBG("parseMidiFile: " + clip.name
+        + " tpqn=" + juce::String(tpqn)
+        + " maxBeat=" + juce::String(maxBeat, 4)
+        + " bars=" + juce::String(bars, 4)
+        + " lengthBeats=" + juce::String(clip.lengthBeats, 4)
+        + " notes=" + juce::String((int)clip.notes.size()));
+
     return clip;
 }
 
