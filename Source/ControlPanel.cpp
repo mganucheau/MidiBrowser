@@ -140,6 +140,13 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     btnAddLane.onClick = [this] { if (onAddLane) onAddLane(); };
     addAndMakeVisible(btnAddLane);
 
+    // Trim button
+    btnTrim.setColour(juce::TextButton::buttonColourId, colours::bgLight());
+    btnTrim.setColour(juce::TextButton::textColourOffId, colours::text());
+    btnTrim.setTooltip("Trim empty measures from the end of each clip");
+    btnTrim.onClick = [this] { if (onTrimClips) onTrimClips(); };
+    addAndMakeVisible(btnTrim);
+
     // Record button
     updateRecordButton();
     btnRecord.setTooltip("Toggle MIDI recording into a new lane");
@@ -211,7 +218,8 @@ void ControlPanel::resized()
     btnSplitEnable.setBounds(splitX, topRowY, 55, secH);
     btnSplitEdit.setBounds(splitX + 57, topRowY, 55, secH);
 
-    // Record button + Add lane (far right, vertically centered)
+    // Trim + Record + Add lane (far right, vertically centered)
+    btnTrim.setBounds(b.getRight() - 216, b.getCentreY() - 13, 52, 26);
     btnRecord.setBounds(b.getRight() - 152, b.getCentreY() - 13, 52, 26);
     btnAddLane.setBounds(b.getRight() - 76, b.getCentreY() - 13, 72, 26);
 }
@@ -272,6 +280,8 @@ void ControlPanel::refreshComponentColours()
     // Buttons
     btnSplitEdit.setColour(juce::TextButton::buttonColourId, colours::bgLight());
     btnSplitEdit.setColour(juce::TextButton::textColourOffId, colours::text());
+    btnTrim.setColour(juce::TextButton::buttonColourId, colours::bgLight());
+    btnTrim.setColour(juce::TextButton::textColourOffId, colours::text());
     btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent());
     btnAddLane.setColour(juce::TextButton::textColourOffId, colours::textBright());
 }

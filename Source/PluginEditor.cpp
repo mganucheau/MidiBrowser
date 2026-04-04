@@ -88,9 +88,63 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         processorRef.lanes.push_back(newLane);
         arrangementView.refresh();
     };
-    controlPanel.onSessionBarsChanged = [this](int /*bars*/)
+    controlPanel.onSessionBarsChanged = [this](int bars)
     {
+        // Clip regions that extend past the new session end
+        double sessionEnd = (double)(bars * 4);
+        {
+            juce::ScopedLock sl(processorRef.laneLock);
+            for (auto& lane : processorRef.lanes)
+            {
+                for (auto& region : lane.regions)
+                {
+                    if (region.endBeat > sessionEnd)
+                        region.endBeat = sessionEnd;
+                    if (region.startBeat >= sessionEnd)
+                        region.startBeat = std::max(0.0, sessionEnd - 0.25);
+                }
+                lane.sortAndClampRegions();
+            }
+        }
+        processorRef.rebuildMasterClip();
         arrangementView.zoomToFitSession();
+    };
+    controlPanel.onTrimClips = [this]
+    {
+        juce::ScopedLock sl(processorRef.laneLock);
+        for (auto& lane : processorRef.lanes)
+        {
+            for (auto& region : lane.regions)
+            {
+                if (region.clipIndex < 0 || region.clipIndex >= (int)lane.clips.size())
+                    continue;
+                auto& clip = lane.clips[static_cast<size_t>(region.clipIndex)];
+                if (clip.notes.empty()) continue;
+
+                // Find the last note-off beat in the clip
+                double maxBeat = 0.0;
+                for (auto& n : clip.notes)
+                    maxBeat = std::max(maxBeat, n.startBeat + n.lengthBeats);
+
+                // Round up to the nearest bar (4 beats)
+                double trimmedBars = std::ceil(maxBeat / 4.0);
+                double trimmedLen = std::max(4.0, trimmedBars * 4.0);
+
+                if (trimmedLen < clip.lengthBeats)
+                {
+                    // Shorten both the clip and the region
+                    double reduction = clip.lengthBeats - trimmedLen;
+                    clip.lengthBeats = trimmedLen;
+                    // Shrink region end proportionally if it was based on old clip length
+                    double regionLen = region.endBeat - region.startBeat;
+                    if (regionLen > trimmedLen)
+                        region.endBeat = region.startBeat + trimmedLen;
+                }
+            }
+            lane.sortAndClampRegions();
+        }
+        processorRef.rebuildMasterClip();
+        arrangementView.refresh();
     };
     controlPanel.onRecordToggle = [this]
     {
@@ -132,6 +186,13 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     };
     arrangementView.onClipDoubleClicked = [this](const MidiClip& clip, int laneIdx, int regionIdx)
     {
+        if (laneIdx < 0)
+        {
+            // Double-click on empty space → close piano roll
+            pianoRoll.clearClip();
+            resized();
+            return;
+        }
         pianoRoll.setClip(clip, laneIdx, regionIdx);
         resized();
     };
@@ -186,7 +247,8 @@ void PatternFlowEditor::showAboutDialog()
     titleLabel->setBounds(20, 12, 360, 30);
     content->addAndMakeVisible(titleLabel);
 
-    auto* versionLabel = new juce::Label({}, juce::String("Version ") + version::number);
+    auto* versionLabel = new juce::Label({}, juce::String("Version ") + version::number
+                                            + "  (" + version::buildDate + ")");
     versionLabel->setFont(juce::Font(juce::FontOptions(13.0f)));
     versionLabel->setColour(juce::Label::textColourId, colours::textDim());
     versionLabel->setBounds(20, 42, 360, 20);

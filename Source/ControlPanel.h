@@ -60,6 +60,9 @@ private:
     // New lane button
     juce::TextButton   btnAddLane { "+ Lane" };
 
+    // Trim button
+    juce::TextButton   btnTrim { "Trim" };
+
     // Record button
     juce::TextButton   btnRecord { "Rec" };
 
@@ -70,6 +73,7 @@ public:
     std::function<void()> onAddLane;
     std::function<void(int bars)> onSessionBarsChanged;
     std::function<void()> onRecordToggle;
+    std::function<void()> onTrimClips;
 
     void updateRecordButton();
 

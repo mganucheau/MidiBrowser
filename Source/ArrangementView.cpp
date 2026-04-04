@@ -862,6 +862,10 @@ void ArrangementView::mouseDoubleClick(const juce::MouseEvent& e)
             return;
         }
     }
+
+    // Double-click on empty space → close the piano roll
+    if (onClipDoubleClicked)
+        onClipDoubleClicked(MidiClip{}, -1, -1);
 }
 
 void ArrangementView::mouseDrag(const juce::MouseEvent& e)
@@ -938,7 +942,7 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         return;
     }
 
-    // Region edge drag-to-loop
+    // Region edge drag — clamp to neighbor regions to prevent overlaps
     if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
     {
         double beat = std::max(0.0, xToBeat(e.position.x));
@@ -947,11 +951,48 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         if (edgeDragLane < (int)processor.lanes.size() &&
             edgeDragRegion < (int)processor.lanes[static_cast<size_t>(edgeDragLane)].regions.size())
         {
-            auto& region = processor.lanes[static_cast<size_t>(edgeDragLane)].regions[static_cast<size_t>(edgeDragRegion)];
+            auto& lane = processor.lanes[static_cast<size_t>(edgeDragLane)];
+            auto& region = lane.regions[static_cast<size_t>(edgeDragRegion)];
+
             if (edgeDragging == EdgeDragTarget::Start)
-                region.startBeat = std::min(beat, region.endBeat - 0.25);
-            else
-                region.endBeat = std::max(beat, region.startBeat + 0.25);
+            {
+                // Clamp: can't go past own end - 0.25, can't go before prev region's start
+                double minBound = 0.0;
+                for (int i = 0; i < (int)lane.regions.size(); ++i)
+                {
+                    if (i == edgeDragRegion) continue;
+                    if (lane.regions[static_cast<size_t>(i)].endBeat <= edgeDragOrigStart + 0.01
+                        && lane.regions[static_cast<size_t>(i)].startBeat >= minBound)
+                        minBound = lane.regions[static_cast<size_t>(i)].startBeat;
+                }
+                // Find the nearest previous region's endBeat
+                double prevEnd = 0.0;
+                for (int i = 0; i < (int)lane.regions.size(); ++i)
+                {
+                    if (i == edgeDragRegion) continue;
+                    if (lane.regions[static_cast<size_t>(i)].endBeat <= edgeDragOrigStart + 0.01)
+                        prevEnd = std::max(prevEnd, lane.regions[static_cast<size_t>(i)].endBeat);
+                }
+                beat = std::max(beat, prevEnd);
+                beat = std::min(beat, region.endBeat - 0.25);
+                region.startBeat = beat;
+            }
+            else // EdgeDragTarget::End
+            {
+                // Clamp: can't go before own start + 0.25, can't go past next region's end
+                double maxBound = (double)(processor.arrangementBars.load() * 4);
+                // Find the nearest next region's startBeat
+                double nextStart = maxBound;
+                for (int i = 0; i < (int)lane.regions.size(); ++i)
+                {
+                    if (i == edgeDragRegion) continue;
+                    if (lane.regions[static_cast<size_t>(i)].startBeat >= edgeDragOrigEnd - 0.01)
+                        nextStart = std::min(nextStart, lane.regions[static_cast<size_t>(i)].startBeat);
+                }
+                beat = std::min(beat, nextStart);
+                beat = std::max(beat, region.startBeat + 0.25);
+                region.endBeat = beat;
+            }
         }
         repaint();
         return;
@@ -980,14 +1021,15 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
     if (draggingPlayhead) { draggingPlayhead = false; return; }
     if (draggingMasterClip) { draggingMasterClip = false; masterDragInitiated = false; return; }
 
-    // Edge drag-to-loop undo
+    // Edge drag undo — sort/clamp and rebuild master
     if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
     {
         juce::ScopedLock sl(processor.laneLock);
         if (edgeDragLane < (int)processor.lanes.size() &&
             edgeDragRegion < (int)processor.lanes[static_cast<size_t>(edgeDragLane)].regions.size())
         {
-            auto& region = processor.lanes[static_cast<size_t>(edgeDragLane)].regions[static_cast<size_t>(edgeDragRegion)];
+            auto& lane = processor.lanes[static_cast<size_t>(edgeDragLane)];
+            auto& region = lane.regions[static_cast<size_t>(edgeDragRegion)];
             double newStart = region.startBeat;
             double newEnd = region.endBeat;
             if (std::abs(newStart - edgeDragOrigStart) > 0.001 ||
@@ -999,9 +1041,13 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
                     new MoveRegionAction(processor, edgeDragLane, edgeDragRegion,
                                          edgeDragOrigStart, edgeDragOrigEnd,
                                          newStart, newEnd));
+                // Re-sort and clamp after the undo action has applied
+                lane.sortAndClampRegions();
             }
         }
         edgeDragging = EdgeDragTarget::None;
+        processor.rebuildMasterClip();
+        refresh();
         return;
     }
 
@@ -1051,7 +1097,17 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
     hoveredLane = -1;
     loopDragging = LoopDragTarget::None;
     rulerDragging = false;
-    draggingClip = false;
+    if (draggingClip)
+    {
+        draggingClip = false;
+        // Sort/clamp regions in source lane after move and rebuild master
+        {
+            juce::ScopedLock sl(processor.laneLock);
+            if (selLane >= 0 && selLane < (int)processor.lanes.size())
+                processor.lanes[static_cast<size_t>(selLane)].sortAndClampRegions();
+        }
+        processor.rebuildMasterClip();
+    }
     refresh();
 }
 
@@ -1186,6 +1242,14 @@ void ArrangementView::addClipToLane(const MidiClip& clip, int laneIndex, double 
         MidiClip colouredClip = clip;
         colouredClip.colour = presets[processor.lanes[static_cast<size_t>(laneIndex)].clips.size() % presets.size()];
         processor.lanes[static_cast<size_t>(laneIndex)].addClipAtPosition(colouredClip, beatPos);
+
+        // Clip region end at session boundary
+        double sessionEnd = (double)(processor.arrangementBars.load() * 4);
+        auto& regions = processor.lanes[static_cast<size_t>(laneIndex)].regions;
+        if (!regions.empty() && regions.back().endBeat > sessionEnd)
+            regions.back().endBeat = sessionEnd;
+
+        processor.lanes[static_cast<size_t>(laneIndex)].sortAndClampRegions();
         ensureBarsForBeat(beatPos + clip.lengthBeats);
     }
 }
@@ -1200,6 +1264,12 @@ void ArrangementView::addClipToNewLane(const MidiClip& clip, double beatPos)
     MidiClip colouredClip = clip;
     colouredClip.colour = newLane.colour;
     newLane.addClipAtPosition(colouredClip, beatPos);
+
+    // Clip region end at session boundary
+    double sessionEnd = (double)(processor.arrangementBars.load() * 4);
+    if (!newLane.regions.empty() && newLane.regions.back().endBeat > sessionEnd)
+        newLane.regions.back().endBeat = sessionEnd;
+
     processor.lanes.push_back(newLane);
     ensureBarsForBeat(beatPos + clip.lengthBeats);
 }
@@ -1257,7 +1327,7 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
                 processor.undoManager.perform(new SplitRegionAction(processor, laneIdx, regionIdx, playBeat));
         }
         else if (result == 3) { processor.undoManager.perform(new RemoveRegionAction(processor, laneIdx, regionIdx)); }
-        repaint();
+        refresh();
     });
 }
 

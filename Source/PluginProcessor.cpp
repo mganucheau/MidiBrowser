@@ -688,64 +688,16 @@ void PatternFlowProcessor::setStateInformation(const void* data, int sizeInBytes
         loopEndBeat  .store(xml->getDoubleAttribute("loopEndBeat", 32.0));
         lastBrowserDir = xml->getStringAttribute("lastBrowserDir", "");
 
-        // Restore lanes and clips
-        if (auto* lanesXml = xml->getChildByName("Lanes"))
+        // Default: start with an empty session (one blank lane).
+        // Previous lane/clip data is NOT restored — the user requested
+        // a clean session on every load.
         {
             juce::ScopedLock sl(laneLock);
             lanes.clear();
-
-            for (auto* laneXml : lanesXml->getChildIterator())
-            {
-                CompLane lane;
-                lane.name     = laneXml->getStringAttribute("name", "Lane");
-                lane.colour   = juce::Colour((juce::uint32)laneXml->getIntAttribute("colour", (int)0xff3a7bd5));
-                lane.expanded = laneXml->getBoolAttribute("expanded", false);
-
-                if (auto* clipsXml = laneXml->getChildByName("Clips"))
-                {
-                    for (auto* clipXml : clipsXml->getChildIterator())
-                    {
-                        MidiClip clip;
-                        clip.name           = clipXml->getStringAttribute("name");
-                        clip.filePath       = clipXml->getStringAttribute("filePath");
-                        clip.lengthBeats    = clipXml->getDoubleAttribute("lengthBeats", 4.0);
-                        clip.colour         = juce::Colour((juce::uint32)clipXml->getIntAttribute("colour", (int)0xff3a7bd5));
-                        clip.rootNoteOffset = clipXml->getIntAttribute("rootNoteOffset", 0);
-                        clip.clipStartOffset = clipXml->getDoubleAttribute("clipStartOffset", 0.0);
-
-                        if (auto* notesXml = clipXml->getChildByName("Notes"))
-                        {
-                            for (auto* noteXml : notesXml->getChildIterator())
-                            {
-                                NoteEvent note;
-                                note.noteNumber  = noteXml->getIntAttribute("p", 60);
-                                note.velocity    = noteXml->getIntAttribute("v", 100);
-                                note.startBeat   = noteXml->getDoubleAttribute("s", 0.0);
-                                note.lengthBeats = noteXml->getDoubleAttribute("l", 1.0);
-                                note.channel     = noteXml->getIntAttribute("c", 1);
-                                clip.notes.push_back(note);
-                            }
-                        }
-                        lane.clips.push_back(clip);
-                    }
-                }
-
-                if (auto* regionsXml = laneXml->getChildByName("Regions"))
-                {
-                    for (auto* regXml : regionsXml->getChildIterator())
-                    {
-                        CompRegion region;
-                        region.startBeat  = regXml->getDoubleAttribute("start", 0.0);
-                        region.endBeat    = regXml->getDoubleAttribute("end", 4.0);
-                        region.clipIndex  = regXml->getIntAttribute("clip", -1);
-                        region.noteFilter = regXml->getIntAttribute("filter", -1);
-                        region.muted      = regXml->getBoolAttribute("muted", false);
-                        lane.regions.push_back(region);
-                    }
-                }
-
-                lanes.push_back(lane);
-            }
+            CompLane lane;
+            lane.name   = "Lane 1";
+            lane.colour = getClipColourPresets()[0];
+            lanes.push_back(lane);
         }
 
         // Restore split rules

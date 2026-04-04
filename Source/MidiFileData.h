@@ -81,6 +81,10 @@ struct CompLane
 
     void addClipAtPosition(const MidiClip& clip, double beatPos);
     void removeRegion(int index);
+
+    // Sort regions by startBeat and clamp so they never overlap within this lane.
+    // Adjacent regions: prev.endBeat == next.startBeat (no gaps, no overlaps).
+    void sortAndClampRegions();
 };
 
 // ── MIDI split routing ───────────────────────────────────────────────────────
