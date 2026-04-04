@@ -942,55 +942,30 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         return;
     }
 
-    // Region edge drag — clamp to neighbor regions to prevent overlaps
+    // Region edge drag — simple clamping during drag, constraints applied on mouse-up
     if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
     {
         double beat = std::max(0.0, xToBeat(e.position.x));
         beat = processor.snapBeat(beat);
+        double sessionEnd = (double)(processor.arrangementBars.load() * 4);
         juce::ScopedLock sl(processor.laneLock);
         if (edgeDragLane < (int)processor.lanes.size() &&
             edgeDragRegion < (int)processor.lanes[static_cast<size_t>(edgeDragLane)].regions.size())
         {
-            auto& lane = processor.lanes[static_cast<size_t>(edgeDragLane)];
-            auto& region = lane.regions[static_cast<size_t>(edgeDragRegion)];
+            auto& region = processor.lanes[static_cast<size_t>(edgeDragLane)].regions[static_cast<size_t>(edgeDragRegion)];
 
             if (edgeDragging == EdgeDragTarget::Start)
             {
-                // Clamp: can't go past own end - 0.25, can't go before prev region's start
-                double minBound = 0.0;
-                for (int i = 0; i < (int)lane.regions.size(); ++i)
-                {
-                    if (i == edgeDragRegion) continue;
-                    if (lane.regions[static_cast<size_t>(i)].endBeat <= edgeDragOrigStart + 0.01
-                        && lane.regions[static_cast<size_t>(i)].startBeat >= minBound)
-                        minBound = lane.regions[static_cast<size_t>(i)].startBeat;
-                }
-                // Find the nearest previous region's endBeat
-                double prevEnd = 0.0;
-                for (int i = 0; i < (int)lane.regions.size(); ++i)
-                {
-                    if (i == edgeDragRegion) continue;
-                    if (lane.regions[static_cast<size_t>(i)].endBeat <= edgeDragOrigStart + 0.01)
-                        prevEnd = std::max(prevEnd, lane.regions[static_cast<size_t>(i)].endBeat);
-                }
-                beat = std::max(beat, prevEnd);
-                beat = std::min(beat, region.endBeat - 0.25);
+                // Simple: can't go below 0 or past own endBeat
+                beat = std::max(0.0, beat);
+                beat = std::min(beat, region.endBeat - 1.0);
                 region.startBeat = beat;
             }
             else // EdgeDragTarget::End
             {
-                // Clamp: can't go before own start + 0.25, can't go past next region's end
-                double maxBound = (double)(processor.arrangementBars.load() * 4);
-                // Find the nearest next region's startBeat
-                double nextStart = maxBound;
-                for (int i = 0; i < (int)lane.regions.size(); ++i)
-                {
-                    if (i == edgeDragRegion) continue;
-                    if (lane.regions[static_cast<size_t>(i)].startBeat >= edgeDragOrigEnd - 0.01)
-                        nextStart = std::min(nextStart, lane.regions[static_cast<size_t>(i)].startBeat);
-                }
-                beat = std::min(beat, nextStart);
-                beat = std::max(beat, region.startBeat + 0.25);
+                // Simple: can't go past session end or before own startBeat
+                beat = std::min(beat, sessionEnd);
+                beat = std::max(beat, region.startBeat + 1.0);
                 region.endBeat = beat;
             }
         }
@@ -1021,93 +996,113 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
     if (draggingPlayhead) { draggingPlayhead = false; return; }
     if (draggingMasterClip) { draggingMasterClip = false; masterDragInitiated = false; return; }
 
-    // Edge drag undo — sort/clamp and rebuild master
+    // Edge drag complete — commit undo action, sort/clamp, rebuild master
     if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
     {
-        juce::ScopedLock sl(processor.laneLock);
-        if (edgeDragLane < (int)processor.lanes.size() &&
-            edgeDragRegion < (int)processor.lanes[static_cast<size_t>(edgeDragLane)].regions.size())
+        double newStart, newEnd;
         {
-            auto& lane = processor.lanes[static_cast<size_t>(edgeDragLane)];
-            auto& region = lane.regions[static_cast<size_t>(edgeDragRegion)];
-            double newStart = region.startBeat;
-            double newEnd = region.endBeat;
-            if (std::abs(newStart - edgeDragOrigStart) > 0.001 ||
-                std::abs(newEnd - edgeDragOrigEnd) > 0.001)
+            juce::ScopedLock sl(processor.laneLock);
+            if (edgeDragLane < (int)processor.lanes.size() &&
+                edgeDragRegion < (int)processor.lanes[static_cast<size_t>(edgeDragLane)].regions.size())
             {
+                auto& region = processor.lanes[static_cast<size_t>(edgeDragLane)].regions[static_cast<size_t>(edgeDragRegion)];
+                newStart = region.startBeat;
+                newEnd = region.endBeat;
+
+                // Revert to original for the undo action
                 region.startBeat = edgeDragOrigStart;
                 region.endBeat = edgeDragOrigEnd;
-                processor.undoManager.perform(
-                    new MoveRegionAction(processor, edgeDragLane, edgeDragRegion,
-                                         edgeDragOrigStart, edgeDragOrigEnd,
-                                         newStart, newEnd));
-                // Re-sort and clamp after the undo action has applied
-                lane.sortAndClampRegions();
+            }
+            else
+            {
+                edgeDragging = EdgeDragTarget::None;
+                return;
             }
         }
+        // Perform undo action outside the lock (it acquires its own lock)
+        if (std::abs(newStart - edgeDragOrigStart) > 0.001 ||
+            std::abs(newEnd - edgeDragOrigEnd) > 0.001)
+        {
+            processor.undoManager.perform(
+                new MoveRegionAction(processor, edgeDragLane, edgeDragRegion,
+                                     edgeDragOrigStart, edgeDragOrigEnd,
+                                     newStart, newEnd));
+        }
+        // Sort/clamp and rebuild outside the lock
+        {
+            juce::ScopedLock sl(processor.laneLock);
+            if (edgeDragLane < (int)processor.lanes.size())
+                processor.lanes[static_cast<size_t>(edgeDragLane)].sortAndClampRegions();
+        }
         edgeDragging = EdgeDragTarget::None;
-        processor.rebuildMasterClip();
-        refresh();
+        refresh(); // refresh() calls rebuildMasterClip() internally
         return;
     }
 
     if (draggingClip && selLane >= 0 && selRegion >= 0)
     {
         int targetLane = yToLane(e.position.y);
-        juce::ScopedLock sl(processor.laneLock);
-        int numLanes = (int)processor.lanes.size();
-
-        if (selLane < numLanes && selRegion < (int)processor.lanes[static_cast<size_t>(selLane)].regions.size())
+        double newStart, newEnd;
+        bool laneChanged, beatChanged;
+        int numLanes;
         {
-            auto& region = processor.lanes[static_cast<size_t>(selLane)].regions[static_cast<size_t>(selRegion)];
-            double newStart = region.startBeat;
-            double newEnd = region.endBeat;
-
-            bool laneChanged = (targetLane != clipDragOrigLane);
-            bool beatChanged = std::abs(newStart - clipDragOrigBeat) > 0.001;
-
-            if (laneChanged)
+            juce::ScopedLock sl(processor.laneLock);
+            numLanes = (int)processor.lanes.size();
+            if (selLane < numLanes && selRegion < (int)processor.lanes[static_cast<size_t>(selLane)].regions.size())
             {
-                // Revert the horizontal position change (undo action handles both)
+                auto& region = processor.lanes[static_cast<size_t>(selLane)].regions[static_cast<size_t>(selRegion)];
+                newStart = region.startBeat;
+                newEnd = region.endBeat;
+                laneChanged = (targetLane != clipDragOrigLane);
+                beatChanged = std::abs(newStart - clipDragOrigBeat) > 0.001;
+
+                // Revert to original position — the undo action will apply the new position
                 region.startBeat = clipDragOrigBeat;
                 region.endBeat = clipDragOrigEnd;
-
-                bool createNew = (targetLane >= numLanes);
-                int dstLane = createNew ? numLanes : targetLane;
-                processor.undoManager.perform(
-                    new MoveRegionToLaneAction(processor, selLane, selRegion,
-                                               dstLane, newStart, newEnd, createNew));
-                selLane = dstLane;
-                selRegion = 0; // Will be at end of dest lane
-                // Find actual index
-                if (dstLane < (int)processor.lanes.size())
-                    selRegion = (int)processor.lanes[static_cast<size_t>(dstLane)].regions.size() - 1;
             }
-            else if (beatChanged)
+            else
             {
-                region.startBeat = clipDragOrigBeat;
-                region.endBeat = clipDragOrigEnd;
-                processor.undoManager.perform(
-                    new MoveRegionAction(processor, selLane, selRegion,
-                                         clipDragOrigBeat, clipDragOrigEnd,
-                                         newStart, newEnd));
+                laneChanged = false;
+                beatChanged = false;
+                newStart = clipDragOrigBeat;
+                newEnd = clipDragOrigEnd;
+            }
+        }
+        // Perform undo actions outside lock
+        if (laneChanged)
+        {
+            bool createNew = (targetLane >= numLanes);
+            int dstLane = createNew ? numLanes : targetLane;
+            processor.undoManager.perform(
+                new MoveRegionToLaneAction(processor, selLane, selRegion,
+                                           dstLane, newStart, newEnd, createNew));
+            selLane = dstLane;
+            {
+                juce::ScopedLock sl(processor.laneLock);
+                if (dstLane < (int)processor.lanes.size())
+                {
+                    selRegion = (int)processor.lanes[static_cast<size_t>(dstLane)].regions.size() - 1;
+                    processor.lanes[static_cast<size_t>(dstLane)].sortAndClampRegions();
+                }
+            }
+        }
+        else if (beatChanged)
+        {
+            processor.undoManager.perform(
+                new MoveRegionAction(processor, selLane, selRegion,
+                                     clipDragOrigBeat, clipDragOrigEnd,
+                                     newStart, newEnd));
+            {
+                juce::ScopedLock sl(processor.laneLock);
+                if (selLane >= 0 && selLane < (int)processor.lanes.size())
+                    processor.lanes[static_cast<size_t>(selLane)].sortAndClampRegions();
             }
         }
     }
     hoveredLane = -1;
     loopDragging = LoopDragTarget::None;
     rulerDragging = false;
-    if (draggingClip)
-    {
-        draggingClip = false;
-        // Sort/clamp regions in source lane after move and rebuild master
-        {
-            juce::ScopedLock sl(processor.laneLock);
-            if (selLane >= 0 && selLane < (int)processor.lanes.size())
-                processor.lanes[static_cast<size_t>(selLane)].sortAndClampRegions();
-        }
-        processor.rebuildMasterClip();
-    }
+    draggingClip = false;
     refresh();
 }
 

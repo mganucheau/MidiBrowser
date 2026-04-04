@@ -261,28 +261,30 @@ void CompLane::removeRegion(int index)
 
 void CompLane::sortAndClampRegions()
 {
-    if (regions.size() <= 1) return;
+    // Remove degenerate regions first (zero or negative width)
+    regions.erase(
+        std::remove_if(regions.begin(), regions.end(),
+                       [](const CompRegion& r) { return r.endBeat - r.startBeat < 0.01; }),
+        regions.end());
+
+    if (regions.empty()) return;
 
     // Sort by startBeat
     std::sort(regions.begin(), regions.end(),
               [](const CompRegion& a, const CompRegion& b) { return a.startBeat < b.startBeat; });
 
-    // Clamp: each region's endBeat must not exceed the next region's startBeat.
-    // If they overlap, shrink the earlier one's endBeat to match the later one's startBeat.
+    // Resolve overlaps: for each pair of adjacent regions, if they overlap,
+    // truncate the earlier region's endBeat to the later's startBeat.
     for (size_t i = 0; i + 1 < regions.size(); ++i)
     {
         if (regions[i].endBeat > regions[i + 1].startBeat)
             regions[i].endBeat = regions[i + 1].startBeat;
-
-        // Ensure minimum region width
-        if (regions[i].endBeat - regions[i].startBeat < 0.25)
-            regions[i].endBeat = regions[i].startBeat + 0.25;
     }
 
-    // Remove degenerate regions (zero or negative width)
+    // Final cleanup: remove any regions that became degenerate after clamping
     regions.erase(
         std::remove_if(regions.begin(), regions.end(),
-                       [](const CompRegion& r) { return r.endBeat <= r.startBeat; }),
+                       [](const CompRegion& r) { return r.endBeat - r.startBeat < 0.01; }),
         regions.end());
 }
 
