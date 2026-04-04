@@ -1311,7 +1311,7 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
             { if (noteResult == 0) return; juce::ScopedLock sl2(processor.laneLock);
               if (laneIdx >= (int)processor.lanes.size()) return;
               if (regionIdx >= (int)processor.lanes[static_cast<size_t>(laneIdx)].regions.size()) return;
-              processor.lanes[static_cast<size_t>(laneIdx)].regions[static_cast<size_t>(regionIdx)].noteFilter = (noteResult == 1000) ? -1 : (noteResult - 1001); repaint(); });
+              processor.lanes[static_cast<size_t>(laneIdx)].regions[static_cast<size_t>(regionIdx)].noteFilter = (noteResult == 1000) ? -1 : (noteResult - 1001); refresh(); });
         }
         else if (result == 4) { processor.undoManager.perform(new DuplicateRegionAction(processor, laneIdx, regionIdx)); }
         else if (result == 5)
