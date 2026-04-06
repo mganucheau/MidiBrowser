@@ -59,32 +59,43 @@ std::vector<int> scaleIntervals(ScaleType s);
 // Map an incoming note to the nearest note within a given scale + root
 int quantiseToScale(int inNote, int scaleRoot, ScaleType scale);
 
-// ── Comp lane model ──────────────────────────────────────────────────────────
-struct CompRegion
+// ── Comp system (Logic Pro-style) ────────────────────────────────────────────
+//
+// Each lane holds ONE clip placed at a beat position.  The comp system works
+// across all lanes: a sorted list of beat-position "cuts" divides the timeline
+// into slices.  Each slice has an activeLane index saying which lane's audio
+// plays during that time range.  At any point in time exactly one lane is
+// active (mutual exclusivity).
+//
+// CompSlice: the region between two adjacent cut points.
+// The cuts themselves live in the processor as compCuts (sorted, unique doubles).
+// compActive[i] gives the active lane index for the slice between
+// compCuts[i] and compCuts[i+1].  The slice before compCuts[0] uses
+// compActive[0]; the slice after the last cut also defaults.
+
+struct CompSlice
 {
     double startBeat  = 0.0;
     double endBeat    = 4.0;
-    int    clipIndex  = -1;       // index into the lane's clip list
-    int    noteFilter = -1;       // -1 = all notes, >=0 = specific pitch only
-    bool   muted      = false;
+    int    activeLane = 0;      // which lane is audible in this slice
 };
 
 struct CompLane
 {
     juce::String            name;
     juce::Colour            colour { 0xff3a7bd5 };
-    std::vector<MidiClip>   clips;
-    std::vector<CompRegion> regions;
-    bool                    expanded = false;   // show sub-comp lanes?
+    std::vector<MidiClip>   clips;      // clips placed on this lane
+    std::vector<double>     clipStarts; // beat position where each clip starts
     bool                    muted    = false;
     bool                    solo     = false;
 
-    void addClipAtPosition(const MidiClip& clip, double beatPos);
-    void removeRegion(int index);
-
-    // Sort regions by startBeat and clamp so they never overlap within this lane.
-    // Adjacent regions: prev.endBeat == next.startBeat (no gaps, no overlaps).
-    void sortAndClampRegions();
+    // Add a clip at a beat position
+    void addClip(const MidiClip& clip, double beatPos);
+    // Remove clip by index
+    void removeClip(int index);
+    // Get the clip and its start position that covers a given beat, or nullptr
+    const MidiClip* clipAtBeat(double beat, double& clipStart) const;
+    int clipIndexAtBeat(double beat) const;
 };
 
 // ── MIDI split routing ───────────────────────────────────────────────────────

@@ -88,24 +88,8 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         processorRef.lanes.push_back(newLane);
         arrangementView.refresh();
     };
-    controlPanel.onSessionBarsChanged = [this](int bars)
+    controlPanel.onSessionBarsChanged = [this](int /*bars*/)
     {
-        // Clip regions that extend past the new session end
-        double sessionEnd = (double)(bars * 4);
-        {
-            juce::ScopedLock sl(processorRef.laneLock);
-            for (auto& lane : processorRef.lanes)
-            {
-                for (auto& region : lane.regions)
-                {
-                    if (region.endBeat > sessionEnd)
-                        region.endBeat = sessionEnd;
-                    if (region.startBeat >= sessionEnd)
-                        region.startBeat = std::max(0.0, sessionEnd - 0.25);
-                }
-                lane.sortAndClampRegions();
-            }
-        }
         processorRef.rebuildMasterClip();
         arrangementView.zoomToFitSession();
     };
@@ -114,34 +98,20 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         juce::ScopedLock sl(processorRef.laneLock);
         for (auto& lane : processorRef.lanes)
         {
-            for (auto& region : lane.regions)
+            for (auto& clip : lane.clips)
             {
-                if (region.clipIndex < 0 || region.clipIndex >= (int)lane.clips.size())
-                    continue;
-                auto& clip = lane.clips[static_cast<size_t>(region.clipIndex)];
                 if (clip.notes.empty()) continue;
 
-                // Find the last note-off beat in the clip
                 double maxBeat = 0.0;
                 for (auto& n : clip.notes)
                     maxBeat = std::max(maxBeat, n.startBeat + n.lengthBeats);
 
-                // Round up to the nearest bar (4 beats)
                 double trimmedBars = std::ceil(maxBeat / 4.0);
                 double trimmedLen = std::max(4.0, trimmedBars * 4.0);
 
                 if (trimmedLen < clip.lengthBeats)
-                {
-                    // Shorten both the clip and the region
-                    double reduction = clip.lengthBeats - trimmedLen;
                     clip.lengthBeats = trimmedLen;
-                    // Shrink region end proportionally if it was based on old clip length
-                    double regionLen = region.endBeat - region.startBeat;
-                    if (regionLen > trimmedLen)
-                        region.endBeat = region.startBeat + trimmedLen;
-                }
             }
-            lane.sortAndClampRegions();
         }
         processorRef.rebuildMasterClip();
         arrangementView.refresh();
@@ -184,33 +154,28 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     {
         if (controlPanel.onAddLane) controlPanel.onAddLane();
     };
-    arrangementView.onClipDoubleClicked = [this](const MidiClip& clip, int laneIdx, int regionIdx)
+    arrangementView.onClipDoubleClicked = [this](const MidiClip& clip, int laneIdx, int clipIdx)
     {
         if (laneIdx < 0)
         {
-            // Double-click on empty space → close piano roll
             pianoRoll.clearClip();
             resized();
             return;
         }
-        pianoRoll.setClip(clip, laneIdx, regionIdx);
+        pianoRoll.setClip(clip, laneIdx, clipIdx);
         resized();
     };
     addAndMakeVisible(arrangementView);
 
     // Piano roll (starts hidden)
-    pianoRoll.onClipEdited = [this](const MidiClip& editedClip, int laneIdx, int regionIdx)
+    pianoRoll.onClipEdited = [this](const MidiClip& editedClip, int laneIdx, int clipIdx)
     {
         juce::ScopedLock sl(processorRef.laneLock);
         if (laneIdx >= 0 && laneIdx < (int)processorRef.lanes.size())
         {
-            auto& lane = processorRef.lanes[laneIdx];
-            if (regionIdx >= 0 && regionIdx < (int)lane.regions.size())
-            {
-                int clipIdx = lane.regions[regionIdx].clipIndex;
-                if (clipIdx >= 0 && clipIdx < (int)lane.clips.size())
-                    lane.clips[clipIdx] = editedClip;
-            }
+            auto& lane = processorRef.lanes[static_cast<size_t>(laneIdx)];
+            if (clipIdx >= 0 && clipIdx < (int)lane.clips.size())
+                lane.clips[static_cast<size_t>(clipIdx)] = editedClip;
         }
         arrangementView.refresh();
     };
@@ -309,21 +274,16 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         if (processorRef.undoManager.undo())
         {
             arrangementView.refresh();
-            // Refresh piano roll if open
             if (pianoRoll.hasClip())
             {
                 int li = pianoRoll.getEditLaneIndex();
-                int ri = pianoRoll.getEditRegionIndex();
+                int ci = pianoRoll.getEditRegionIndex();
                 juce::ScopedLock sl(processorRef.laneLock);
                 if (li >= 0 && li < (int)processorRef.lanes.size())
                 {
-                    auto& lane = processorRef.lanes[li];
-                    if (ri >= 0 && ri < (int)lane.regions.size())
-                    {
-                        int ci = lane.regions[ri].clipIndex;
-                        if (ci >= 0 && ci < (int)lane.clips.size())
-                            pianoRoll.setClip(lane.clips[ci], li, ri);
-                    }
+                    auto& lane = processorRef.lanes[static_cast<size_t>(li)];
+                    if (ci >= 0 && ci < (int)lane.clips.size())
+                        pianoRoll.setClip(lane.clips[static_cast<size_t>(ci)], li, ci);
                 }
             }
         }
@@ -339,32 +299,28 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
             if (pianoRoll.hasClip())
             {
                 int li = pianoRoll.getEditLaneIndex();
-                int ri = pianoRoll.getEditRegionIndex();
+                int ci = pianoRoll.getEditRegionIndex();
                 juce::ScopedLock sl(processorRef.laneLock);
                 if (li >= 0 && li < (int)processorRef.lanes.size())
                 {
-                    auto& lane = processorRef.lanes[li];
-                    if (ri >= 0 && ri < (int)lane.regions.size())
-                    {
-                        int ci = lane.regions[ri].clipIndex;
-                        if (ci >= 0 && ci < (int)lane.clips.size())
-                            pianoRoll.setClip(lane.clips[ci], li, ri);
-                    }
+                    auto& lane = processorRef.lanes[static_cast<size_t>(li)];
+                    if (ci >= 0 && ci < (int)lane.clips.size())
+                        pianoRoll.setClip(lane.clips[static_cast<size_t>(ci)], li, ci);
                 }
             }
         }
         return true;
     }
 
-    // Delete selected region (undoable)
+    // Delete selected clip (undoable)
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
-        if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
+        if (arrangementView.selLane >= 0 && arrangementView.selClip >= 0)
         {
             processorRef.undoManager.perform(
-                new RemoveRegionAction(processorRef, arrangementView.selLane, arrangementView.selRegion));
+                new RemoveClipAction(processorRef, arrangementView.selLane, arrangementView.selClip));
             arrangementView.selLane = -1;
-            arrangementView.selRegion = -1;
+            arrangementView.selClip = -1;
             arrangementView.refresh();
             return true;
         }
@@ -388,63 +344,54 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
     }
 
     // Arrow keys: move selected clip (left/right = timeline, up/down = between lanes)
-    if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0 &&
+    if (arrangementView.selLane >= 0 && arrangementView.selClip >= 0 &&
         (key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey ||
          key.getKeyCode() == juce::KeyPress::upKey || key.getKeyCode() == juce::KeyPress::downKey))
     {
         juce::ScopedLock sl(processorRef.laneLock);
         int numLanes = (int)processorRef.lanes.size();
         int lane = arrangementView.selLane;
-        int reg = arrangementView.selRegion;
-        if (lane >= numLanes || reg >= (int)processorRef.lanes[lane].regions.size())
+        int ci = arrangementView.selClip;
+        if (lane >= numLanes || ci >= (int)processorRef.lanes[static_cast<size_t>(lane)].clips.size())
             return true;
 
-        auto& region = processorRef.lanes[lane].regions[reg];
-        double len = region.endBeat - region.startBeat;
+        double clipStart = processorRef.lanes[static_cast<size_t>(lane)].clipStarts[static_cast<size_t>(ci)];
 
         if (key.getKeyCode() == juce::KeyPress::leftKey)
         {
-            double newStart = processorRef.snapBeat(std::max(0.0, region.startBeat - 1.0));
-            if (std::abs(newStart - region.startBeat) > 0.001)
-            {
-                double oldStart = region.startBeat, oldEnd = region.endBeat;
+            double newStart = processorRef.snapBeat(std::max(0.0, clipStart - 1.0));
+            if (std::abs(newStart - clipStart) > 0.001)
                 processorRef.undoManager.perform(
-                    new MoveRegionAction(processorRef, lane, reg,
-                                         oldStart, oldEnd, newStart, newStart + len));
-            }
+                    new MoveClipAction(processorRef, lane, ci, clipStart, newStart));
         }
         else if (key.getKeyCode() == juce::KeyPress::rightKey)
         {
-            double newStart = processorRef.snapBeat(region.startBeat + 1.0);
-            double oldStart = region.startBeat, oldEnd = region.endBeat;
+            double newStart = processorRef.snapBeat(clipStart + 1.0);
             processorRef.undoManager.perform(
-                new MoveRegionAction(processorRef, lane, reg,
-                                     oldStart, oldEnd, newStart, newStart + len));
+                new MoveClipAction(processorRef, lane, ci, clipStart, newStart));
         }
         else if (key.getKeyCode() == juce::KeyPress::upKey && lane > 0)
         {
             int dstLane = lane - 1;
-            double s = region.startBeat, e2 = region.endBeat;
             processorRef.undoManager.perform(
-                new MoveRegionToLaneAction(processorRef, lane, reg, dstLane, s, e2, false));
+                new MoveClipToLaneAction(processorRef, lane, ci, dstLane, clipStart, false));
             arrangementView.selLane = dstLane;
-            arrangementView.selRegion = (int)processorRef.lanes[dstLane].regions.size() - 1;
+            arrangementView.selClip = (int)processorRef.lanes[static_cast<size_t>(dstLane)].clips.size() - 1;
         }
         else if (key.getKeyCode() == juce::KeyPress::downKey)
         {
             int dstLane = lane + 1;
             bool createNew = (dstLane >= numLanes);
-            double s = region.startBeat, e2 = region.endBeat;
             processorRef.undoManager.perform(
-                new MoveRegionToLaneAction(processorRef, lane, reg, dstLane, s, e2, createNew));
+                new MoveClipToLaneAction(processorRef, lane, ci, dstLane, clipStart, createNew));
             arrangementView.selLane = dstLane;
-            arrangementView.selRegion = (int)processorRef.lanes[dstLane].regions.size() - 1;
+            arrangementView.selClip = (int)processorRef.lanes[static_cast<size_t>(dstLane)].clips.size() - 1;
         }
         arrangementView.refresh();
         return true;
     }
 
-    // Arrow keys with no selection: select first available region
+    // Arrow keys with no selection: select first available clip
     if ((key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey ||
          key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) &&
         arrangementView.selLane < 0)
@@ -453,10 +400,10 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         int numLanes = (int)processorRef.lanes.size();
         for (int li = 0; li < numLanes; ++li)
         {
-            if (!processorRef.lanes[li].regions.empty())
+            if (!processorRef.lanes[static_cast<size_t>(li)].clips.empty())
             {
                 arrangementView.selLane = li;
-                arrangementView.selRegion = 0;
+                arrangementView.selClip = 0;
                 arrangementView.refresh();
                 return true;
             }
@@ -464,52 +411,13 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         return false;
     }
 
-    // M key to mute/unmute selected region
-    if (key == juce::KeyPress('m') && arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
-    {
-        processorRef.undoManager.perform(
-            new ToggleMuteAction(processorRef, arrangementView.selLane, arrangementView.selRegion));
-        arrangementView.refresh();
-        return true;
-    }
-
-    // Cmd+D: Duplicate selected region
+    // Cmd+D: Duplicate selected clip
     if (key == juce::KeyPress('d', juce::ModifierKeys::commandModifier, 0))
     {
-        if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
+        if (arrangementView.selLane >= 0 && arrangementView.selClip >= 0)
         {
             processorRef.undoManager.perform(
-                new DuplicateRegionAction(processorRef, arrangementView.selLane, arrangementView.selRegion));
-            arrangementView.refresh();
-        }
-        return true;
-    }
-
-    // Cmd+B: Split region at playhead
-    if (key == juce::KeyPress('b', juce::ModifierKeys::commandModifier, 0))
-    {
-        if (arrangementView.selLane >= 0 && arrangementView.selRegion >= 0)
-        {
-            double playBeat;
-            if (processorRef.hostPlaying.load())
-                playBeat = processorRef.loopEnabled.load()
-                    ? processorRef.mappedBeatPos.load()
-                    : processorRef.hostBeatPos.load();
-            else
-                playBeat = processorRef.editPlayheadBeat.load();
-            juce::ScopedLock sl(processorRef.laneLock);
-            if (arrangementView.selLane < (int)processorRef.lanes.size())
-            {
-                auto& lane = processorRef.lanes[arrangementView.selLane];
-                if (arrangementView.selRegion < (int)lane.regions.size())
-                {
-                    auto& reg = lane.regions[arrangementView.selRegion];
-                    if (playBeat > reg.startBeat && playBeat < reg.endBeat)
-                        processorRef.undoManager.perform(
-                            new SplitRegionAction(processorRef, arrangementView.selLane,
-                                                  arrangementView.selRegion, playBeat));
-                }
-            }
+                new DuplicateClipAction(processorRef, arrangementView.selLane, arrangementView.selClip));
             arrangementView.refresh();
         }
         return true;
@@ -660,37 +568,25 @@ void PatternFlowEditor::exportMidi()
         juce::ScopedLock sl(processorRef.laneLock);
         for (int li = 0; li < (int)processorRef.lanes.size(); ++li)
         {
-            auto& lane = processorRef.lanes[li];
+            auto& lane = processorRef.lanes[static_cast<size_t>(li)];
             if (lane.muted) continue;
 
             juce::MidiMessageSequence track;
-            // Add track name
             track.addEvent(juce::MidiMessage::textMetaEvent(3, lane.name));
 
-            for (auto& region : lane.regions)
+            for (int ci = 0; ci < (int)lane.clips.size(); ++ci)
             {
-                if (region.muted) continue;
-                if (region.clipIndex < 0 || region.clipIndex >= (int)lane.clips.size()) continue;
-                auto& clip = lane.clips[region.clipIndex];
-                double regionLen = region.endBeat - region.startBeat;
-                double loopLen = clip.lengthBeats;
-                int loopCount = std::max(1, (int)std::ceil(regionLen / loopLen));
+                auto& clip = lane.clips[static_cast<size_t>(ci)];
+                double clipStart = lane.clipStarts[static_cast<size_t>(ci)];
 
-                for (int loop = 0; loop < loopCount; ++loop)
+                for (auto& note : clip.notes)
                 {
-                    for (auto& note : clip.notes)
-                    {
-                        if (region.noteFilter >= 0 && note.noteNumber != region.noteFilter) continue;
-                        double noteBeat = loop * loopLen + note.startBeat;
-                        if (noteBeat >= regionLen) continue;
-                        double absStart = region.startBeat + noteBeat;
-                        double absEnd = std::min(absStart + note.lengthBeats,
-                                                 region.startBeat + regionLen);
-                        double startTick = absStart * 480.0;
-                        double endTick = absEnd * 480.0;
-                        track.addEvent(juce::MidiMessage::noteOn(note.channel, note.noteNumber, (juce::uint8)note.velocity), startTick);
-                        track.addEvent(juce::MidiMessage::noteOff(note.channel, note.noteNumber), endTick);
-                    }
+                    double absStart = clipStart + note.startBeat;
+                    double absEnd = absStart + note.lengthBeats;
+                    double startTick = absStart * 480.0;
+                    double endTick = absEnd * 480.0;
+                    track.addEvent(juce::MidiMessage::noteOn(note.channel, note.noteNumber, (juce::uint8)note.velocity), startTick);
+                    track.addEvent(juce::MidiMessage::noteOff(note.channel, note.noteNumber), endTick);
                 }
             }
             track.sort();
@@ -713,8 +609,8 @@ void PatternFlowEditor::zoomToFit()
     juce::ScopedLock sl(processorRef.laneLock);
     double maxBeat = 0.0;
     for (auto& lane : processorRef.lanes)
-        for (auto& region : lane.regions)
-            maxBeat = std::max(maxBeat, region.endBeat);
+        for (int ci = 0; ci < (int)lane.clips.size(); ++ci)
+            maxBeat = std::max(maxBeat, lane.clipStarts[static_cast<size_t>(ci)] + lane.clips[static_cast<size_t>(ci)].lengthBeats);
 
     if (maxBeat <= 0.0) maxBeat = processorRef.arrangementBars.load() * 4.0;
 

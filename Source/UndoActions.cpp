@@ -4,272 +4,93 @@
 
 namespace pflow {
 
-// ── AddRegionAction ─────────────────────────────────────────────────────────
+// ── AddClipAction ──────────────────────────────────────────────────────────
 
-bool AddRegionAction::perform()
+bool AddClipAction::perform()
 {
     juce::ScopedLock sl(proc.laneLock);
     if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
     auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
     addedClipIdx = (int)lane.clips.size();
-    lane.clips.push_back(newClip);
-    newRegion.clipIndex = addedClipIdx;
-    addedRegionIdx = (int)lane.regions.size();
-    lane.regions.push_back(newRegion);
+    lane.addClip(newClip, clipBeatPos);
     return true;
 }
 
-bool AddRegionAction::undo()
+bool AddClipAction::undo()
 {
     juce::ScopedLock sl(proc.laneLock);
     if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
     auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (addedRegionIdx >= 0 && addedRegionIdx < (int)lane.regions.size())
-        lane.regions.erase(lane.regions.begin() + addedRegionIdx);
     if (addedClipIdx >= 0 && addedClipIdx < (int)lane.clips.size())
-        lane.clips.erase(lane.clips.begin() + addedClipIdx);
+        lane.removeClip(addedClipIdx);
     return true;
 }
 
-// ── RemoveRegionAction ──────────────────────────────────────────────────────
+// ── RemoveClipAction ───────────────────────────────────────────────────────
 
-bool RemoveRegionAction::perform()
+bool RemoveClipAction::perform()
 {
     juce::ScopedLock sl(proc.laneLock);
     if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
     auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    savedRegion = lane.regions[static_cast<size_t>(regionIdx)];
-    savedClipIdx = savedRegion.clipIndex;
-    if (savedClipIdx >= 0 && savedClipIdx < (int)lane.clips.size())
-        savedClip = lane.clips[static_cast<size_t>(savedClipIdx)];
-    lane.removeRegion(regionIdx);
+    if (clipIndex < 0 || clipIndex >= (int)lane.clips.size()) return false;
+    savedClip = lane.clips[static_cast<size_t>(clipIndex)];
+    savedBeatPos = lane.clipStarts[static_cast<size_t>(clipIndex)];
+    lane.removeClip(clipIndex);
     return true;
 }
 
-bool RemoveRegionAction::undo()
+bool RemoveClipAction::undo()
 {
     juce::ScopedLock sl(proc.laneLock);
     if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
     auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    // Re-insert clip and region
-    int clipIdx = (int)lane.clips.size();
-    lane.clips.push_back(savedClip);
-    CompRegion restored = savedRegion;
-    restored.clipIndex = clipIdx;
-    if (regionIdx <= (int)lane.regions.size())
-        lane.regions.insert(lane.regions.begin() + regionIdx, restored);
+    // Re-insert clip at original position
+    if (clipIndex <= (int)lane.clips.size())
+    {
+        lane.clips.insert(lane.clips.begin() + clipIndex, savedClip);
+        lane.clipStarts.insert(lane.clipStarts.begin() + clipIndex, savedBeatPos);
+    }
     else
-        lane.regions.push_back(restored);
+    {
+        lane.addClip(savedClip, savedBeatPos);
+    }
     return true;
 }
 
-// ── MoveRegionAction ────────────────────────────────────────────────────────
+// ── MoveClipAction ─────────────────────────────────────────────────────────
 
-bool MoveRegionAction::perform()
+bool MoveClipAction::perform()
 {
     juce::ScopedLock sl(proc.laneLock);
     if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
     auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    lane.regions[static_cast<size_t>(regionIdx)].startBeat = newStartBeat;
-    lane.regions[static_cast<size_t>(regionIdx)].endBeat = newEndBeat;
+    if (clipIndex < 0 || clipIndex >= (int)lane.clipStarts.size()) return false;
+    lane.clipStarts[static_cast<size_t>(clipIndex)] = newPos;
     return true;
 }
 
-bool MoveRegionAction::undo()
+bool MoveClipAction::undo()
 {
     juce::ScopedLock sl(proc.laneLock);
     if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
     auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    lane.regions[static_cast<size_t>(regionIdx)].startBeat = oldStartBeat;
-    lane.regions[static_cast<size_t>(regionIdx)].endBeat = oldEndBeat;
+    if (clipIndex < 0 || clipIndex >= (int)lane.clipStarts.size()) return false;
+    lane.clipStarts[static_cast<size_t>(clipIndex)] = oldPos;
     return true;
 }
 
-// ── ToggleMuteAction ────────────────────────────────────────────────────────
+// ── MoveClipToLaneAction ───────────────────────────────────────────────────
 
-bool ToggleMuteAction::perform()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    lane.regions[static_cast<size_t>(regionIdx)].muted = !lane.regions[static_cast<size_t>(regionIdx)].muted;
-    return true;
-}
-
-bool ToggleMuteAction::undo()
-{
-    return perform(); // Toggle is self-inverse
-}
-
-// ── AddNoteAction ───────────────────────────────────────────────────────────
-
-bool AddNoteAction::perform()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    int clipIdx = lane.regions[static_cast<size_t>(regionIdx)].clipIndex;
-    if (clipIdx < 0 || clipIdx >= (int)lane.clips.size()) return false;
-    lane.clips[static_cast<size_t>(clipIdx)].notes.push_back(newNote);
-    return true;
-}
-
-bool AddNoteAction::undo()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    int clipIdx = lane.regions[static_cast<size_t>(regionIdx)].clipIndex;
-    if (clipIdx < 0 || clipIdx >= (int)lane.clips.size()) return false;
-    auto& notes = lane.clips[static_cast<size_t>(clipIdx)].notes;
-    if (!notes.empty()) notes.pop_back();
-    return true;
-}
-
-// ── DeleteNoteAction ────────────────────────────────────────────────────────
-
-bool DeleteNoteAction::perform()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    int clipIdx = lane.regions[static_cast<size_t>(regionIdx)].clipIndex;
-    if (clipIdx < 0 || clipIdx >= (int)lane.clips.size()) return false;
-    auto& notes = lane.clips[static_cast<size_t>(clipIdx)].notes;
-    if (noteIndex < 0 || noteIndex >= (int)notes.size()) return false;
-    savedNote = notes[static_cast<size_t>(noteIndex)];
-    notes.erase(notes.begin() + noteIndex);
-    return true;
-}
-
-bool DeleteNoteAction::undo()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    int clipIdx = lane.regions[static_cast<size_t>(regionIdx)].clipIndex;
-    if (clipIdx < 0 || clipIdx >= (int)lane.clips.size()) return false;
-    auto& notes = lane.clips[static_cast<size_t>(clipIdx)].notes;
-    if (noteIndex <= (int)notes.size())
-        notes.insert(notes.begin() + noteIndex, savedNote);
-    else
-        notes.push_back(savedNote);
-    return true;
-}
-
-// ── EditNoteAction ──────────────────────────────────────────────────────────
-
-bool EditNoteAction::perform()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[laneIdx];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    int clipIdx = lane.regions[regionIdx].clipIndex;
-    if (clipIdx < 0 || clipIdx >= (int)lane.clips.size()) return false;
-    auto& notes = lane.clips[clipIdx].notes;
-    if (noteIndex < 0 || noteIndex >= (int)notes.size()) return false;
-    notes[noteIndex] = newNoteState;
-    return true;
-}
-
-bool EditNoteAction::undo()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[laneIdx];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    int clipIdx = lane.regions[regionIdx].clipIndex;
-    if (clipIdx < 0 || clipIdx >= (int)lane.clips.size()) return false;
-    auto& notes = lane.clips[clipIdx].notes;
-    if (noteIndex < 0 || noteIndex >= (int)notes.size()) return false;
-    notes[noteIndex] = oldNoteState;
-    return true;
-}
-
-// ── DuplicateRegionAction ──────────────────────────────────────────────────
-
-bool DuplicateRegionAction::perform()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[laneIdx];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    auto& srcRegion = lane.regions[regionIdx];
-    double len = srcRegion.endBeat - srcRegion.startBeat;
-    CompRegion dup = srcRegion;
-    dup.startBeat = srcRegion.endBeat;
-    dup.endBeat = dup.startBeat + len;
-    addedRegionIdx = (int)lane.regions.size();
-    lane.regions.push_back(dup);
-    return true;
-}
-
-bool DuplicateRegionAction::undo()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[laneIdx];
-    if (addedRegionIdx >= 0 && addedRegionIdx < (int)lane.regions.size())
-        lane.regions.erase(lane.regions.begin() + addedRegionIdx);
-    return true;
-}
-
-// ── SplitRegionAction ──────────────────────────────────────────────────────
-
-bool SplitRegionAction::perform()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[laneIdx];
-    if (regionIdx < 0 || regionIdx >= (int)lane.regions.size()) return false;
-    origRegion = lane.regions[regionIdx];
-    if (splitAtBeat <= origRegion.startBeat || splitAtBeat >= origRegion.endBeat) return false;
-    // Create second half
-    CompRegion secondHalf = origRegion;
-    secondHalf.startBeat = splitAtBeat;
-    // Trim first half
-    lane.regions[regionIdx].endBeat = splitAtBeat;
-    addedRegionIdx = (int)lane.regions.size();
-    lane.regions.push_back(secondHalf);
-    return true;
-}
-
-bool SplitRegionAction::undo()
-{
-    juce::ScopedLock sl(proc.laneLock);
-    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
-    auto& lane = proc.lanes[laneIdx];
-    // Remove the second half
-    if (addedRegionIdx >= 0 && addedRegionIdx < (int)lane.regions.size())
-        lane.regions.erase(lane.regions.begin() + addedRegionIdx);
-    // Restore original region
-    if (regionIdx >= 0 && regionIdx < (int)lane.regions.size())
-        lane.regions[regionIdx] = origRegion;
-    return true;
-}
-
-// ── MoveRegionToLaneAction ──────────────────────────────────────────────────
-
-bool MoveRegionToLaneAction::perform()
+bool MoveClipToLaneAction::perform()
 {
     juce::ScopedLock sl(proc.laneLock);
     if (srcLaneIdx < 0 || srcLaneIdx >= (int)proc.lanes.size()) return false;
-    auto& srcLane = proc.lanes[srcLaneIdx];
-    if (srcRegionIdx < 0 || srcRegionIdx >= (int)srcLane.regions.size()) return false;
+    auto& srcLane = proc.lanes[static_cast<size_t>(srcLaneIdx)];
+    if (srcClipIdx < 0 || srcClipIdx >= (int)srcLane.clips.size()) return false;
 
-    savedRegion = srcLane.regions[srcRegionIdx];
-    savedClipIdx = savedRegion.clipIndex;
-    if (savedClipIdx >= 0 && savedClipIdx < (int)srcLane.clips.size())
-        savedClip = srcLane.clips[savedClipIdx];
+    savedClip = srcLane.clips[static_cast<size_t>(srcClipIdx)];
+    savedBeatPos = srcLane.clipStarts[static_cast<size_t>(srcClipIdx)];
 
     // Create new lane if needed
     if (needsNewLane)
@@ -282,38 +103,27 @@ bool MoveRegionToLaneAction::perform()
     }
 
     if (dstLaneIdx < 0 || dstLaneIdx >= (int)proc.lanes.size()) return false;
-    auto& dstLane = proc.lanes[dstLaneIdx];
+    auto& dstLane = proc.lanes[static_cast<size_t>(dstLaneIdx)];
 
-    // Add clip to destination lane
     addedClipIdx = (int)dstLane.clips.size();
-    dstLane.clips.push_back(savedClip);
-
-    // Add region to destination lane with updated beat positions
-    CompRegion newRegion = savedRegion;
-    newRegion.startBeat = newStartBeat;
-    newRegion.endBeat = newEndBeat;
-    newRegion.clipIndex = addedClipIdx;
-    addedRegionIdx = (int)dstLane.regions.size();
-    dstLane.regions.push_back(newRegion);
+    dstLane.addClip(savedClip, newPos);
 
     // Remove from source lane
-    srcLane.removeRegion(srcRegionIdx);
+    srcLane.removeClip(srcClipIdx);
 
     return true;
 }
 
-bool MoveRegionToLaneAction::undo()
+bool MoveClipToLaneAction::undo()
 {
     juce::ScopedLock sl(proc.laneLock);
 
     // Remove from destination
     if (dstLaneIdx >= 0 && dstLaneIdx < (int)proc.lanes.size())
     {
-        auto& dstLane = proc.lanes[dstLaneIdx];
-        if (addedRegionIdx >= 0 && addedRegionIdx < (int)dstLane.regions.size())
-            dstLane.regions.erase(dstLane.regions.begin() + addedRegionIdx);
+        auto& dstLane = proc.lanes[static_cast<size_t>(dstLaneIdx)];
         if (addedClipIdx >= 0 && addedClipIdx < (int)dstLane.clips.size())
-            dstLane.clips.erase(dstLane.clips.begin() + addedClipIdx);
+            dstLane.removeClip(addedClipIdx);
     }
 
     // Remove created lane if we made one
@@ -323,17 +133,122 @@ bool MoveRegionToLaneAction::undo()
     // Restore to source lane
     if (srcLaneIdx >= 0 && srcLaneIdx < (int)proc.lanes.size())
     {
-        auto& srcLane = proc.lanes[srcLaneIdx];
-        int clipIdx = (int)srcLane.clips.size();
-        srcLane.clips.push_back(savedClip);
-        CompRegion restored = savedRegion;
-        restored.clipIndex = clipIdx;
-        if (srcRegionIdx <= (int)srcLane.regions.size())
-            srcLane.regions.insert(srcLane.regions.begin() + srcRegionIdx, restored);
+        auto& srcLane = proc.lanes[static_cast<size_t>(srcLaneIdx)];
+        if (srcClipIdx <= (int)srcLane.clips.size())
+        {
+            srcLane.clips.insert(srcLane.clips.begin() + srcClipIdx, savedClip);
+            srcLane.clipStarts.insert(srcLane.clipStarts.begin() + srcClipIdx, savedBeatPos);
+        }
         else
-            srcLane.regions.push_back(restored);
+        {
+            srcLane.addClip(savedClip, savedBeatPos);
+        }
     }
 
+    return true;
+}
+
+// ── AddNoteAction ──────────────────────────────────────────────────────────
+
+bool AddNoteAction::perform()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
+    if (clipIndex < 0 || clipIndex >= (int)lane.clips.size()) return false;
+    lane.clips[static_cast<size_t>(clipIndex)].notes.push_back(newNote);
+    return true;
+}
+
+bool AddNoteAction::undo()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
+    if (clipIndex < 0 || clipIndex >= (int)lane.clips.size()) return false;
+    auto& notes = lane.clips[static_cast<size_t>(clipIndex)].notes;
+    if (!notes.empty()) notes.pop_back();
+    return true;
+}
+
+// ── DeleteNoteAction ───────────────────────────────────────────────────────
+
+bool DeleteNoteAction::perform()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
+    if (clipIndex < 0 || clipIndex >= (int)lane.clips.size()) return false;
+    auto& notes = lane.clips[static_cast<size_t>(clipIndex)].notes;
+    if (noteIndex < 0 || noteIndex >= (int)notes.size()) return false;
+    savedNote = notes[static_cast<size_t>(noteIndex)];
+    notes.erase(notes.begin() + noteIndex);
+    return true;
+}
+
+bool DeleteNoteAction::undo()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
+    if (clipIndex < 0 || clipIndex >= (int)lane.clips.size()) return false;
+    auto& notes = lane.clips[static_cast<size_t>(clipIndex)].notes;
+    if (noteIndex <= (int)notes.size())
+        notes.insert(notes.begin() + noteIndex, savedNote);
+    else
+        notes.push_back(savedNote);
+    return true;
+}
+
+// ── EditNoteAction ─────────────────────────────────────────────────────────
+
+bool EditNoteAction::perform()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
+    if (clipIndex < 0 || clipIndex >= (int)lane.clips.size()) return false;
+    auto& notes = lane.clips[static_cast<size_t>(clipIndex)].notes;
+    if (noteIndex < 0 || noteIndex >= (int)notes.size()) return false;
+    notes[static_cast<size_t>(noteIndex)] = newNoteState;
+    return true;
+}
+
+bool EditNoteAction::undo()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
+    if (clipIndex < 0 || clipIndex >= (int)lane.clips.size()) return false;
+    auto& notes = lane.clips[static_cast<size_t>(clipIndex)].notes;
+    if (noteIndex < 0 || noteIndex >= (int)notes.size()) return false;
+    notes[static_cast<size_t>(noteIndex)] = oldNoteState;
+    return true;
+}
+
+// ── DuplicateClipAction ───────────────────────────────────────────────────
+
+bool DuplicateClipAction::perform()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
+    if (clipIndex < 0 || clipIndex >= (int)lane.clips.size()) return false;
+    auto& srcClip = lane.clips[static_cast<size_t>(clipIndex)];
+    double srcStart = lane.clipStarts[static_cast<size_t>(clipIndex)];
+    double newStart = srcStart + srcClip.lengthBeats;
+    addedClipIdx = (int)lane.clips.size();
+    lane.addClip(srcClip, newStart);
+    return true;
+}
+
+bool DuplicateClipAction::undo()
+{
+    juce::ScopedLock sl(proc.laneLock);
+    if (laneIdx < 0 || laneIdx >= (int)proc.lanes.size()) return false;
+    auto& lane = proc.lanes[static_cast<size_t>(laneIdx)];
+    if (addedClipIdx >= 0 && addedClipIdx < (int)lane.clips.size())
+        lane.removeClip(addedClipIdx);
     return true;
 }
 

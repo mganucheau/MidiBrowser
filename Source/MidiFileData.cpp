@@ -241,51 +241,46 @@ int quantiseToScale(int inNote, int scaleRoot, ScaleType scale)
 
 // ── CompLane helpers ─────────────────────────────────────────────────────────
 
-void CompLane::addClipAtPosition(const MidiClip& clip, double beatPos)
+void CompLane::addClip(const MidiClip& clip, double beatPos)
 {
-    int idx = (int)clips.size();
     clips.push_back(clip);
-
-    CompRegion r;
-    r.startBeat = beatPos;
-    r.endBeat   = beatPos + clip.lengthBeats;
-    r.clipIndex  = idx;
-    regions.push_back(r);
+    clipStarts.push_back(beatPos);
 }
 
-void CompLane::removeRegion(int index)
+void CompLane::removeClip(int index)
 {
-    if (index >= 0 && index < (int)regions.size())
-        regions.erase(regions.begin() + index);
-}
-
-void CompLane::sortAndClampRegions()
-{
-    // Remove degenerate regions first (zero or negative width)
-    regions.erase(
-        std::remove_if(regions.begin(), regions.end(),
-                       [](const CompRegion& r) { return r.endBeat - r.startBeat < 0.01; }),
-        regions.end());
-
-    if (regions.empty()) return;
-
-    // Sort by startBeat
-    std::sort(regions.begin(), regions.end(),
-              [](const CompRegion& a, const CompRegion& b) { return a.startBeat < b.startBeat; });
-
-    // Resolve overlaps: for each pair of adjacent regions, if they overlap,
-    // truncate the earlier region's endBeat to the later's startBeat.
-    for (size_t i = 0; i + 1 < regions.size(); ++i)
+    if (index >= 0 && index < (int)clips.size())
     {
-        if (regions[i].endBeat > regions[i + 1].startBeat)
-            regions[i].endBeat = regions[i + 1].startBeat;
+        clips.erase(clips.begin() + index);
+        clipStarts.erase(clipStarts.begin() + index);
     }
+}
 
-    // Final cleanup: remove any regions that became degenerate after clamping
-    regions.erase(
-        std::remove_if(regions.begin(), regions.end(),
-                       [](const CompRegion& r) { return r.endBeat - r.startBeat < 0.01; }),
-        regions.end());
+const MidiClip* CompLane::clipAtBeat(double beat, double& clipStart) const
+{
+    for (int i = 0; i < (int)clips.size(); ++i)
+    {
+        double s = clipStarts[static_cast<size_t>(i)];
+        double e = s + clips[static_cast<size_t>(i)].lengthBeats;
+        if (beat >= s && beat < e)
+        {
+            clipStart = s;
+            return &clips[static_cast<size_t>(i)];
+        }
+    }
+    return nullptr;
+}
+
+int CompLane::clipIndexAtBeat(double beat) const
+{
+    for (int i = 0; i < (int)clips.size(); ++i)
+    {
+        double s = clipStarts[static_cast<size_t>(i)];
+        double e = s + clips[static_cast<size_t>(i)].lengthBeats;
+        if (beat >= s && beat < e)
+            return i;
+    }
+    return -1;
 }
 
 } // namespace pflow

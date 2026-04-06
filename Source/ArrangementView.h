@@ -10,8 +10,8 @@ class PatternFlowProcessor;
 struct ClipBlock
 {
     juce::Rectangle<float> bounds;
-    int                    laneIndex   = 0;
-    int                    regionIndex = 0;
+    int                    laneIndex  = 0;
+    int                    clipIndex  = 0;
 };
 
 class ArrangementView : public juce::Component,
@@ -38,15 +38,13 @@ public:
     void addClipToNewLane(const MidiClip& clip, double beatPos);
 
     std::function<void()> onAddLaneClicked;
-    std::function<void(int laneIdx, int regionIdx)> onRegionDoubleClicked;
-    std::function<void(const MidiClip&, int laneIdx, int regionIdx)> onClipDoubleClicked;
-    std::function<void(int laneIdx, int regionIdx)> onColourPickRequested;
+    std::function<void(const MidiClip&, int laneIdx, int clipIdx)> onClipDoubleClicked;
 
     float beatsPerPixel = 0.1f;
     float scrollBeatOffset = 0.0f;
 
     int openPianoRollLane = -1;
-    int openPianoRollRegion = -1;
+    int openPianoRollClip = -1;
 
     void refresh();
     void zoomToFitSession();
@@ -59,8 +57,8 @@ public:
     juce::TextButton btnAddBars { "+4 Bars" };
     juce::TextButton btnLoop    { "Loop" };
 
-    int selLane   = -1;
-    int selRegion = -1;
+    int selLane = -1;
+    int selClip = -1;
 
     // Time range selection (for Cmd+L loop-from-selection)
     bool   hasTimeSelection    = false;
@@ -77,11 +75,11 @@ private:
     PatternFlowProcessor& processor;
 
     std::vector<ClipBlock> clipBlocks;
-    int   hoveredLane   = -1;
-    int   hoveredRegion = -1;
-    float dropBeatPos   = 0.0f;
-    int   dropLaneIdx   = -1;
-    bool  draggingOver  = false;
+    int   hoveredLane  = -1;
+    int   hoveredClip  = -1;
+    float dropBeatPos  = 0.0f;
+    int   dropLaneIdx  = -1;
+    bool  draggingOver = false;
 
     // Playhead dragging
     bool draggingPlayhead = false;
@@ -97,20 +95,9 @@ private:
 
     bool  draggingClip = false;
     double clipDragOrigBeat = 0.0;
-    double clipDragOrigEnd = 0.0;
     double clipDragMouseOffset = 0.0;
     int    clipDragOrigLane = -1;
     float  clipDragMouseYOffset = 0.0f;
-
-    // Region edge drag-to-loop
-    enum class EdgeDragTarget { None, Start, End };
-    EdgeDragTarget edgeDragging = EdgeDragTarget::None;
-    int edgeDragLane = -1;
-    int edgeDragRegion = -1;
-    double edgeDragOrigStart = 0.0;
-    double edgeDragOrigEnd = 0.0;
-
-    bool isNearRegionEdge(const juce::MouseEvent& e, const ClipBlock& cb, EdgeDragTarget& which) const;
 
     // Master clip external drag-to-DAW
     bool draggingMasterClip = false;
@@ -136,7 +123,7 @@ private:
 
     void updateLoopButton();
     void ensureBarsForBeat(double endBeat);
-    void showClipContextMenu(int laneIdx, int regionIdx);
+    void showClipContextMenu(int laneIdx, int clipIdx);
     void showLaneContextMenu(int laneIdx);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ArrangementView)

@@ -6,12 +6,12 @@ namespace pflow {
 
 class PatternFlowProcessor;
 
-// ── Add region to lane ───────────────────────────────────────────────────────
-class AddRegionAction : public juce::UndoableAction
+// ── Add clip to lane ────────────────────────────────────────────────────────
+class AddClipAction : public juce::UndoableAction
 {
 public:
-    AddRegionAction(PatternFlowProcessor& p, int lane, CompRegion region, MidiClip clip)
-        : proc(p), laneIdx(lane), newRegion(std::move(region)), newClip(std::move(clip)) {}
+    AddClipAction(PatternFlowProcessor& p, int lane, MidiClip clip, double beatPos)
+        : proc(p), laneIdx(lane), newClip(std::move(clip)), clipBeatPos(beatPos) {}
 
     bool perform() override;
     bool undo() override;
@@ -19,18 +19,17 @@ public:
 private:
     PatternFlowProcessor& proc;
     int laneIdx;
-    CompRegion newRegion;
     MidiClip newClip;
-    int addedRegionIdx = -1;
+    double clipBeatPos;
     int addedClipIdx = -1;
 };
 
-// ── Remove region from lane ─────────────────────────────────────────────────
-class RemoveRegionAction : public juce::UndoableAction
+// ── Remove clip from lane ──────────────────────────────────────────────────
+class RemoveClipAction : public juce::UndoableAction
 {
 public:
-    RemoveRegionAction(PatternFlowProcessor& p, int lane, int region)
-        : proc(p), laneIdx(lane), regionIdx(region) {}
+    RemoveClipAction(PatternFlowProcessor& p, int lane, int clipIdx)
+        : proc(p), laneIdx(lane), clipIndex(clipIdx) {}
 
     bool perform() override;
     bool undo() override;
@@ -38,140 +37,37 @@ public:
 private:
     PatternFlowProcessor& proc;
     int laneIdx;
-    int regionIdx;
-    CompRegion savedRegion;
+    int clipIndex;
     MidiClip savedClip;
-    int savedClipIdx = -1;
+    double savedBeatPos = 0.0;
 };
 
-// ── Move region ─────────────────────────────────────────────────────────────
-class MoveRegionAction : public juce::UndoableAction
+// ── Move clip (change beat position) ───────────────────────────────────────
+class MoveClipAction : public juce::UndoableAction
 {
 public:
-    MoveRegionAction(PatternFlowProcessor& p, int lane, int region,
-                     double oldStart, double oldEnd, double newStart, double newEnd)
-        : proc(p), laneIdx(lane), regionIdx(region),
-          oldStartBeat(oldStart), oldEndBeat(oldEnd),
-          newStartBeat(newStart), newEndBeat(newEnd) {}
+    MoveClipAction(PatternFlowProcessor& p, int lane, int clipIdx,
+                   double oldBeatPos, double newBeatPos)
+        : proc(p), laneIdx(lane), clipIndex(clipIdx),
+          oldPos(oldBeatPos), newPos(newBeatPos) {}
 
     bool perform() override;
     bool undo() override;
 
 private:
     PatternFlowProcessor& proc;
-    int laneIdx, regionIdx;
-    double oldStartBeat, oldEndBeat;
-    double newStartBeat, newEndBeat;
+    int laneIdx, clipIndex;
+    double oldPos, newPos;
 };
 
-// ── Toggle mute ─────────────────────────────────────────────────────────────
-class ToggleMuteAction : public juce::UndoableAction
+// ── Move clip to a different lane ──────────────────────────────────────────
+class MoveClipToLaneAction : public juce::UndoableAction
 {
 public:
-    ToggleMuteAction(PatternFlowProcessor& p, int lane, int region)
-        : proc(p), laneIdx(lane), regionIdx(region) {}
-
-    bool perform() override;
-    bool undo() override;
-
-private:
-    PatternFlowProcessor& proc;
-    int laneIdx, regionIdx;
-};
-
-// ── Add note in piano roll ──────────────────────────────────────────────────
-class AddNoteAction : public juce::UndoableAction
-{
-public:
-    AddNoteAction(PatternFlowProcessor& p, int lane, int region, NoteEvent note)
-        : proc(p), laneIdx(lane), regionIdx(region), newNote(std::move(note)) {}
-
-    bool perform() override;
-    bool undo() override;
-
-private:
-    PatternFlowProcessor& proc;
-    int laneIdx, regionIdx;
-    NoteEvent newNote;
-};
-
-// ── Delete note in piano roll ───────────────────────────────────────────────
-class DeleteNoteAction : public juce::UndoableAction
-{
-public:
-    DeleteNoteAction(PatternFlowProcessor& p, int lane, int region, int noteIdx)
-        : proc(p), laneIdx(lane), regionIdx(region), noteIndex(noteIdx) {}
-
-    bool perform() override;
-    bool undo() override;
-
-private:
-    PatternFlowProcessor& proc;
-    int laneIdx, regionIdx, noteIndex;
-    NoteEvent savedNote;
-};
-
-// ── Move/resize note in piano roll ──────────────────────────────────────────
-class EditNoteAction : public juce::UndoableAction
-{
-public:
-    EditNoteAction(PatternFlowProcessor& p, int lane, int region, int noteIdx,
-                   NoteEvent oldNote, NoteEvent newNote)
-        : proc(p), laneIdx(lane), regionIdx(region), noteIndex(noteIdx),
-          oldNoteState(std::move(oldNote)), newNoteState(std::move(newNote)) {}
-
-    bool perform() override;
-    bool undo() override;
-
-private:
-    PatternFlowProcessor& proc;
-    int laneIdx, regionIdx, noteIndex;
-    NoteEvent oldNoteState, newNoteState;
-};
-
-// ── Duplicate region ────────────────────────────────────────────────────────
-class DuplicateRegionAction : public juce::UndoableAction
-{
-public:
-    DuplicateRegionAction(PatternFlowProcessor& p, int lane, int region)
-        : proc(p), laneIdx(lane), regionIdx(region) {}
-
-    bool perform() override;
-    bool undo() override;
-
-private:
-    PatternFlowProcessor& proc;
-    int laneIdx, regionIdx;
-    int addedRegionIdx = -1;
-};
-
-// ── Split region at beat ────────────────────────────────────────────────────
-class SplitRegionAction : public juce::UndoableAction
-{
-public:
-    SplitRegionAction(PatternFlowProcessor& p, int lane, int region, double splitBeat)
-        : proc(p), laneIdx(lane), regionIdx(region), splitAtBeat(splitBeat) {}
-
-    bool perform() override;
-    bool undo() override;
-
-private:
-    PatternFlowProcessor& proc;
-    int laneIdx, regionIdx;
-    double splitAtBeat;
-    CompRegion origRegion;
-    int addedRegionIdx = -1;
-};
-
-// ── Move region to a different lane ──────────────────────────────────────────
-class MoveRegionToLaneAction : public juce::UndoableAction
-{
-public:
-    MoveRegionToLaneAction(PatternFlowProcessor& p, int srcLane, int regionIdx,
-                           int dstLane, double newStart, double newEnd,
-                           bool createNewLane = false)
-        : proc(p), srcLaneIdx(srcLane), srcRegionIdx(regionIdx),
-          dstLaneIdx(dstLane), newStartBeat(newStart), newEndBeat(newEnd),
+    MoveClipToLaneAction(PatternFlowProcessor& p, int srcLane, int clipIdx,
+                         int dstLane, double newBeatPos, bool createNewLane = false)
+        : proc(p), srcLaneIdx(srcLane), srcClipIdx(clipIdx),
+          dstLaneIdx(dstLane), newPos(newBeatPos),
           needsNewLane(createNewLane) {}
 
     bool perform() override;
@@ -179,13 +75,77 @@ public:
 
 private:
     PatternFlowProcessor& proc;
-    int srcLaneIdx, srcRegionIdx, dstLaneIdx;
-    double newStartBeat, newEndBeat;
+    int srcLaneIdx, srcClipIdx, dstLaneIdx;
+    double newPos;
     bool needsNewLane;
-    CompRegion savedRegion;
     MidiClip savedClip;
-    int savedClipIdx = -1;
-    int addedRegionIdx = -1;
+    double savedBeatPos = 0.0;
+    int addedClipIdx = -1;
+};
+
+// ── Add note in piano roll ─────────────────────────────────────────────────
+class AddNoteAction : public juce::UndoableAction
+{
+public:
+    AddNoteAction(PatternFlowProcessor& p, int lane, int clipIdx, NoteEvent note)
+        : proc(p), laneIdx(lane), clipIndex(clipIdx), newNote(std::move(note)) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int laneIdx, clipIndex;
+    NoteEvent newNote;
+};
+
+// ── Delete note in piano roll ──────────────────────────────────────────────
+class DeleteNoteAction : public juce::UndoableAction
+{
+public:
+    DeleteNoteAction(PatternFlowProcessor& p, int lane, int clipIdx, int noteIdx)
+        : proc(p), laneIdx(lane), clipIndex(clipIdx), noteIndex(noteIdx) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int laneIdx, clipIndex, noteIndex;
+    NoteEvent savedNote;
+};
+
+// ── Move/resize note in piano roll ─────────────────────────────────────────
+class EditNoteAction : public juce::UndoableAction
+{
+public:
+    EditNoteAction(PatternFlowProcessor& p, int lane, int clipIdx, int noteIdx,
+                   NoteEvent oldNote, NoteEvent newNote)
+        : proc(p), laneIdx(lane), clipIndex(clipIdx), noteIndex(noteIdx),
+          oldNoteState(std::move(oldNote)), newNoteState(std::move(newNote)) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int laneIdx, clipIndex, noteIndex;
+    NoteEvent oldNoteState, newNoteState;
+};
+
+// ── Duplicate clip ─────────────────────────────────────────────────────────
+class DuplicateClipAction : public juce::UndoableAction
+{
+public:
+    DuplicateClipAction(PatternFlowProcessor& p, int lane, int clipIdx)
+        : proc(p), laneIdx(lane), clipIndex(clipIdx) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int laneIdx, clipIndex;
     int addedClipIdx = -1;
 };
 
