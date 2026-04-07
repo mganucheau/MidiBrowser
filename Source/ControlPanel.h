@@ -66,6 +66,12 @@ private:
     // Record button
     juce::TextButton   btnRecord { "Rec" };
 
+    // Comp controls
+    juce::ToggleButton btnCompEnable { "Comp" };
+    juce::ComboBox     cmbComp;
+    juce::TextButton   btnCompAdd { "+" };
+    juce::TextButton   btnCompDel { "-" };
+
     void setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& tooltip);
 
 public:
@@ -76,6 +82,7 @@ public:
     std::function<void()> onTrimClips;
 
     void updateRecordButton();
+    void rebuildCompCombo();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ControlPanel)
 };

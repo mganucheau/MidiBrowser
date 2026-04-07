@@ -150,6 +150,8 @@ void ArrangementView::paint(juce::Graphics& g)
     paintTimeSelection(g);
     paintLoopMarkers(g);
     paintMasterLane(g);
+    if (processor.compEnabled.load())
+        paintCompLane(g);
     paintLaneHeaders(g);
     paintClipBlocks(g);
     paintPlayhead(g);
@@ -422,6 +424,12 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
 {
     juce::ScopedLock sl(processor.laneLock);
 
+    // Determine if comp mode is active for dimming unselected segments
+    bool compActive = processor.compEnabled.load();
+    const Comp* activeComp = nullptr;
+    if (compActive && !processor.comps.empty())
+        activeComp = &processor.getActiveComp();
+
     for (auto& cb : clipBlocks)
     {
         if (cb.laneIndex >= (int)processor.lanes.size()) continue;
@@ -432,8 +440,29 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
 
         auto clipColour = clip.colour;
 
+        // Dim clips that are not active in the current comp
+        bool dimmed = false;
+        if (activeComp != nullptr)
+        {
+            double clipStart = lane.clipStarts[static_cast<size_t>(cb.clipIndex)];
+            double clipEnd = clipStart + clip.lengthBeats;
+            // Check if any segment in the comp selects this lane for any portion of this clip
+            bool anySelected = false;
+            for (auto& seg : activeComp->segments)
+            {
+                if (seg.laneIndex == cb.laneIndex &&
+                    seg.startBeat < clipEnd && seg.endBeat > clipStart)
+                {
+                    anySelected = true;
+                    break;
+                }
+            }
+            dimmed = !anySelected;
+        }
+
         // Clip body
-        g.setColour(clipColour.withAlpha(0.65f));
+        float bodyAlpha = dimmed ? 0.25f : 0.65f;
+        g.setColour(clipColour.withAlpha(bodyAlpha));
         g.fillRoundedRectangle(cb.bounds, metrics::clipCorner);
         // Top highlight strip
         g.setColour(juce::Colours::white.withAlpha(0.08f));
@@ -451,7 +480,7 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
             for (auto& n : clip.notes) { minNote = std::min(minNote, n.noteNumber); maxNote = std::max(maxNote, n.noteNumber); }
             int noteRange = std::max(1, maxNote - minNote + 1);
 
-            g.setColour(juce::Colours::white.withAlpha(0.4f));
+            g.setColour(juce::Colours::white.withAlpha(dimmed ? 0.15f : 0.4f));
             for (auto& n : clip.notes)
             {
                 if (n.startBeat >= clipLen) continue;
@@ -477,6 +506,44 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
         g.setFont(11.0f);
         g.drawText(clip.name, cb.bounds.reduced(4.0f, 2.0f), juce::Justification::topLeft, true);
     }
+
+    // ── Comp swipe preview on take lane ──
+    if (compSwiping && compSwipeLane >= 0 && compSwipeLane < (int)processor.lanes.size())
+    {
+        double sStart = std::min(compSwipeStartBeat, compSwipeEndBeat);
+        double sEnd   = std::max(compSwipeStartBeat, compSwipeEndBeat);
+        if (sEnd > sStart)
+        {
+            float sx = beatToX(sStart);
+            float ex = beatToX(sEnd);
+            float sy = laneToY(compSwipeLane);
+
+            juce::Colour swipeCol = processor.lanes[static_cast<size_t>(compSwipeLane)].colour;
+            g.setColour(swipeCol.withAlpha(0.2f));
+            g.fillRect(sx, sy, ex - sx, (float)metrics::laneHeight);
+            g.setColour(swipeCol.withAlpha(0.7f));
+            g.drawRect(sx, sy, ex - sx, (float)metrics::laneHeight, 2.0f);
+        }
+    }
+
+    // ── Comp selected segment highlights on take lanes ──
+    if (compActive && activeComp != nullptr)
+    {
+        for (auto& seg : activeComp->segments)
+        {
+            if (seg.laneIndex < 0 || seg.laneIndex >= (int)processor.lanes.size()) continue;
+            float sx = beatToX(seg.startBeat);
+            float ex = beatToX(seg.endBeat);
+            float sy = laneToY(seg.laneIndex);
+
+            // Subtle highlight bar at bottom of selected region
+            juce::Colour segCol = processor.lanes[static_cast<size_t>(seg.laneIndex)].colour;
+            g.setColour(segCol.withAlpha(0.12f));
+            g.fillRect(sx, sy, ex - sx, (float)metrics::laneHeight);
+            g.setColour(segCol.withAlpha(0.5f));
+            g.fillRect(sx, sy + (float)metrics::laneHeight - 3.0f, ex - sx, 3.0f);
+        }
+    }
 }
 
 void ArrangementView::paintMasterLane(juce::Graphics& g)
@@ -495,7 +562,8 @@ void ArrangementView::paintMasterLane(juce::Graphics& g)
     // Label
     g.setColour(colours::textBright());
     g.setFont(12.0f);
-    g.drawText("MASTER", 10, (int)y, metrics::laneHeaderW - 14,
+    bool compOn = processor.compEnabled.load();
+    g.drawText(compOn ? "COMP" : "MASTER", 10, (int)y, metrics::laneHeaderW - 14,
                (int)(lH * 0.6f), juce::Justification::centredLeft);
 
     // Drag hint when there are notes
@@ -541,6 +609,87 @@ void ArrangementView::paintMasterLane(juce::Graphics& g)
         float nh = std::max(1.0f, (clipH - 4.0f) / noteRange);
         if (nx + nw < clipX || nx > clipEndX) continue;
         g.fillRect(nx, ny, nw, nh);
+    }
+}
+
+void ArrangementView::paintCompLane(juce::Graphics& g)
+{
+    // The comp lane is painted over the master lane area, showing colored
+    // segments from the active comp that indicate which lane is selected
+    // at each point in time.
+
+    if (processor.comps.empty()) return;
+    const auto& comp = processor.getActiveComp();
+    if (comp.segments.empty()) return;
+
+    float y = masterLaneY();
+    float lH = (float)metrics::laneHeight;
+    float contentY = y + 2.0f;
+    float contentH = lH - 4.0f;
+
+    juce::ScopedLock sl(processor.laneLock);
+
+    for (auto& seg : comp.segments)
+    {
+        float sx = beatToX(seg.startBeat);
+        float ex = beatToX(seg.endBeat);
+        if (ex < metrics::laneHeaderW || sx > getWidth()) continue;
+
+        // Get the lane colour for this segment
+        juce::Colour segCol(0xff888888);
+        if (seg.laneIndex >= 0 && seg.laneIndex < (int)processor.lanes.size())
+            segCol = processor.lanes[static_cast<size_t>(seg.laneIndex)].colour;
+
+        // Colored block
+        g.setColour(segCol.withAlpha(0.55f));
+        g.fillRect(sx, contentY, ex - sx, contentH);
+
+        // Top accent strip
+        g.setColour(segCol.withAlpha(0.85f));
+        g.fillRect(sx, contentY, ex - sx, 3.0f);
+
+        // Lane label inside block
+        g.setColour(juce::Colours::white.withAlpha(0.7f));
+        g.setFont(9.0f);
+        juce::String label = "L" + juce::String(seg.laneIndex + 1);
+        if (seg.laneIndex < (int)processor.lanes.size())
+            label = processor.lanes[static_cast<size_t>(seg.laneIndex)].name;
+        if ((ex - sx) > 30.0f)
+            g.drawText(label, juce::Rectangle<float>(sx + 4, contentY + 4, ex - sx - 8, 12.0f),
+                       juce::Justification::centredLeft, true);
+    }
+
+    // Transition markers between adjacent segments
+    for (size_t i = 1; i < comp.segments.size(); ++i)
+    {
+        auto& prev = comp.segments[i - 1];
+        auto& cur  = comp.segments[i];
+
+        // Draw marker if segments are adjacent (or very close)
+        if (std::abs(cur.startBeat - prev.endBeat) < 0.01)
+        {
+            float mx = beatToX(cur.startBeat);
+            g.setColour(juce::Colours::white.withAlpha(0.6f));
+            g.drawVerticalLine((int)mx, contentY, contentY + contentH);
+        }
+    }
+
+    // Draw active swipe preview
+    if (compSwiping && compSwipeLane >= 0)
+    {
+        double sStart = std::min(compSwipeStartBeat, compSwipeEndBeat);
+        double sEnd   = std::max(compSwipeStartBeat, compSwipeEndBeat);
+        float sx = beatToX(sStart);
+        float ex = beatToX(sEnd);
+
+        juce::Colour swipeCol(0xff888888);
+        if (compSwipeLane < (int)processor.lanes.size())
+            swipeCol = processor.lanes[static_cast<size_t>(compSwipeLane)].colour;
+
+        g.setColour(swipeCol.withAlpha(0.35f));
+        g.fillRect(sx, contentY, ex - sx, contentH);
+        g.setColour(swipeCol.withAlpha(0.8f));
+        g.drawRect(sx, contentY, ex - sx, contentH, 1.5f);
     }
 }
 
@@ -748,6 +897,24 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
         }
     }
 
+    // ── Comp swipe: when comp enabled, clicking on a lane's content area starts a swipe ──
+    if (processor.compEnabled.load() && e.position.x >= metrics::laneHeaderW && !e.mods.isRightButtonDown())
+    {
+        int lane = yToLane(e.position.y);
+        juce::ScopedLock sl(processor.laneLock);
+        if (lane >= 0 && lane < (int)processor.lanes.size())
+        {
+            double beat = std::max(0.0, xToBeat(e.position.x));
+            beat = processor.snapBeat(beat);
+            compSwiping = true;
+            compSwipeLane = lane;
+            compSwipeStartBeat = beat;
+            compSwipeEndBeat = beat;
+            repaint();
+            return;
+        }
+    }
+
     for (auto& cb : clipBlocks)
     {
         if (cb.bounds.contains(e.position))
@@ -798,6 +965,16 @@ void ArrangementView::mouseDoubleClick(const juce::MouseEvent& e)
 
 void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 {
+    // Comp swipe drag
+    if (compSwiping)
+    {
+        double beat = std::max(0.0, xToBeat(e.position.x));
+        beat = processor.snapBeat(beat);
+        compSwipeEndBeat = beat;
+        repaint();
+        return;
+    }
+
     // Master clip drag-to-DAW
     if (draggingMasterClip && !masterDragInitiated)
     {
@@ -886,6 +1063,32 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
 
 void ArrangementView::mouseUp(const juce::MouseEvent& e)
 {
+    // Finalise comp swipe
+    if (compSwiping)
+    {
+        compSwiping = false;
+        double sStart = std::min(compSwipeStartBeat, compSwipeEndBeat);
+        double sEnd   = std::max(compSwipeStartBeat, compSwipeEndBeat);
+
+        // Minimum swipe distance: at least one grid unit
+        if (sEnd - sStart < 0.01)
+        {
+            // Single click: select a 1-beat range (or snap grid unit)
+            sEnd = sStart + 1.0;
+            sEnd = processor.snapBeat(sEnd);
+            if (sEnd <= sStart) sEnd = sStart + 1.0;
+        }
+
+        if (compSwipeLane >= 0 && sEnd > sStart)
+        {
+            processor.compSwipe(compSwipeLane, sStart, sEnd);
+            processor.rebuildMasterClip();
+        }
+        compSwipeLane = -1;
+        refresh();
+        return;
+    }
+
     if (draggingPlayhead) { draggingPlayhead = false; return; }
     if (draggingMasterClip) { draggingMasterClip = false; masterDragInitiated = false; return; }
 

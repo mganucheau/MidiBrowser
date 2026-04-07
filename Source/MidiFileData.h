@@ -59,25 +59,40 @@ std::vector<int> scaleIntervals(ScaleType s);
 // Map an incoming note to the nearest note within a given scale + root
 int quantiseToScale(int inNote, int scaleRoot, ScaleType scale);
 
-// ── Comp system (Logic Pro-style) ────────────────────────────────────────────
+// ── Comp system (Quick Swipe Comping) ────────────────────────────────────────
 //
-// Each lane holds ONE clip placed at a beat position.  The comp system works
-// across all lanes: a sorted list of beat-position "cuts" divides the timeline
-// into slices.  Each slice has an activeLane index saying which lane's audio
-// plays during that time range.  At any point in time exactly one lane is
-// active (mutual exclusivity).
+// Each lane holds clips placed at beat positions.  The comp system lets the user
+// select which lane is active at each point in time by swiping across take lanes.
 //
-// CompSlice: the region between two adjacent cut points.
-// The cuts themselves live in the processor as compCuts (sorted, unique doubles).
-// compActive[i] gives the active lane index for the slice between
-// compCuts[i] and compCuts[i+1].  The slice before compCuts[0] uses
-// compActive[0]; the slice after the last cut also defaults.
+// CompSegment: a half-open interval [startBeat, endBeat) on a specific lane
+// that is "selected" (active) in a comp.  Segments are non-overlapping across
+// lanes — at any beat position, at most ONE lane is active.
+//
+// Comp: a named collection of CompSegments forming one composite take.
+// Multiple comps can exist (Comp A, Comp B, ...) with independent selections.
 
-struct CompSlice
+struct CompSegment
 {
+    int    laneIndex  = 0;
     double startBeat  = 0.0;
-    double endBeat    = 4.0;
-    int    activeLane = 0;      // which lane is audible in this slice
+    double endBeat    = 4.0;     // half-open: [startBeat, endBeat)
+};
+
+struct Comp
+{
+    juce::String               name { "Comp A" };
+    std::vector<CompSegment>   segments;   // sorted by startBeat, non-overlapping
+
+    // Apply a swipe: select laneIndex for [startBeat, endBeat).
+    // Removes/trims any existing segments that overlap this range,
+    // adds the new segment, and merges adjacent segments on the same lane.
+    void swipe(int laneIndex, double startBeat, double endBeat);
+
+    // Get the active lane index at a given beat, or -1 if no lane is active (gap)
+    int activeLaneAtBeat(double beat) const;
+
+    // Sort segments and merge adjacent ones on the same lane
+    void sortAndMerge();
 };
 
 struct CompLane

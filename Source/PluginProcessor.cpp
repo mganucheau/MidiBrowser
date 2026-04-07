@@ -255,7 +255,7 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
     for (auto& l : lanes)
         if (l.solo) { anySolo = true; break; }
 
-    bool useComp = compEnabled.load() && !compCuts.empty();
+    bool useComp = compEnabled.load() && !comps.empty() && !getActiveComp().segments.empty();
 
     // Helper lambda to emit notes from a clip on a lane within a beat range
     auto emitClipNotes = [&](const MidiClip& clip, double clipStart,
@@ -346,25 +346,24 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
     }
     else
     {
-        // Comp mode: use comp slices to determine which lane plays at each time
-        auto slices = getCompSlices();
-        for (auto& slice : slices)
+        // Comp mode: use active comp segments to determine which lane plays
+        auto& comp = getActiveComp();
+        for (auto& seg : comp.segments)
         {
-            if (slice.endBeat <= startBeat || slice.startBeat >= endBeat) continue;
-            int li = slice.activeLane;
+            if (seg.endBeat <= startBeat || seg.startBeat >= endBeat) continue;
+            int li = seg.laneIndex;
             if (li < 0 || li >= (int)lanes.size()) continue;
             auto& lane = lanes[static_cast<size_t>(li)];
             if (lane.muted) continue;
             if (anySolo && !lane.solo) continue;
 
-            // Find clip in this lane that covers this slice
             for (int ci = 0; ci < (int)lane.clips.size(); ++ci)
             {
                 auto& clip = lane.clips[static_cast<size_t>(ci)];
                 double cs = lane.clipStarts[static_cast<size_t>(ci)];
                 double ce = cs + clip.lengthBeats;
-                if (ce <= slice.startBeat || cs >= slice.endBeat) continue;
-                emitClipNotes(clip, cs, slice.startBeat, slice.endBeat);
+                if (ce <= seg.startBeat || cs >= seg.endBeat) continue;
+                emitClipNotes(clip, cs, seg.startBeat, seg.endBeat);
             }
         }
     }
@@ -507,99 +506,66 @@ void PatternFlowProcessor::finaliseRecordingClip()
     // (this happens in the caller which sets recordingStartBeat)
 }
 
-// ── Master clip rebuild ──────────────────────────────────────────────────────
-
 // ── Comp system helpers ─────────────────────────────────────────────────────
 
-std::vector<CompSlice> PatternFlowProcessor::getCompSlices() const
+Comp& PatternFlowProcessor::getActiveComp()
 {
-    std::vector<CompSlice> slices;
-    double sessionEnd = (double)(arrangementBars.load() * 4);
-
-    if (compCuts.empty())
+    if (comps.empty())
     {
-        // Single slice spanning the whole session
-        CompSlice s;
-        s.startBeat  = 0.0;
-        s.endBeat    = sessionEnd;
-        s.activeLane = compActive.empty() ? 0 : compActive[0];
-        slices.push_back(s);
-        return slices;
+        Comp c;
+        c.name = "Comp A";
+        comps.push_back(c);
+        activeCompIndex = 0;
     }
-
-    // Slice 0: [0 .. compCuts[0])
-    {
-        CompSlice s;
-        s.startBeat  = 0.0;
-        s.endBeat    = compCuts[0];
-        s.activeLane = compActive.empty() ? 0 : compActive[0];
-        slices.push_back(s);
-    }
-
-    // Middle slices
-    for (size_t i = 0; i + 1 < compCuts.size(); ++i)
-    {
-        CompSlice s;
-        s.startBeat  = compCuts[i];
-        s.endBeat    = compCuts[i + 1];
-        s.activeLane = (i + 1 < compActive.size()) ? compActive[i + 1] : 0;
-        slices.push_back(s);
-    }
-
-    // Last slice: [compCuts.back() .. sessionEnd)
-    {
-        CompSlice s;
-        s.startBeat  = compCuts.back();
-        s.endBeat    = sessionEnd;
-        s.activeLane = (compCuts.size() < compActive.size()) ? compActive[compCuts.size()] : 0;
-        slices.push_back(s);
-    }
-
-    return slices;
+    activeCompIndex = juce::jlimit(0, (int)comps.size() - 1, activeCompIndex);
+    return comps[static_cast<size_t>(activeCompIndex)];
 }
 
-void PatternFlowProcessor::compSetActiveLane(double rangeStart, double rangeEnd, int laneIndex)
+const Comp& PatternFlowProcessor::getActiveComp() const
+{
+    static const Comp empty;
+    if (comps.empty()) return empty;
+    int idx = juce::jlimit(0, (int)comps.size() - 1, activeCompIndex);
+    return comps[static_cast<size_t>(idx)];
+}
+
+void PatternFlowProcessor::compSwipe(int laneIndex, double startBeat, double endBeat)
 {
     juce::ScopedLock sl(laneLock);
+    getActiveComp().swipe(laneIndex, startBeat, endBeat);
+}
 
-    if (rangeStart >= rangeEnd) return;
+void PatternFlowProcessor::addComp(const juce::String& name)
+{
+    juce::ScopedLock sl(laneLock);
+    Comp c;
+    c.name = name.isEmpty()
+        ? ("Comp " + juce::String(juce::String::charToString('A' + (int)comps.size())))
+        : name;
+    comps.push_back(c);
+    activeCompIndex = (int)comps.size() - 1;
+}
 
-    // Insert cut at rangeStart if not already present
-    auto insertCut = [&](double beat)
+void PatternFlowProcessor::removeComp(int index)
+{
+    juce::ScopedLock sl(laneLock);
+    if (index < 0 || index >= (int)comps.size()) return;
+    comps.erase(comps.begin() + index);
+    if (comps.empty())
     {
-        auto it = std::lower_bound(compCuts.begin(), compCuts.end(), beat);
-        if (it == compCuts.end() || std::abs(*it - beat) > 0.001)
-        {
-            size_t idx = (size_t)(it - compCuts.begin());
-            compCuts.insert(it, beat);
-            // Duplicate the active lane entry at this position
-            int activeLane = 0;
-            if (idx < compActive.size())
-                activeLane = compActive[idx];
-            else if (!compActive.empty())
-                activeLane = compActive.back();
-            compActive.insert(compActive.begin() + (int)idx + 1, activeLane);
-        }
-    };
-
-    insertCut(rangeStart);
-    insertCut(rangeEnd);
-
-    // Now set all slices within [rangeStart, rangeEnd) to laneIndex
-    // Slice i is the region before compCuts[i] (for i>0) or [compCuts[i-1]..compCuts[i])
-    // Slice 0 = [0 .. compCuts[0])    -> compActive[0]
-    // Slice k = [compCuts[k-1] .. compCuts[k])  -> compActive[k]
-
-    // Find slice indices that fall within the range
-    for (size_t i = 0; i < compActive.size(); ++i)
-    {
-        double sliceStart = (i == 0) ? 0.0 : compCuts[i - 1];
-        double sliceEnd   = (i < compCuts.size()) ? compCuts[i] : (double)(arrangementBars.load() * 4);
-
-        // If this slice overlaps with [rangeStart, rangeEnd)
-        if (sliceStart >= rangeStart - 0.001 && sliceEnd <= rangeEnd + 0.001)
-            compActive[i] = laneIndex;
+        Comp c;
+        c.name = "Comp A";
+        comps.push_back(c);
     }
+    if (activeCompIndex >= (int)comps.size())
+        activeCompIndex = (int)comps.size() - 1;
+}
+
+void PatternFlowProcessor::setActiveComp(int index)
+{
+    juce::ScopedLock sl(laneLock);
+    if (index >= 0 && index < (int)comps.size())
+        activeCompIndex = index;
 }
 
 // ── Master clip rebuild ──────────────────────────────────────────────────────
@@ -619,7 +585,7 @@ void PatternFlowProcessor::rebuildMasterClip()
     for (auto& lane : lanes)
         if (lane.solo) { anySolo = true; break; }
 
-    bool useComp = compEnabled.load() && !compCuts.empty();
+    bool useComp = compEnabled.load() && !comps.empty() && !getActiveComp().segments.empty();
 
     if (!useComp)
     {
@@ -658,11 +624,11 @@ void PatternFlowProcessor::rebuildMasterClip()
     }
     else
     {
-        // Comp mode: only include notes from the active lane per slice
-        auto slices = getCompSlices();
-        for (auto& slice : slices)
+        // Comp mode: only include notes from the active lane per segment
+        auto& comp = getActiveComp();
+        for (auto& seg : comp.segments)
         {
-            int li = slice.activeLane;
+            int li = seg.laneIndex;
             if (li < 0 || li >= (int)lanes.size()) continue;
             auto& lane = lanes[static_cast<size_t>(li)];
             if (lane.muted) continue;
@@ -673,7 +639,7 @@ void PatternFlowProcessor::rebuildMasterClip()
                 auto& clip = lane.clips[static_cast<size_t>(ci)];
                 double cs = lane.clipStarts[static_cast<size_t>(ci)];
                 double ce = cs + clip.lengthBeats;
-                if (ce <= slice.startBeat || cs >= slice.endBeat) continue;
+                if (ce <= seg.startBeat || cs >= seg.endBeat) continue;
 
                 for (auto& note : clip.notes)
                 {
@@ -683,10 +649,9 @@ void PatternFlowProcessor::rebuildMasterClip()
                     double globalStart = cs + adjustedStart;
                     double globalEnd = globalStart + note.lengthBeats;
 
-                    // Clip to slice boundaries
-                    if (globalStart >= slice.endBeat || globalEnd <= slice.startBeat) continue;
-                    globalStart = std::max(globalStart, slice.startBeat);
-                    globalEnd = std::min(globalEnd, slice.endBeat);
+                    if (globalStart >= seg.endBeat || globalEnd <= seg.startBeat) continue;
+                    globalStart = std::max(globalStart, seg.startBeat);
+                    globalEnd = std::min(globalEnd, seg.endBeat);
 
                     NoteEvent merged;
                     merged.noteNumber  = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);
@@ -761,22 +726,21 @@ void PatternFlowProcessor::getStateInformation(juce::MemoryBlock& dest)
             }
         }
 
-        // Serialize comp cuts and active lanes
-        auto* compXml = xml.createNewChildElement("CompSystem");
-        juce::String cutsStr;
-        for (size_t i = 0; i < compCuts.size(); ++i)
+        // Serialize comps
+        auto* compsXml = xml.createNewChildElement("Comps");
+        compsXml->setAttribute("active", activeCompIndex);
+        for (auto& comp : comps)
         {
-            if (i > 0) cutsStr += ",";
-            cutsStr += juce::String(compCuts[i], 4);
+            auto* compXml = compsXml->createNewChildElement("Comp");
+            compXml->setAttribute("name", comp.name);
+            for (auto& seg : comp.segments)
+            {
+                auto* segXml = compXml->createNewChildElement("Seg");
+                segXml->setAttribute("lane", seg.laneIndex);
+                segXml->setAttribute("start", seg.startBeat);
+                segXml->setAttribute("end", seg.endBeat);
+            }
         }
-        compXml->setAttribute("cuts", cutsStr);
-        juce::String activeStr;
-        for (size_t i = 0; i < compActive.size(); ++i)
-        {
-            if (i > 0) activeStr += ",";
-            activeStr += juce::String(compActive[i]);
-        }
-        compXml->setAttribute("active", activeStr);
     }
 
     // Serialize split rules
@@ -820,13 +784,37 @@ void PatternFlowProcessor::setStateInformation(const void* data, int sizeInBytes
         {
             juce::ScopedLock sl(laneLock);
             lanes.clear();
-            compCuts.clear();
-            compActive.clear();
+            comps.clear();
+            activeCompIndex = 0;
 
             CompLane lane;
             lane.name   = "Lane 1";
             lane.colour = getClipColourPresets()[0];
             lanes.push_back(lane);
+        }
+
+        // Restore comps
+        if (auto* compsXml = xml->getChildByName("Comps"))
+        {
+            juce::ScopedLock sl(laneLock);
+            comps.clear();
+            activeCompIndex = compsXml->getIntAttribute("active", 0);
+            for (auto* compXml : compsXml->getChildIterator())
+            {
+                Comp comp;
+                comp.name = compXml->getStringAttribute("name", "Comp A");
+                for (auto* segXml : compXml->getChildIterator())
+                {
+                    CompSegment seg;
+                    seg.laneIndex = segXml->getIntAttribute("lane", 0);
+                    seg.startBeat = segXml->getDoubleAttribute("start", 0.0);
+                    seg.endBeat   = segXml->getDoubleAttribute("end", 4.0);
+                    comp.segments.push_back(seg);
+                }
+                comps.push_back(comp);
+            }
+            if (activeCompIndex >= (int)comps.size())
+                activeCompIndex = 0;
         }
 
         // Restore split rules

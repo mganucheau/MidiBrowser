@@ -51,25 +51,24 @@ public:
     std::vector<CompLane> lanes;
     juce::CriticalSection laneLock;
 
-    // ── Comp system (Logic-style) ────────────────────────────────────────────
-    // compEnabled: when true, comp slicing is active and visible
+    // ── Comp system (Quick Swipe Comping) ────────────────────────────────────
     std::atomic<bool> compEnabled { false };
 
-    // Sorted beat positions where comp cuts occur (shared across all lanes).
-    // Between compCuts[i] and compCuts[i+1] is a "slice".
-    // compActive[i] = which lane index is audible in slice i.
-    // There is always one more slice than cuts: slice count = compCuts.size() + 1.
-    // Slice 0 = [0 .. compCuts[0]), Slice 1 = [compCuts[0] .. compCuts[1]), etc.
-    std::vector<double> compCuts;     // sorted unique beat positions
-    std::vector<int>    compActive;   // one per slice: which lane is active
+    // Multiple comps, each with independent segment selections
+    std::vector<Comp> comps;
+    int activeCompIndex = 0;
 
-    // Build CompSlice list from compCuts + compActive for a given session length
-    std::vector<CompSlice> getCompSlices() const;
+    // Get the active comp (creates one if none exist)
+    Comp& getActiveComp();
+    const Comp& getActiveComp() const;
 
-    // Set the active lane for a beat range (swipe comping).
-    // Creates cuts at rangeStart and rangeEnd if they don't exist,
-    // then sets activeLane for all slices within the range.
-    void compSetActiveLane(double rangeStart, double rangeEnd, int laneIndex);
+    // Swipe: select a lane for a beat range in the active comp
+    void compSwipe(int laneIndex, double startBeat, double endBeat);
+
+    // Comp management
+    void addComp(const juce::String& name = "");
+    void removeComp(int index);
+    void setActiveComp(int index);
 
     // Arrangement length in bars (default 8)
     std::atomic<int> arrangementBars { 8 };
