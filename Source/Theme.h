@@ -103,8 +103,8 @@ inline std::vector<juce::Colour> getClipColourPresets()
 namespace version {
     constexpr const char* number = "0.4.1";
     constexpr const char* name   = "PatternFlow";
-    constexpr const char* desc   = "A MIDI composition and comping tool for creative producers. "
-                                   "Arrange, layer, and reshape MIDI clips with per-note comping, "
+    constexpr const char* desc   = "A MIDI composition tool for creative producers. "
+                                   "Arrange, layer, and reshape MIDI clips with "
                                    "scale quantisation, humanisation, and flexible routing.";
     constexpr const char* buildDate = __DATE__ " " __TIME__;
     constexpr const char* license =
@@ -124,7 +124,6 @@ namespace metrics {
     constexpr int pianoRollH        = 280;
     constexpr int laneHeaderW       = 130;
     constexpr int laneHeight        = 60;
-    constexpr int compLaneHeight    = 36;
     constexpr int knobSize          = 52;
     constexpr int knobLabelH        = 16;
     constexpr int knobSpacing       = 68;

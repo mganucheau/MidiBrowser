@@ -47,28 +47,9 @@ public:
 
     // ── PatternFlow-specific state ───────────────────────────────────────────
 
-    // Comp lanes (the arrangement)
+    // Lanes (the arrangement)
     std::vector<CompLane> lanes;
     juce::CriticalSection laneLock;
-
-    // ── Comp system (Quick Swipe Comping) ────────────────────────────────────
-    std::atomic<bool> compEnabled { false };
-
-    // Multiple comps, each with independent segment selections
-    std::vector<Comp> comps;
-    int activeCompIndex = 0;
-
-    // Get the active comp (creates one if none exist)
-    Comp& getActiveComp();
-    const Comp& getActiveComp() const;
-
-    // Swipe: select a lane for a beat range in the active comp
-    void compSwipe(int laneIndex, double startBeat, double endBeat);
-
-    // Comp management
-    void addComp(const juce::String& name = "");
-    void removeComp(int index);
-    void setActiveComp(int index);
 
     // Arrangement length in bars (default 8)
     std::atomic<int> arrangementBars { 8 };

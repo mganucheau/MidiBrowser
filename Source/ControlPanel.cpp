@@ -152,49 +152,6 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     btnRecord.setTooltip("Toggle MIDI recording into a new lane");
     btnRecord.onClick = [this] { if (onRecordToggle) onRecordToggle(); };
     addAndMakeVisible(btnRecord);
-
-    // Comp controls
-    btnCompEnable.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnCompEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
-    btnCompEnable.setTooltip("Enable Quick Swipe Comping mode");
-    btnCompEnable.onClick = [this]
-    {
-        processor.compEnabled.store(btnCompEnable.getToggleState());
-    };
-    addAndMakeVisible(btnCompEnable);
-
-    rebuildCompCombo();
-    cmbComp.setTooltip("Select active comp");
-    cmbComp.onChange = [this]
-    {
-        int idx = cmbComp.getSelectedId() - 1;
-        if (idx >= 0)
-            processor.setActiveComp(idx);
-    };
-    addAndMakeVisible(cmbComp);
-
-    btnCompAdd.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-    btnCompAdd.setColour(juce::TextButton::textColourOffId, colours::text());
-    btnCompAdd.setTooltip("Add a new comp");
-    btnCompAdd.onClick = [this]
-    {
-        processor.addComp();
-        rebuildCompCombo();
-    };
-    addAndMakeVisible(btnCompAdd);
-
-    btnCompDel.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-    btnCompDel.setColour(juce::TextButton::textColourOffId, colours::text());
-    btnCompDel.setTooltip("Remove the active comp");
-    btnCompDel.onClick = [this]
-    {
-        if ((int)processor.comps.size() > 1)
-        {
-            processor.removeComp(processor.activeCompIndex);
-            rebuildCompCombo();
-        }
-    };
-    addAndMakeVisible(btnCompDel);
 }
 
 void ControlPanel::setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& tooltip)
@@ -261,13 +218,6 @@ void ControlPanel::resized()
     btnSplitEnable.setBounds(splitX, topRowY, 55, secH);
     btnSplitEdit.setBounds(splitX + 57, topRowY, 55, secH);
 
-    // Comp controls (right of split)
-    int compX = splitX + 120;
-    btnCompEnable.setBounds(compX, topRowY, 60, secH);
-    cmbComp.setBounds(compX + 62, topRowY, 80, secH);
-    btnCompAdd.setBounds(compX + 144, topRowY, 24, secH);
-    btnCompDel.setBounds(compX + 170, topRowY, 24, secH);
-
     // Trim + Record + Add lane (far right, vertically centered)
     btnTrim.setBounds(b.getRight() - 216, b.getCentreY() - 13, 52, 26);
     btnRecord.setBounds(b.getRight() - 152, b.getCentreY() - 13, 52, 26);
@@ -291,16 +241,6 @@ void ControlPanel::paint(juce::Graphics& g)
     int dividerX = b.getX() + 4 + metrics::knobSpacing * 4 + 4;
     g.setColour(colours::panelBorder().withAlpha(0.4f));
     g.drawVerticalLine(dividerX, (float)(b.getY() + 4), (float)(b.getBottom() - 4));
-}
-
-void ControlPanel::rebuildCompCombo()
-{
-    cmbComp.clear(juce::dontSendNotification);
-    for (int i = 0; i < (int)processor.comps.size(); ++i)
-        cmbComp.addItem(processor.comps[static_cast<size_t>(i)].name, i + 1);
-    if (processor.comps.empty())
-        cmbComp.addItem("(none)", 1);
-    cmbComp.setSelectedId(processor.activeCompIndex + 1, juce::dontSendNotification);
 }
 
 void ControlPanel::updateRecordButton()
@@ -344,14 +284,6 @@ void ControlPanel::refreshComponentColours()
     btnTrim.setColour(juce::TextButton::textColourOffId, colours::text());
     btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent());
     btnAddLane.setColour(juce::TextButton::textColourOffId, colours::textBright());
-
-    // Comp controls
-    btnCompEnable.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnCompEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
-    btnCompAdd.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-    btnCompAdd.setColour(juce::TextButton::textColourOffId, colours::text());
-    btnCompDel.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-    btnCompDel.setColour(juce::TextButton::textColourOffId, colours::text());
 }
 
 void ControlPanel::sliderValueChanged(juce::Slider* slider)

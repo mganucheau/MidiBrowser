@@ -104,12 +104,6 @@ private:
     bool masterDragInitiated = false;
     juce::Point<float> masterDragStartPos;
 
-    // ── Comp swipe state ────────────────────────────────────────────────────
-    bool   compSwiping      = false;
-    int    compSwipeLane     = -1;
-    double compSwipeStartBeat = 0.0;
-    double compSwipeEndBeat   = 0.0;
-
     double xToBeat(float x) const;
     float  beatToX(double beat) const;
     int    yToLane(float y) const;
@@ -122,7 +116,6 @@ private:
     void paintClipBlocks(juce::Graphics&);
     void paintPlayhead(juce::Graphics&);
     void paintMasterLane(juce::Graphics&);
-    void paintCompLane(juce::Graphics&);
     void paintDropIndicator(juce::Graphics&);
     void paintBeatGrid(juce::Graphics&);
     void paintLoopMarkers(juce::Graphics&);
