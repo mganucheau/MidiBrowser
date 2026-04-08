@@ -1,17 +1,23 @@
 #pragma once
 #include <juce_data_structures/juce_data_structures.h>
+#include <vector>
 #include "MidiFileData.h"
+#include "CompingModel.h"
 
 namespace pflow {
 
 class PatternFlowProcessor;
 
-// ── Add clip to lane ────────────────────────────────────────────────────────
-class AddClipAction : public juce::UndoableAction
+/** Deep-enough compare for undo coalescing (segment list equality). */
+bool takeCompSegmentsEquivalent(const std::vector<TakeCompSegment>& a,
+                              const std::vector<TakeCompSegment>& b);
+
+// ── Add region to lane ───────────────────────────────────────────────────────
+class AddRegionAction : public juce::UndoableAction
 {
 public:
-    AddClipAction(PatternFlowProcessor& p, int lane, MidiClip clip, double beatPos)
-        : proc(p), laneIdx(lane), newClip(std::move(clip)), clipBeatPos(beatPos) {}
+    AddRegionAction(PatternFlowProcessor& p, int lane, CompRegion region, MidiClip clip)
+        : proc(p), laneIdx(lane), newRegion(std::move(region)), newClip(std::move(clip)) {}
 
     bool perform() override;
     bool undo() override;
@@ -19,17 +25,18 @@ public:
 private:
     PatternFlowProcessor& proc;
     int laneIdx;
+    CompRegion newRegion;
     MidiClip newClip;
-    double clipBeatPos;
+    int addedRegionIdx = -1;
     int addedClipIdx = -1;
 };
 
-// ── Remove clip from lane ──────────────────────────────────────────────────
-class RemoveClipAction : public juce::UndoableAction
+// ── Remove region from lane ─────────────────────────────────────────────────
+class RemoveRegionAction : public juce::UndoableAction
 {
 public:
-    RemoveClipAction(PatternFlowProcessor& p, int lane, int clipIdx)
-        : proc(p), laneIdx(lane), clipIndex(clipIdx) {}
+    RemoveRegionAction(PatternFlowProcessor& p, int lane, int region)
+        : proc(p), laneIdx(lane), regionIdx(region) {}
 
     bool perform() override;
     bool undo() override;
@@ -37,91 +44,89 @@ public:
 private:
     PatternFlowProcessor& proc;
     int laneIdx;
-    int clipIndex;
+    int regionIdx;
+    CompRegion savedRegion;
     MidiClip savedClip;
-    double savedBeatPos = 0.0;
+    int savedClipIdx = -1;
+    bool laneWasDeleted = false;
+    juce::String savedLaneName;
+    juce::Colour savedLaneColour;
 };
 
-// ── Move clip (change beat position) ───────────────────────────────────────
-class MoveClipAction : public juce::UndoableAction
+// ── Move region ─────────────────────────────────────────────────────────────
+class MoveRegionAction : public juce::UndoableAction
 {
 public:
-    MoveClipAction(PatternFlowProcessor& p, int lane, int clipIdx,
-                   double oldBeatPos, double newBeatPos)
-        : proc(p), laneIdx(lane), clipIndex(clipIdx),
-          oldPos(oldBeatPos), newPos(newBeatPos) {}
+    MoveRegionAction(PatternFlowProcessor& p, int lane, int region,
+                     double oldStart, double oldEnd, double newStart, double newEnd)
+        : proc(p), laneIdx(lane), regionIdx(region),
+          oldStartBeat(oldStart), oldEndBeat(oldEnd),
+          newStartBeat(newStart), newEndBeat(newEnd) {}
 
     bool perform() override;
     bool undo() override;
 
 private:
     PatternFlowProcessor& proc;
-    int laneIdx, clipIndex;
-    double oldPos, newPos;
+    int laneIdx, regionIdx;
+    double oldStartBeat, oldEndBeat;
+    double newStartBeat, newEndBeat;
 };
 
-// ── Move clip to a different lane ──────────────────────────────────────────
-class MoveClipToLaneAction : public juce::UndoableAction
+// ── Toggle mute ─────────────────────────────────────────────────────────────
+class ToggleMuteAction : public juce::UndoableAction
 {
 public:
-    MoveClipToLaneAction(PatternFlowProcessor& p, int srcLane, int clipIdx,
-                         int dstLane, double newBeatPos, bool createNewLane = false)
-        : proc(p), srcLaneIdx(srcLane), srcClipIdx(clipIdx),
-          dstLaneIdx(dstLane), newPos(newBeatPos),
-          needsNewLane(createNewLane) {}
+    ToggleMuteAction(PatternFlowProcessor& p, int lane, int region)
+        : proc(p), laneIdx(lane), regionIdx(region) {}
 
     bool perform() override;
     bool undo() override;
 
 private:
     PatternFlowProcessor& proc;
-    int srcLaneIdx, srcClipIdx, dstLaneIdx;
-    double newPos;
-    bool needsNewLane;
-    MidiClip savedClip;
-    double savedBeatPos = 0.0;
-    int addedClipIdx = -1;
+    int laneIdx, regionIdx;
 };
 
-// ── Add note in piano roll ─────────────────────────────────────────────────
+// ── Add note in piano roll ──────────────────────────────────────────────────
 class AddNoteAction : public juce::UndoableAction
 {
 public:
-    AddNoteAction(PatternFlowProcessor& p, int lane, int clipIdx, NoteEvent note)
-        : proc(p), laneIdx(lane), clipIndex(clipIdx), newNote(std::move(note)) {}
+    AddNoteAction(PatternFlowProcessor& p, int lane, int region, NoteEvent note)
+        : proc(p), laneIdx(lane), regionIdx(region), newNote(std::move(note)) {}
 
     bool perform() override;
     bool undo() override;
 
 private:
     PatternFlowProcessor& proc;
-    int laneIdx, clipIndex;
+    int laneIdx, regionIdx;
     NoteEvent newNote;
 };
 
-// ── Delete note in piano roll ──────────────────────────────────────────────
+// ── Delete note in piano roll ───────────────────────────────────────────────
 class DeleteNoteAction : public juce::UndoableAction
 {
 public:
-    DeleteNoteAction(PatternFlowProcessor& p, int lane, int clipIdx, int noteIdx)
-        : proc(p), laneIdx(lane), clipIndex(clipIdx), noteIndex(noteIdx) {}
+    DeleteNoteAction(PatternFlowProcessor& p, int lane, int region, int noteIdx)
+        : proc(p), laneIdx(lane), regionIdx(region), noteIndex(noteIdx) {}
 
     bool perform() override;
     bool undo() override;
 
 private:
     PatternFlowProcessor& proc;
-    int laneIdx, clipIndex, noteIndex;
+    int laneIdx, regionIdx, noteIndex;
     NoteEvent savedNote;
 };
 
-// ── Move/resize note in piano roll ─────────────────────────────────────────
+// ── Move/resize note in piano roll ──────────────────────────────────────────
 class EditNoteAction : public juce::UndoableAction
 {
 public:
-    EditNoteAction(PatternFlowProcessor& p, int lane, int clipIdx, int noteIdx,
+    EditNoteAction(PatternFlowProcessor& p, int lane, int region, int noteIdx,
                    NoteEvent oldNote, NoteEvent newNote)
-        : proc(p), laneIdx(lane), clipIndex(clipIdx), noteIndex(noteIdx),
+        : proc(p), laneIdx(lane), regionIdx(region), noteIndex(noteIdx),
           oldNoteState(std::move(oldNote)), newNoteState(std::move(newNote)) {}
 
     bool perform() override;
@@ -129,24 +134,107 @@ public:
 
 private:
     PatternFlowProcessor& proc;
-    int laneIdx, clipIndex, noteIndex;
+    int laneIdx, regionIdx, noteIndex;
     NoteEvent oldNoteState, newNoteState;
 };
 
-// ── Duplicate clip ─────────────────────────────────────────────────────────
-class DuplicateClipAction : public juce::UndoableAction
+// ── Duplicate region ────────────────────────────────────────────────────────
+class DuplicateRegionAction : public juce::UndoableAction
 {
 public:
-    DuplicateClipAction(PatternFlowProcessor& p, int lane, int clipIdx)
-        : proc(p), laneIdx(lane), clipIndex(clipIdx) {}
+    DuplicateRegionAction(PatternFlowProcessor& p, int lane, int region)
+        : proc(p), laneIdx(lane), regionIdx(region) {}
 
     bool perform() override;
     bool undo() override;
 
 private:
     PatternFlowProcessor& proc;
-    int laneIdx, clipIndex;
+    int laneIdx, regionIdx;
+    int addedRegionIdx = -1;
+};
+
+// ── Split region at beat ────────────────────────────────────────────────────
+class SplitRegionAction : public juce::UndoableAction
+{
+public:
+    SplitRegionAction(PatternFlowProcessor& p, int lane, int region, double splitBeat)
+        : proc(p), laneIdx(lane), regionIdx(region), splitAtBeat(splitBeat) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int laneIdx, regionIdx;
+    double splitAtBeat;
+    CompRegion origRegion;
+    int addedRegionIdx = -1;
+};
+
+// ── Set automation for one CC on a clip ──────────────────────────────────────
+class SetAutomationAction : public juce::UndoableAction
+{
+public:
+    SetAutomationAction(PatternFlowProcessor& p, int lane, int region, int ccNum,
+                       std::vector<AutomationPoint> oldPts, std::vector<AutomationPoint> newPts)
+        : proc(p), laneIdx(lane), regionIdx(region), cc(ccNum),
+          oldPoints(std::move(oldPts)), newPoints(std::move(newPts)) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int laneIdx, regionIdx, cc;
+    std::vector<AutomationPoint> oldPoints, newPoints;
+};
+
+// ── Move region to a different lane ──────────────────────────────────────────
+class MoveRegionToLaneAction : public juce::UndoableAction
+{
+public:
+    MoveRegionToLaneAction(PatternFlowProcessor& p, int srcLane, int regionIdx,
+                           int dstLane, double newStart, double newEnd,
+                           bool createNewLane = false)
+        : proc(p), srcLaneIdx(srcLane), srcRegionIdx(regionIdx),
+          dstLaneIdx(dstLane), newStartBeat(newStart), newEndBeat(newEnd),
+          needsNewLane(createNewLane) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    int srcLaneIdx, srcRegionIdx, dstLaneIdx;
+    double newStartBeat, newEndBeat;
+    bool needsNewLane;
+    CompRegion savedRegion;
+    MidiClip savedClip;
+    int savedClipIdx = -1;
+    int addedRegionIdx = -1;
     int addedClipIdx = -1;
+    bool srcLaneWasDeleted = false;
+    juce::String savedSrcLaneName;
+    juce::Colour savedSrcLaneColour;
+};
+
+// ── Take comp segments (swipe, boundary drag, delete segment, randomize) ───
+class SetTakeCompSegmentsAction : public juce::UndoableAction
+{
+public:
+    SetTakeCompSegmentsAction(PatternFlowProcessor& p,
+                              std::vector<TakeCompSegment> before,
+                              std::vector<TakeCompSegment> after)
+        : proc(p), beforeSegs(std::move(before)), afterSegs(std::move(after)) {}
+
+    bool perform() override;
+    bool undo() override;
+
+private:
+    PatternFlowProcessor& proc;
+    std::vector<TakeCompSegment> beforeSegs;
+    std::vector<TakeCompSegment> afterSegs;
 };
 
 } // namespace pflow

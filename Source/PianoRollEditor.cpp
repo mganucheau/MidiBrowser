@@ -1,6 +1,7 @@
 #include "PianoRollEditor.h"
 #include "PluginProcessor.h"
 #include "UndoActions.h"
+#include <algorithm>
 
 namespace pflow {
 
@@ -8,17 +9,13 @@ PianoRollEditor::PianoRollEditor(PatternFlowProcessor& proc) : processor(proc)
 {
     auto setupTabBtn = [this](juce::TextButton& btn, EditorViewMode mode)
     {
-        btn.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-        btn.setColour(juce::TextButton::textColourOffId, colours::textDim());
         btn.onClick = [this, mode]
         {
             viewMode = mode;
-            btnNotes.setColour(juce::TextButton::buttonColourId,
-                viewMode == EditorViewMode::Notes ? colours::accent() : colours::bgLight());
-            btnExpression.setColour(juce::TextButton::buttonColourId,
-                viewMode == EditorViewMode::Expression ? colours::accent() : colours::bgLight());
-            btnAutomation.setColour(juce::TextButton::buttonColourId,
-                viewMode == EditorViewMode::Automation ? colours::accent() : colours::bgLight());
+            syncPianoRollTabPills();
+            ccCombo.setVisible(viewMode == EditorViewMode::Automation);
+            selectedAutomationPoint = -1;
+            if (clipLoaded) autoZoomToNotes();
             repaint();
         };
         addAndMakeVisible(btn);
@@ -27,7 +24,22 @@ PianoRollEditor::PianoRollEditor(PatternFlowProcessor& proc) : processor(proc)
     setupTabBtn(btnNotes, EditorViewMode::Notes);
     setupTabBtn(btnExpression, EditorViewMode::Expression);
     setupTabBtn(btnAutomation, EditorViewMode::Automation);
-    btnNotes.setColour(juce::TextButton::buttonColourId, colours::accent());
+    syncPianoRollTabPills();
+
+    ccCombo.addItem("CC 1 (Mod Wheel)", 1);
+    ccCombo.addItem("CC 7 (Volume)", 7);
+    ccCombo.addItem("CC 10 (Pan)", 10);
+    ccCombo.addItem("CC 11 (Expression)", 11);
+    ccCombo.addItem("CC 64 (Sustain)", 64);
+    ccCombo.addItem("CC 71 (Resonance)", 71);
+    ccCombo.addItem("CC 74 (Cutoff)", 74);
+    ccCombo.addItem("CC 91 (Reverb)", 91);
+    ccCombo.addItem("CC 93 (Chorus)", 93);
+    ccCombo.setSelectedId(1);
+    ccCombo.setColour(juce::ComboBox::backgroundColourId, colours::bgLight());
+    ccCombo.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+    ccCombo.onChange = [this] { selectedAutomationPoint = -1; repaint(); };
+    addAndMakeVisible(ccCombo);
 
     btnClose.setColour(juce::TextButton::buttonColourId, colours::bgLight());
     btnClose.setColour(juce::TextButton::textColourOffId, colours::textDim());
@@ -62,6 +74,23 @@ void PianoRollEditor::clearClip()
     repaint();
 }
 
+void PianoRollEditor::syncPianoRollTabPills()
+{
+    auto apply = [](juce::TextButton& btn, bool active)
+    {
+        btn.setComponentID(active ? "ActivePill" : "ActionButton");
+        btn.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+        btn.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        btn.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    };
+    apply(btnNotes, viewMode == EditorViewMode::Notes);
+    apply(btnExpression, viewMode == EditorViewMode::Expression);
+    apply(btnAutomation, viewMode == EditorViewMode::Automation);
+    btnNotes.repaint();
+    btnExpression.repaint();
+    btnAutomation.repaint();
+}
+
 void PianoRollEditor::autoZoomToNotes()
 {
     if (currentClip.notes.empty()) return;
@@ -75,37 +104,109 @@ void PianoRollEditor::autoZoomToNotes()
 
     int range = maxNote - minNote + 1;
     int tabH = 28;
-    float areaH = std::max(100.0f, (float)(getHeight() - tabH));
+    float contentH = (float)(getHeight() - tabH);
+    float areaH = (viewMode == EditorViewMode::Expression) ? contentH * (2.0f / 3.0f) : contentH;
+    areaH = std::max(100.0f, areaH);
     noteHeight = std::max(4.0f, std::min(16.0f, areaH / (float)(range + 4)));
     scrollNoteY = std::max(0, minNote - 2);
 
     float areaW = std::max(100.0f, (float)(getWidth() - pianoKeyWidth));
-    pixelsPerBeat = std::max(20.0f, std::min(200.0f, areaW / (float)currentClip.lengthBeats));
+    double lenBeats = std::max(0.25, currentClip.lengthBeats);
+    pixelsPerBeat = std::max(20.0f, std::min(200.0f, areaW / (float)lenBeats));
     scrollBeatX = 0.0f;
 }
 
 float PianoRollEditor::noteToY(int noteNum) const
 {
     int tabH = 28;
-    float areaH = (float)(getHeight() - tabH);
-    return (float)tabH + areaH - (float)(noteNum - scrollNoteY + 1) * noteHeight;
+    float areaH = getNoteAreaHeight();
+    return tabH + areaH - (float)(noteNum - scrollNoteY + 1) * noteHeight;
 }
 
 int PianoRollEditor::yToNote(float y) const
 {
     int tabH = 28;
-    float areaH = (float)(getHeight() - tabH);
-    return scrollNoteY + (int)((areaH - (y - (float)tabH)) / noteHeight);
+    float areaH = getNoteAreaHeight();
+    return scrollNoteY + (int)((areaH - (y - tabH)) / noteHeight);
 }
 
 float PianoRollEditor::beatToX(double beat) const
 {
-    return (float)pianoKeyWidth + (float)(beat - scrollBeatX) * pixelsPerBeat;
+    return pianoKeyWidth + (float)(beat - scrollBeatX) * pixelsPerBeat;
 }
 
 double PianoRollEditor::xToBeat(float x) const
 {
-    return (double)(x - (float)pianoKeyWidth) / pixelsPerBeat + scrollBeatX;
+    float ppb = (pixelsPerBeat > 1e-6f) ? pixelsPerBeat : 20.0f;
+    return (double)(x - pianoKeyWidth) / ppb + scrollBeatX;
+}
+
+float PianoRollEditor::getNoteAreaHeight() const
+{
+    int tabH = 28;
+    float contentH = (float)(getHeight() - tabH);
+    if (viewMode == EditorViewMode::Expression)
+        return contentH * (2.0f / 3.0f);
+    return contentH;
+}
+
+juce::Rectangle<int> PianoRollEditor::getExpressionStripBounds() const
+{
+    int tabH = 28;
+    float contentH = (float)(getHeight() - tabH);
+    if (viewMode != EditorViewMode::Expression) return {};
+    float noteAreaH = contentH * (2.0f / 3.0f);
+    int stripTop = tabH + (int)noteAreaH;
+    int stripH = (int)(contentH / 3.0f);
+    return juce::Rectangle<int>(pianoKeyWidth, stripTop, getWidth() - pianoKeyWidth, stripH);
+}
+
+juce::Rectangle<int> PianoRollEditor::getAutomationContentBounds() const
+{
+    int tabH = 28;
+    return juce::Rectangle<int>(pianoKeyWidth, tabH, getWidth() - pianoKeyWidth, getHeight() - tabH);
+}
+
+int PianoRollEditor::getCurrentAutomationCC() const
+{
+    return ccCombo.getSelectedId() > 0 ? (int)ccCombo.getSelectedId() : 1;
+}
+
+std::vector<AutomationPoint>& PianoRollEditor::getAutomationPointsForCurrentCC()
+{
+    int cc = getCurrentAutomationCC();
+    return currentClip.automation[cc];
+}
+
+void PianoRollEditor::ensureAutomationBounds(int cc)
+{
+    auto& pts = currentClip.automation[cc];
+    if (pts.empty())
+    {
+        pts.push_back({ 0.0, 0 });
+        pts.push_back({ currentClip.lengthBeats, 0 });
+        return;
+    }
+    std::sort(pts.begin(), pts.end(), [](const AutomationPoint& a, const AutomationPoint& b) { return a.beat < b.beat; });
+}
+
+int PianoRollEditor::hitTestAutomationPoint(float x, float y) const
+{
+    auto r = getAutomationContentBounds();
+    if (!r.contains(x, y)) return -1;
+    int cc = getCurrentAutomationCC();
+    auto it = currentClip.automation.find(cc);
+    if (it == currentClip.automation.end()) return -1;
+    const auto& pts = it->second;
+    float pointRadius = 6.0f;
+    for (size_t i = 0; i < pts.size(); ++i)
+    {
+        float px = beatToX(pts[i].beat);
+        float py = r.getY() + (1.0f - pts[i].value / 127.0f) * r.getHeight();
+        if (std::abs(x - px) <= pointRadius && std::abs(y - py) <= pointRadius)
+            return (int)i;
+    }
+    return -1;
 }
 
 bool PianoRollEditor::isBlackKey(int noteNum)
@@ -116,7 +217,7 @@ bool PianoRollEditor::isBlackKey(int noteNum)
 
 bool PianoRollEditor::isNearRightEdge(const juce::MouseEvent& e, int noteIdx) const
 {
-    auto& note = currentClip.notes[static_cast<size_t>(noteIdx)];
+    auto& note = currentClip.notes[noteIdx];
     float nx = beatToX(note.startBeat);
     float nw = std::max(8.0f, (float)note.lengthBeats * pixelsPerBeat);
     return std::abs(e.position.x - (nx + nw)) < 6.0f;
@@ -157,11 +258,13 @@ void PianoRollEditor::paint(juce::Graphics& g)
 void PianoRollEditor::paintPianoKeys(juce::Graphics& g)
 {
     int tabH = 28;
+    float noteAreaH = getNoteAreaHeight();
+    int keyAreaBottom = tabH + (int)noteAreaH;
     g.setColour(colours::panel());
-    g.fillRect(0, tabH, pianoKeyWidth, getHeight() - tabH);
+    g.fillRect(0, tabH, pianoKeyWidth, keyAreaBottom - tabH);
 
     int topNote = yToNote((float)tabH);
-    int botNote = yToNote((float)getHeight());
+    int botNote = yToNote((float)keyAreaBottom);
 
     for (int n = botNote; n <= topNote + 1; ++n)
     {
@@ -180,48 +283,49 @@ void PianoRollEditor::paintPianoKeys(juce::Graphics& g)
         }
     }
     g.setColour(colours::panelBorder());
-    g.drawVerticalLine(pianoKeyWidth, (float)tabH, (float)getHeight());
+    g.drawVerticalLine(pianoKeyWidth, (float)tabH, (float)keyAreaBottom);
+
+    if (viewMode == EditorViewMode::Expression)
+    {
+        g.setColour(colours::panelBorder().withAlpha(0.6f));
+        g.drawHorizontalLine(keyAreaBottom, 0.0f, (float)getWidth());
+        g.setColour(colours::panel());
+        g.fillRect(0, keyAreaBottom, pianoKeyWidth, getHeight() - keyAreaBottom);
+    }
 }
 
 void PianoRollEditor::paintNoteGrid(juce::Graphics& g)
 {
     int tabH = 28;
+    float noteAreaH = getNoteAreaHeight();
+    int gridBottom = tabH + (int)noteAreaH;
     int topNote = yToNote((float)tabH);
-    int botNote = yToNote((float)getHeight());
+    int botNote = yToNote((float)gridBottom);
 
     for (int n = botNote; n <= topNote + 1; ++n)
     {
         float y = noteToY(n);
         bool black = isBlackKey(n);
-        g.setColour(black ? colours::pianoBlackKey().withAlpha(0.3f) : juce::Colours::transparentBlack);
+        g.setColour(black ? colours::pianoBlackKey().withAlpha(0.5f) : juce::Colours::transparentBlack);
         g.fillRect((float)pianoKeyWidth, y, (float)(getWidth() - pianoKeyWidth), noteHeight);
-        g.setColour(colours::pianoGrid().withAlpha(0.3f));
+        g.setColour(colours::pianoGrid().withAlpha(0.55f));
         g.drawHorizontalLine((int)y, (float)pianoKeyWidth, (float)getWidth());
     }
 
-    double gridDiv = 0.25;
     int gs = processor.gridSnap.load();
-    using GS = PatternFlowProcessor::GridSize;
-    switch ((GS)gs)
-    {
-        case GS::Bar:         gridDiv = 4.0;  break;
-        case GS::Beat:        gridDiv = 1.0;  break;
-        case GS::HalfBeat:    gridDiv = 0.5;  break;
-        case GS::QuarterBeat: gridDiv = 0.25; break;
-        case GS::Eighth:      gridDiv = 0.5;  break;
-        case GS::Sixteenth:   gridDiv = 0.25; break;
-        default:              gridDiv = 0.25; break;
-    }
+    double gridDiv = (gs == (int)PatternFlowProcessor::GridSize::Off)
+        ? 0.25
+        : PatternFlowProcessor::getGridDivision((PatternFlowProcessor::GridSize)gs);
 
-    for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + (float)getWidth() / pixelsPerBeat + 1; beat += gridDiv)
+    for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + getWidth() / pixelsPerBeat + 1; beat += gridDiv)
     {
         float x = beatToX(beat);
-        if (x < (float)pianoKeyWidth) continue;
+        if (x < pianoKeyWidth) continue;
         bool isBar = (std::fmod(beat, 4.0) < 0.001);
         bool isBeat = (std::fmod(beat, 1.0) < 0.001);
-        g.setColour(isBar ? colours::pianoGrid().withAlpha(0.6f)
-                   : (isBeat ? colours::pianoGrid().withAlpha(0.3f) : colours::pianoGrid().withAlpha(0.1f)));
-        g.drawVerticalLine((int)x, (float)tabH, (float)getHeight());
+        g.setColour(isBar ? colours::pianoGrid().withAlpha(0.8f)
+                   : (isBeat ? colours::pianoGrid().withAlpha(0.5f) : colours::pianoGrid().withAlpha(0.25f)));
+        g.drawVerticalLine((int)x, (float)tabH, (float)gridBottom);
     }
 }
 
@@ -229,14 +333,14 @@ void PianoRollEditor::paintNotes(juce::Graphics& g)
 {
     for (int i = 0; i < (int)currentClip.notes.size(); ++i)
     {
-        auto& note = currentClip.notes[static_cast<size_t>(i)];
+        auto& note = currentClip.notes[i];
         float x = beatToX(note.startBeat);
         float y = noteToY(note.noteNumber);
         float w = std::max(4.0f, (float)note.lengthBeats * pixelsPerBeat);
-        if (x + w < (float)pianoKeyWidth || x > (float)getWidth()) continue;
+        if (x + w < pianoKeyWidth || x > getWidth()) continue;
 
         bool selected = (i == selectedNote) || (selectedNotes.count(i) > 0);
-        float velAlpha = 0.5f + 0.5f * ((float)note.velocity / 127.0f);
+        float velAlpha = 0.5f + 0.5f * (note.velocity / 127.0f);
         g.setColour(selected ? colours::accentBright() : colours::noteBlock().withAlpha(velAlpha));
         g.fillRoundedRectangle(x, y + 1.0f, w, noteHeight - 2.0f, 2.0f);
 
@@ -255,45 +359,84 @@ void PianoRollEditor::paintNotes(juce::Graphics& g)
 
 void PianoRollEditor::paintExpressionView(juce::Graphics& g)
 {
-    int tabH = 28;
-    float areaH = (float)(getHeight() - tabH);
+    auto strip = getExpressionStripBounds();
+    if (strip.isEmpty()) return;
+
+    g.setColour(colours::panel().darker(0.02f));
+    g.fillRect(strip);
+
     for (auto& note : currentClip.notes)
     {
         float x = beatToX(note.startBeat);
-        float w = std::max(3.0f, (float)note.lengthBeats * pixelsPerBeat * 0.5f);
-        float velH = ((float)note.velocity / 127.0f) * (areaH - 20.0f);
-        if (x < (float)pianoKeyWidth || x > (float)getWidth()) continue;
-        float barY = (float)getHeight() - velH - 10.0f;
-        g.setColour(colours::accent().withAlpha(0.7f));
-        g.fillRect(x, barY, w, velH);
+        float w = std::max(4.0f, (float)note.lengthBeats * pixelsPerBeat * 0.6f);
+        if (x + w < strip.getX() || x > strip.getRight()) continue;
+        float velNorm = note.velocity / 127.0f;
+        float barH = velNorm * (strip.getHeight() - 8.0f);
+        float barY = (float)strip.getBottom() - barH - 4.0f;
+        g.setColour(colours::accent().withAlpha(0.8f));
+        g.fillRect(x, barY, w, barH);
         g.setColour(colours::accentBright());
         g.fillRect(x, barY, w, 2.0f);
     }
-    g.setColour(colours::textDim()); g.setFont(11.0f);
-    g.drawText("Velocity", pianoKeyWidth + 4, tabH + 2, 60, 14, juce::Justification::centredLeft);
+
+    g.setColour(colours::textDim());
+    g.setFont(11.0f);
+    g.drawText("Velocity", strip.withTrimmedBottom(strip.getHeight() - 16).reduced(4, 0), juce::Justification::centredLeft);
 }
 
 void PianoRollEditor::paintAutomationView(juce::Graphics& g)
 {
-    int tabH = 28;
-    float areaH = (float)(getHeight() - tabH);
-    g.setColour(colours::textDim()); g.setFont(11.0f);
-    g.drawText("CC 1 (Mod Wheel)", pianoKeyWidth + 4, tabH + 2, 120, 14, juce::Justification::centredLeft);
-    g.setColour(colours::pianoGrid().withAlpha(0.3f));
-    float centerY = tabH + areaH * 0.5f;
-    g.drawHorizontalLine((int)centerY, (float)pianoKeyWidth, (float)getWidth());
+    auto r = getAutomationContentBounds();
+    if (r.isEmpty()) return;
 
-    for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + (float)getWidth() / pixelsPerBeat + 1; beat += 1.0)
+    g.setColour(colours::panel().darker(0.02f));
+    g.fillRect(r);
+
+    int cc = getCurrentAutomationCC();
+    auto it = currentClip.automation.find(cc);
+    std::vector<AutomationPoint> ptsSorted;
+    if (it != currentClip.automation.end())
+    {
+        ptsSorted = it->second;
+        std::sort(ptsSorted.begin(), ptsSorted.end(), [](const AutomationPoint& a, const AutomationPoint& b) { return a.beat < b.beat; });
+    }
+
+    g.setColour(colours::pianoGrid().withAlpha(0.5f));
+    for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + (double)r.getWidth() / pixelsPerBeat + 1; beat += 1.0)
     {
         float x = beatToX(beat);
-        if (x < (float)pianoKeyWidth) continue;
+        if (x < r.getX()) continue;
         bool isBar = (std::fmod(beat, 4.0) < 0.001);
-        g.setColour(isBar ? colours::pianoGrid().withAlpha(0.4f) : colours::pianoGrid().withAlpha(0.15f));
-        g.drawVerticalLine((int)x, (float)tabH, (float)getHeight());
+        g.setColour(isBar ? colours::pianoGrid().withAlpha(0.6f) : colours::pianoGrid().withAlpha(0.3f));
+        g.drawVerticalLine((int)x, (float)r.getY(), (float)r.getBottom());
     }
-    g.setColour(colours::textDim().withAlpha(0.5f)); g.setFont(10.0f);
-    g.drawText("Draw automation points by clicking",
-               getLocalBounds().withTrimmedTop(tabH).withTrimmedLeft(pianoKeyWidth), juce::Justification::centred);
+    g.setColour(colours::pianoGrid().withAlpha(0.5f));
+    g.drawHorizontalLine(r.getY() + r.getHeight() / 2, (float)r.getX(), (float)r.getRight());
+
+    if (ptsSorted.size() >= 2)
+    {
+        juce::Path path;
+        for (size_t i = 0; i < ptsSorted.size(); ++i)
+        {
+            float px = beatToX(ptsSorted[i].beat);
+            float py = (float)r.getY() + (1.0f - ptsSorted[i].value / 127.0f) * r.getHeight();
+            if (i == 0) path.startNewSubPath(px, py);
+            else path.lineTo(px, py);
+        }
+        g.setColour(colours::accent().withAlpha(0.8f));
+        g.strokePath(path, juce::PathStrokeType(2.0f));
+    }
+
+    for (size_t i = 0; i < ptsSorted.size(); ++i)
+    {
+        float px = beatToX(ptsSorted[i].beat);
+        float py = (float)r.getY() + (1.0f - ptsSorted[i].value / 127.0f) * r.getHeight();
+        bool sel = (selectedAutomationPoint >= 0 && (size_t)selectedAutomationPoint == i);
+        g.setColour(sel ? colours::accentBright() : colours::accent());
+        g.fillEllipse(px - 5.0f, py - 5.0f, 10.0f, 10.0f);
+        g.setColour(colours::panelBorder());
+        g.drawEllipse(px - 5.0f, py - 5.0f, 10.0f, 10.0f, 1.0f);
+    }
 }
 
 void PianoRollEditor::paintStartLine(juce::Graphics& g)
@@ -301,13 +444,14 @@ void PianoRollEditor::paintStartLine(juce::Graphics& g)
     if (!clipLoaded) return;
 
     float startLineX = beatToX(currentClip.clipStartOffset);
-    if (startLineX < (float)pianoKeyWidth || startLineX > (float)getWidth()) return;
+    if (startLineX < pianoKeyWidth || startLineX > getWidth()) return;
 
     int tabH = 28;
+    int lineBottom = tabH + (int)getNoteAreaHeight();
 
-    // Vertical line
+    // Vertical line (only in note area)
     g.setColour(colours::playhead().withAlpha(0.7f));
-    g.drawVerticalLine((int)startLineX, (float)tabH, (float)getHeight());
+    g.drawVerticalLine((int)startLineX, (float)tabH, (float)lineBottom);
 
     // Draggable handle at top (small triangle pointing right)
     juce::Path handle;
@@ -326,16 +470,9 @@ bool PianoRollEditor::isNearStartLine(float x) const
 
 void PianoRollEditor::refreshComponentColours()
 {
-    auto activeTab = [this](juce::TextButton& btn, EditorViewMode mode)
-    {
-        btn.setColour(juce::TextButton::buttonColourId,
-                      viewMode == mode ? colours::accent() : colours::bgLight());
-        btn.setColour(juce::TextButton::textColourOffId,
-                      viewMode == mode ? colours::textBright() : colours::textDim());
-    };
-    activeTab(btnNotes, EditorViewMode::Notes);
-    activeTab(btnExpression, EditorViewMode::Expression);
-    activeTab(btnAutomation, EditorViewMode::Automation);
+    syncPianoRollTabPills();
+    ccCombo.setColour(juce::ComboBox::backgroundColourId, colours::bgLight());
+    ccCombo.setColour(juce::ComboBox::textColourId, juce::Colours::white);
 
     btnClose.setColour(juce::TextButton::buttonColourId, colours::bgLight());
     btnClose.setColour(juce::TextButton::textColourOffId, colours::textDim());
@@ -346,7 +483,9 @@ void PianoRollEditor::resized()
     int tabH = 24; int tabW = 70; int x = pianoKeyWidth + 4;
     btnNotes.setBounds(x, 2, tabW, tabH); x += tabW + 2;
     btnExpression.setBounds(x, 2, tabW, tabH); x += tabW + 2;
-    btnAutomation.setBounds(x, 2, tabW, tabH);
+    btnAutomation.setBounds(x, 2, tabW, tabH); x += tabW + 4;
+    ccCombo.setBounds(x, 2, 140, tabH);
+    ccCombo.setVisible(viewMode == EditorViewMode::Automation);
     btnClose.setBounds(getWidth() - 28, 2, 24, tabH);
     if (clipLoaded) autoZoomToNotes();
 }
@@ -358,7 +497,7 @@ void PianoRollEditor::mouseMove(const juce::MouseEvent& e)
     if (!clipLoaded || viewMode != EditorViewMode::Notes) return;
 
     // Check start line handle
-    if (e.position.x >= (float)pianoKeyWidth && isNearStartLine(e.position.x) && e.position.y <= 38.0f)
+    if (e.position.x >= pianoKeyWidth && isNearStartLine(e.position.x) && e.position.y <= 38.0f)
     {
         setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
         return;
@@ -366,7 +505,7 @@ void PianoRollEditor::mouseMove(const juce::MouseEvent& e)
 
     for (int i = 0; i < (int)currentClip.notes.size(); ++i)
     {
-        auto& note = currentClip.notes[static_cast<size_t>(i)];
+        auto& note = currentClip.notes[i];
         float nx = beatToX(note.startBeat); float ny = noteToY(note.noteNumber);
         float nw = std::max(8.0f, (float)note.lengthBeats * pixelsPerBeat);
         if (e.position.y >= ny && e.position.y <= ny + noteHeight && e.position.x >= nx && e.position.x <= nx + nw)
@@ -381,9 +520,48 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
 {
     if (!clipLoaded) return;
     selectedNote = -1; resizingNote = false; velocityDragNote = -1; draggingStartLine = false;
+    automationDragPoint = -1;
+
+    // Automation view: click on point to select/drag, or click empty to add point
+    if (viewMode == EditorViewMode::Automation)
+    {
+        int hit = hitTestAutomationPoint(e.position.x, e.position.y);
+        if (hit >= 0)
+        {
+            selectedAutomationPoint = hit;
+            automationDragPoint = hit;
+            automationDragOldPoints = getAutomationPointsForCurrentCC();
+            repaint();
+            return;
+        }
+        auto r = getAutomationContentBounds();
+        if (r.contains(e.position.toInt()) && r.getHeight() > 0)
+        {
+            double beat = processor.snapBeat(xToBeat(e.position.x));
+            beat = juce::jlimit(0.0, currentClip.lengthBeats, beat);
+            int value = (int)(127.0 * (1.0 - (e.position.y - r.getY()) / (float)r.getHeight()));
+            value = juce::jlimit(0, 127, value);
+            int cc = getCurrentAutomationCC();
+            std::vector<AutomationPoint> oldPts = currentClip.automation[cc];
+            ensureAutomationBounds(cc);
+            auto& pts = currentClip.automation[cc];
+            AutomationPoint newPt { beat, value };
+            auto it = std::lower_bound(pts.begin(), pts.end(), newPt, [](const AutomationPoint& a, const AutomationPoint& b) { return a.beat < b.beat; });
+            pts.insert(it, newPt);
+            processor.undoManager.beginNewTransaction();
+            processor.undoManager.perform(new SetAutomationAction(processor, editLaneIdx, editRegionIdx, cc, oldPts, pts));
+            selectedAutomationPoint = (int)(it - pts.begin());
+            if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+            repaint();
+            return;
+        }
+        selectedAutomationPoint = -1;
+        repaint();
+        return;
+    }
 
     // Check for start line drag (near handle at top of line)
-    if (viewMode == EditorViewMode::Notes && e.position.x >= (float)pianoKeyWidth &&
+    if (viewMode == EditorViewMode::Notes && e.position.x >= pianoKeyWidth &&
         isNearStartLine(e.position.x) && e.position.y <= 38.0f)
     {
         draggingStartLine = true;
@@ -392,25 +570,27 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
         return;
     }
 
-    // Velocity bar dragging in Expression view
+    // Velocity bar dragging in Expression view (only in the bottom 1/3 strip)
     if (viewMode == EditorViewMode::Expression)
     {
-        int tabH = 28;
-        float areaH = (float)(getHeight() - tabH);
-        for (int i = 0; i < (int)currentClip.notes.size(); ++i)
+        auto strip = getExpressionStripBounds();
+        if (strip.contains(e.position.toInt()))
         {
-            auto& note = currentClip.notes[static_cast<size_t>(i)];
-            float x = beatToX(note.startBeat);
-            float w = std::max(3.0f, (float)note.lengthBeats * pixelsPerBeat * 0.5f);
-            if (e.position.x >= x && e.position.x <= x + w + 4.0f)
+            for (int i = 0; i < (int)currentClip.notes.size(); ++i)
             {
-                velocityDragNote = i;
-                velocityDragOrigVel = note.velocity;
-                velocityDragStartY = e.position.y;
-                dragOrigNote = note;
-                selectedNote = i;
-                repaint();
-                return;
+                auto& note = currentClip.notes[i];
+                float x = beatToX(note.startBeat);
+                float w = std::max(4.0f, (float)note.lengthBeats * pixelsPerBeat * 0.6f);
+                if (e.position.x >= x && e.position.x <= x + w + 4.0f)
+                {
+                    velocityDragNote = i;
+                    velocityDragOrigVel = note.velocity;
+                    velocityDragStartY = e.position.y;
+                    dragOrigNote = note;
+                    selectedNote = i;
+                    repaint();
+                    return;
+                }
             }
         }
         repaint();
@@ -420,13 +600,13 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
     if (viewMode == EditorViewMode::Notes)
     {
         // Piano key click: select all notes on that pitch
-        if (e.position.x < (float)pianoKeyWidth && e.position.y >= 28)
+        if (e.position.x < pianoKeyWidth && e.position.y >= 28)
         {
             int pitch = yToNote(e.position.y);
             selectedNotes.clear();
             for (int i = 0; i < (int)currentClip.notes.size(); ++i)
             {
-                if (currentClip.notes[static_cast<size_t>(i)].noteNumber == pitch)
+                if (currentClip.notes[i].noteNumber == pitch)
                     selectedNotes.insert(i);
             }
             if (!selectedNotes.empty())
@@ -441,7 +621,7 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
 
         for (int i = 0; i < (int)currentClip.notes.size(); ++i)
         {
-            auto& note = currentClip.notes[static_cast<size_t>(i)];
+            auto& note = currentClip.notes[i];
             float nx = beatToX(note.startBeat); float ny = noteToY(note.noteNumber);
             float nw = std::max(8.0f, (float)note.lengthBeats * pixelsPerBeat);
             if (e.position.x >= nx && e.position.x <= nx + nw && e.position.y >= ny && e.position.y <= ny + noteHeight)
@@ -461,6 +641,7 @@ void PianoRollEditor::mouseDown(const juce::MouseEvent& e)
         if (selectedNote >= 0 && e.mods.isRightButtonDown())
         {
             // Undoable delete
+            processor.undoManager.beginNewTransaction();
             processor.undoManager.perform(
                 new DeleteNoteAction(processor, editLaneIdx, editRegionIdx, selectedNote));
             currentClip.notes.erase(currentClip.notes.begin() + selectedNote);
@@ -490,8 +671,28 @@ void PianoRollEditor::mouseDrag(const juce::MouseEvent& e)
     {
         float deltaY = velocityDragStartY - e.position.y;
         int newVel = juce::jlimit(1, 127, velocityDragOrigVel + (int)(deltaY * 0.8f));
-        currentClip.notes[static_cast<size_t>(velocityDragNote)].velocity = newVel;
+        currentClip.notes[velocityDragNote].velocity = newVel;
         repaint();
+        return;
+    }
+
+    // Automation point drag
+    if (automationDragPoint >= 0 && viewMode == EditorViewMode::Automation)
+    {
+        auto& pts = getAutomationPointsForCurrentCC();
+        if (automationDragPoint < (int)pts.size())
+        {
+            double beat = xToBeat(e.position.x);
+            beat = processor.snapBeat(juce::jlimit(0.0, currentClip.lengthBeats, beat));
+            auto r = getAutomationContentBounds();
+            int value = (r.getHeight() > 0)
+                ? (int)(127.0 * (1.0 - (e.position.y - r.getY()) / (float)r.getHeight()))
+                : 64;
+            value = juce::jlimit(0, 127, value);
+            pts[automationDragPoint].beat = beat;
+            pts[automationDragPoint].value = value;
+            repaint();
+        }
         return;
     }
 
@@ -530,12 +731,28 @@ void PianoRollEditor::mouseUp(const juce::MouseEvent&)
         return;
     }
 
+    // Automation point drag complete
+    if (automationDragPoint >= 0 && viewMode == EditorViewMode::Automation)
+    {
+        int cc = getCurrentAutomationCC();
+        std::vector<AutomationPoint> newPts = getAutomationPointsForCurrentCC();
+        if (newPts != automationDragOldPoints)
+        {
+            processor.undoManager.beginNewTransaction();
+            processor.undoManager.perform(new SetAutomationAction(processor, editLaneIdx, editRegionIdx, cc, automationDragOldPoints, newPts));
+            if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+        }
+        automationDragPoint = -1;
+        return;
+    }
+
     // Velocity drag complete
     if (velocityDragNote >= 0 && velocityDragNote < (int)currentClip.notes.size())
     {
         auto& note = currentClip.notes[velocityDragNote];
         if (note.velocity != dragOrigNote.velocity)
         {
+            processor.undoManager.beginNewTransaction();
             processor.undoManager.perform(
                 new EditNoteAction(processor, editLaneIdx, editRegionIdx,
                                    velocityDragNote, dragOrigNote, note));
@@ -553,6 +770,7 @@ void PianoRollEditor::mouseUp(const juce::MouseEvent&)
             note.noteNumber != dragOrigNote.noteNumber ||
             note.lengthBeats != dragOrigNote.lengthBeats)
         {
+            processor.undoManager.beginNewTransaction();
             processor.undoManager.perform(
                 new EditNoteAction(processor, editLaneIdx, editRegionIdx,
                                    selectedNote, dragOrigNote, note));
@@ -571,24 +789,16 @@ void PianoRollEditor::mouseDoubleClick(const juce::MouseEvent& e)
         double beat = processor.snapBeat(xToBeat(e.position.x));
         int noteNum = juce::jlimit(0, 127, yToNote(e.position.y));
 
-        double noteLen = 1.0;
         int gs = processor.gridSnap.load();
-        using GS = PatternFlowProcessor::GridSize;
-        switch ((GS)gs)
-        {
-            case GS::Bar:         noteLen = 4.0;  break;
-            case GS::Beat:        noteLen = 1.0;  break;
-            case GS::HalfBeat:    noteLen = 0.5;  break;
-            case GS::QuarterBeat: noteLen = 0.25; break;
-            case GS::Eighth:      noteLen = 0.5;  break;
-            case GS::Sixteenth:   noteLen = 0.25; break;
-            default:              noteLen = 0.25; break;
-        }
+        double noteLen = (gs == (int)PatternFlowProcessor::GridSize::Off)
+            ? 0.25
+            : PatternFlowProcessor::getGridDivision((PatternFlowProcessor::GridSize)gs);
 
         NoteEvent ne;
         ne.startBeat = beat; ne.noteNumber = noteNum; ne.velocity = 100;
         ne.lengthBeats = noteLen; ne.channel = 1;
         // Undoable add
+        processor.undoManager.beginNewTransaction();
         processor.undoManager.perform(
             new AddNoteAction(processor, editLaneIdx, editRegionIdx, ne));
         currentClip.notes.push_back(ne);
@@ -611,7 +821,74 @@ void PianoRollEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::Mous
 
 bool PianoRollEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
 {
-    if (!clipLoaded || viewMode != EditorViewMode::Notes) return false;
+    if (!clipLoaded) return false;
+
+    // Automation view: Delete remove point, Up/Down adjust value
+    if (viewMode == EditorViewMode::Automation && clipLoaded)
+    {
+        auto& pts = getAutomationPointsForCurrentCC();
+        if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+        {
+            if (selectedAutomationPoint >= 0 && selectedAutomationPoint < (int)pts.size() && pts.size() > 1)
+            {
+                int cc = getCurrentAutomationCC();
+                std::vector<AutomationPoint> oldPts = pts;
+                pts.erase(pts.begin() + selectedAutomationPoint);
+                processor.undoManager.beginNewTransaction();
+                processor.undoManager.perform(new SetAutomationAction(processor, editLaneIdx, editRegionIdx, cc, oldPts, pts));
+                selectedAutomationPoint = juce::jlimit(-1, (int)pts.size() - 1, selectedAutomationPoint - 1);
+                if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+                repaint();
+                return true;
+            }
+        }
+        else if ((key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) && selectedAutomationPoint >= 0 && selectedAutomationPoint < (int)pts.size())
+        {
+            int delta = key == juce::KeyPress::upKey ? 1 : -1;
+            int newVal = juce::jlimit(0, 127, pts[selectedAutomationPoint].value + delta);
+            if (newVal != pts[selectedAutomationPoint].value)
+            {
+                int cc = getCurrentAutomationCC();
+                std::vector<AutomationPoint> oldPts = pts;
+                pts[selectedAutomationPoint].value = newVal;
+                processor.undoManager.beginNewTransaction();
+                processor.undoManager.perform(new SetAutomationAction(processor, editLaneIdx, editRegionIdx, cc, oldPts, pts));
+                if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+                repaint();
+                return true;
+            }
+        }
+    }
+
+    // Expression view: Up/Down adjust velocity of selected note(s)
+    if (viewMode == EditorViewMode::Expression)
+    {
+        std::set<int> toEdit = selectedNotes;
+        if (toEdit.empty() && selectedNote >= 0) toEdit.insert(selectedNote);
+        if (toEdit.empty()) return false;
+
+        int velDelta = 0;
+        if (key == juce::KeyPress::upKey)   velDelta = 1;
+        else if (key == juce::KeyPress::downKey) velDelta = -1;
+        else return false;
+
+        for (int idx : toEdit)
+        {
+            if (idx < 0 || idx >= (int)currentClip.notes.size()) continue;
+            NoteEvent oldNote = currentClip.notes[idx];
+            int newVel = juce::jlimit(1, 127, oldNote.velocity + velDelta);
+            if (newVel == oldNote.velocity) continue;
+            currentClip.notes[idx].velocity = newVel;
+            processor.undoManager.beginNewTransaction();
+            processor.undoManager.perform(
+                new EditNoteAction(processor, editLaneIdx, editRegionIdx, idx, oldNote, currentClip.notes[idx]));
+        }
+        if (onClipEdited) onClipEdited(currentClip, editLaneIdx, editRegionIdx);
+        repaint();
+        return true;
+    }
+
+    if (viewMode != EditorViewMode::Notes) return false;
     if (selectedNotes.empty() && selectedNote < 0) return false;
 
     // Build working set of indices to move
@@ -644,6 +921,7 @@ bool PianoRollEditor::keyPressed(const juce::KeyPress& key, juce::Component*)
         NoteEvent oldNote = currentClip.notes[idx];
         currentClip.notes[idx].noteNumber = juce::jlimit(0, 127, oldNote.noteNumber + pitchDelta);
         currentClip.notes[idx].startBeat = std::max(0.0, oldNote.startBeat + beatDelta);
+        processor.undoManager.beginNewTransaction();
         processor.undoManager.perform(
             new EditNoteAction(processor, editLaneIdx, editRegionIdx,
                                idx, oldNote, currentClip.notes[idx]));
@@ -674,6 +952,7 @@ void PianoRollEditor::quantizeSelectedNotes()
         if (std::abs(snapped - oldNote.startBeat) > 0.001)
         {
             currentClip.notes[idx].startBeat = snapped;
+            processor.undoManager.beginNewTransaction();
             processor.undoManager.perform(
                 new EditNoteAction(processor, editLaneIdx, editRegionIdx,
                                    idx, oldNote, currentClip.notes[idx]));
@@ -703,6 +982,7 @@ void PianoRollEditor::transposeSelectedNotes(int semitones)
         if (idx < 0 || idx >= (int)currentClip.notes.size()) continue;
         NoteEvent oldNote = currentClip.notes[idx];
         currentClip.notes[idx].noteNumber = juce::jlimit(0, 127, oldNote.noteNumber + semitones);
+        processor.undoManager.beginNewTransaction();
         processor.undoManager.perform(
             new EditNoteAction(processor, editLaneIdx, editRegionIdx,
                                idx, oldNote, currentClip.notes[idx]));

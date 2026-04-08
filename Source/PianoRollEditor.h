@@ -31,6 +31,7 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void mouseMove(const juce::MouseEvent&) override;
+    using juce::Component::keyPressed;
     bool keyPressed(const juce::KeyPress& key, juce::Component*) override;
 
     std::function<void(const MidiClip&, int laneIdx, int regionIdx)> onClipEdited;
@@ -50,6 +51,7 @@ private:
     juce::TextButton btnNotes      { "Notes" };
     juce::TextButton btnExpression { "Expression" };
     juce::TextButton btnAutomation { "Automation" };
+    juce::ComboBox   ccCombo;
     juce::TextButton btnClose      { "X" };
 
     float noteHeight     = 8.0f;
@@ -75,7 +77,15 @@ private:
     float beatToX(double beat) const;
     double xToBeat(float x) const;
 
+    /** Height of the note grid area (below tabs). In Expression mode = 2/3 of content; else full. */
+    float getNoteAreaHeight() const;
+    /** In Expression mode, the strip is the bottom 1/3 for velocity/expression. */
+    juce::Rectangle<int> getExpressionStripBounds() const;
+    /** In Automation mode, full content area below tabs. */
+    juce::Rectangle<int> getAutomationContentBounds() const;
+
     void autoZoomToNotes();
+    void syncPianoRollTabPills();
 
     void paintPianoKeys(juce::Graphics&);
     void paintNoteGrid(juce::Graphics&);
@@ -95,6 +105,16 @@ private:
     int  velocityDragNote = -1;
     int  velocityDragOrigVel = 0;
     float velocityDragStartY = 0.0f;
+
+    // Automation editing
+    int  selectedAutomationPoint = -1;
+    int  automationDragPoint = -1;
+    std::vector<AutomationPoint> automationDragOldPoints;
+
+    std::vector<AutomationPoint>& getAutomationPointsForCurrentCC();
+    int getCurrentAutomationCC() const;
+    void ensureAutomationBounds(int cc);
+    int hitTestAutomationPoint(float x, float y) const;
 
     static bool isBlackKey(int noteNum);
     bool isNearRightEdge(const juce::MouseEvent& e, int noteIdx) const;

@@ -1,112 +1,283 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <atomic>
+#include <array>
+#include "BuildInfo.h"
 
 namespace pflow {
 
-// ── Dark mode toggle (true = dark mode default, matching DAW convention) ─────
+// ── Material Design 3-inspired theming ───────────────────────────────────────
+// We use token-based colour roles (surface, primary, outline, etc.) and map
+// the app's existing `colours::...()` helpers onto those roles.
+
+struct ThemeTokens
+{
+    bool isDark = true;
+
+    juce::Colour primary;
+    juce::Colour onPrimary;
+    juce::Colour primaryContainer;
+    juce::Colour onPrimaryContainer;
+
+    juce::Colour surface;
+    juce::Colour surfaceContainerLow;
+    juce::Colour surfaceContainer;
+    juce::Colour surfaceContainerHigh;
+    juce::Colour onSurface;
+    juce::Colour onSurfaceVariant;
+
+    juce::Colour outline;
+    juce::Colour outlineVariant;
+
+    juce::Colour error;
+    juce::Colour onError;
+};
+
+// ── Typography scale (M3-inspired) ───────────────────────────────────────────
+enum class TextStyle
+{
+    DisplaySmall,
+    HeadlineSmall,
+    TitleLarge,
+    TitleMedium,
+    BodyLarge,
+    BodyMedium,
+    LabelLarge,
+    LabelMedium,
+    LabelSmall
+};
+
+inline juce::Font fontFor(TextStyle s)
+{
+    // Sizes tuned for a compact audio tool UI while keeping M3 hierarchy.
+    switch (s)
+    {
+        case TextStyle::DisplaySmall:   return juce::Font(juce::FontOptions(28.0f).withStyle("Bold"));
+        case TextStyle::HeadlineSmall:  return juce::Font(juce::FontOptions(20.0f).withStyle("SemiBold"));
+        case TextStyle::TitleLarge:     return juce::Font(juce::FontOptions(16.0f).withStyle("SemiBold"));
+        case TextStyle::TitleMedium:    return juce::Font(juce::FontOptions(14.0f).withStyle("SemiBold"));
+        case TextStyle::BodyLarge:      return juce::Font(juce::FontOptions(13.0f));
+        case TextStyle::BodyMedium:     return juce::Font(juce::FontOptions(12.0f));
+        case TextStyle::LabelLarge:     return juce::Font(juce::FontOptions(12.0f).withStyle("SemiBold"));
+        case TextStyle::LabelMedium:    return juce::Font(juce::FontOptions(11.0f).withStyle("SemiBold"));
+        case TextStyle::LabelSmall:     return juce::Font(juce::FontOptions(10.0f));
+    }
+    return juce::Font(juce::FontOptions(12.0f));
+}
+
+inline std::atomic<int>& appThemeId()
+{
+    static std::atomic<int> id { 10 }; // Default: dark preset
+    return id;
+}
+
 inline std::atomic<bool>& darkModeEnabled()
 {
-    static std::atomic<bool> enabled { true };
+    static std::atomic<bool> enabled { true }; // kept for legacy call sites
     return enabled;
 }
 
-// ── Colour palette ───────────────────────────────────────────────────────────
-// Light mode: clean white/gray. Dark mode: deep navy DAW palette.
-// ── Core colour theme ────────────────────────────────────────────────────────
-//
-//  LIGHT MODE                          DARK MODE
-//  ──────────────────────────          ──────────────────────────
-//  Background:                         Background:
-//    bg           #EAEEF2                bg           #181B24
-//    bgLight      #F5F7FA                bgLight      #212636
-//    bgLighter    #DDE3E9                bgLighter    #2C3244
-//    panel        #F0F2F5                panel        #1C2030
-//    panelBorder  #BFC6CE                panelBorder  #333A4D
-//
-//  Accent (blue):                      Accent (blue):
-//    accent       #2563EB                accent       #5B9BD5
-//    accentDim    #1D4ED8                accentDim    #3D7AB8
-//    accentBright #3B82F6                accentBright #7EC8FF
-//
-//  Text:                               Text:
-//    text         #1E293B                text         #D8DDE6
-//    textDim      #4B5563                textDim      #8890A0
-//    textBright   #0F172A                textBright   #FFFFFF
-//
-//  Knob:                               Knob:
-//    knobTrack    #C3CAD2                knobTrack    #3A4058
-//
-//  Piano roll:                         Piano roll:
-//    pianoWhite   #EDF0F3                pianoWhite   #2A2F40
-//    pianoBlack   #D0D6DD                pianoBlack   #1E2234
-//    pianoGrid    #A8B0B9                pianoGrid    #404860
-//    noteBlock    #2563EB                noteBlock    #5B9BD5
-//    selection    #2563EB 40%            selection    #5B9BD5 40%
-//    playhead     #DC2626                playhead     #FFFFFF
-//
-namespace colours {
-    // Backgrounds – deep navy with blue undertones (matching DAW reference)
-    inline juce::Colour bg()            { return darkModeEnabled() ? juce::Colour(0xff181b24) : juce::Colour(0xffeaeef2); }
-    inline juce::Colour bgLight()       { return darkModeEnabled() ? juce::Colour(0xff212636) : juce::Colour(0xfff5f7fa); }
-    inline juce::Colour bgLighter()     { return darkModeEnabled() ? juce::Colour(0xff2c3244) : juce::Colour(0xffdde3e9); }
-    inline juce::Colour panel()         { return darkModeEnabled() ? juce::Colour(0xff1c2030) : juce::Colour(0xfff0f2f5); }
-    inline juce::Colour panelBorder()   { return darkModeEnabled() ? juce::Colour(0xff333a4d) : juce::Colour(0xffbfc6ce); }
-
-    // Accent (blue)
-    inline juce::Colour accent()        { return darkModeEnabled() ? juce::Colour(0xff5b9bd5) : juce::Colour(0xff2563eb); }
-    inline juce::Colour accentDim()     { return darkModeEnabled() ? juce::Colour(0xff3d7ab8) : juce::Colour(0xff1d4ed8); }
-    inline juce::Colour accentBright()  { return darkModeEnabled() ? juce::Colour(0xff7ec8ff) : juce::Colour(0xff3b82f6); }
-
-    // Text
-    inline juce::Colour text()          { return darkModeEnabled() ? juce::Colour(0xffd8dde6) : juce::Colour(0xff1e293b); }
-    inline juce::Colour textDim()       { return darkModeEnabled() ? juce::Colour(0xff8890a0) : juce::Colour(0xff4b5563); }
-    inline juce::Colour textBright()    { return darkModeEnabled() ? juce::Colour(0xffffffff) : juce::Colour(0xff0f172a); }
-
-    // Knob / slider track
-    inline juce::Colour knobTrack()     { return darkModeEnabled() ? juce::Colour(0xff3a4058) : juce::Colour(0xffc3cad2); }
-
-    // Lane colours – DAW mixer-strip palette (pink, green, blue, cyan, amber, purple)
-    inline juce::Colour laneA()         { return juce::Colour(0xffe85577); } // Coral-pink
-    inline juce::Colour laneB()         { return juce::Colour(0xff4caf50); } // Green
-    inline juce::Colour laneC()         { return juce::Colour(0xff4a90d9); } // Blue
-    inline juce::Colour laneD()         { return juce::Colour(0xff26c6da); } // Cyan
-    inline juce::Colour laneE()         { return juce::Colour(0xfffdd835); } // Amber
-
-    // Piano roll
-    inline juce::Colour pianoWhiteKey() { return darkModeEnabled() ? juce::Colour(0xff2a2f40) : juce::Colour(0xffedf0f3); }
-    inline juce::Colour pianoBlackKey() { return darkModeEnabled() ? juce::Colour(0xff1e2234) : juce::Colour(0xffd0d6dd); }
-    inline juce::Colour pianoGrid()     { return darkModeEnabled() ? juce::Colour(0xff404860) : juce::Colour(0xffa8b0b9); }
-    inline juce::Colour noteBlock()     { return darkModeEnabled() ? juce::Colour(0xff5b9bd5) : juce::Colour(0xff2563eb); }
-    inline juce::Colour selection()     { return darkModeEnabled() ? juce::Colour(0x665b9bd5) : juce::Colour(0x662563eb); }
-    inline juce::Colour playhead()      { return darkModeEnabled() ? juce::Colour(0xffffffff) : juce::Colour(0xffdc2626); }
+inline juce::Colour mix(juce::Colour a, juce::Colour b, float t)
+{
+    return a.interpolatedWith(b, juce::jlimit(0.0f, 1.0f, t));
 }
 
-// ── Clip colour presets (DAW mixer-strip palette) ────────────────────────────
+inline ThemeTokens makeM3Tokens(juce::Colour seedPrimary, bool dark)
+{
+    ThemeTokens t;
+    t.isDark = dark;
+
+    // Surface palette (simple, deterministic derivation; avoids runtime dependency on Material Color Utilities)
+    const auto white = juce::Colours::white;
+    const auto black = juce::Colours::black;
+
+    // Balance chroma so themes don't swing between neon and muted.
+    // Pull seed a bit toward the neutral onSurfaceVariant.
+    const auto neutralPull = dark ? juce::Colour(0xffb9c0cc) : juce::Colour(0xff44474f);
+    t.primary = mix(seedPrimary, neutralPull, 0.18f);
+    t.onPrimary = dark ? juce::Colour(0xff0b0f14) : juce::Colours::white;
+    t.primaryContainer = dark ? mix(seedPrimary, black, 0.55f) : mix(seedPrimary, white, 0.70f);
+    t.onPrimaryContainer = dark ? mix(seedPrimary, white, 0.70f) : mix(seedPrimary, black, 0.82f);
+
+    t.surface = dark ? juce::Colour(0xff0f1115) : juce::Colour(0xfffffbfe);
+    t.surfaceContainerLow  = dark ? juce::Colour(0xff151820) : juce::Colour(0xfff7f2fa);
+    t.surfaceContainer     = dark ? juce::Colour(0xff1b1f2a) : juce::Colour(0xfff2ecf5);
+    t.surfaceContainerHigh = dark ? juce::Colour(0xff23283a) : juce::Colour(0xffece6ef);
+
+    t.onSurface = dark ? juce::Colour(0xffe7eaf0) : juce::Colour(0xff1a1c1e);
+    t.onSurfaceVariant = dark ? juce::Colour(0xffb9c0cc) : juce::Colour(0xff44474f);
+
+    t.outline = dark ? juce::Colour(0xff7a8291) : juce::Colour(0xff74777f);
+    t.outlineVariant = dark ? juce::Colour(0xff343a48) : juce::Colour(0xffc4c6d0);
+
+    t.error = juce::Colour(0xffef4444);
+    t.onError = juce::Colours::white;
+
+    return t;
+}
+
+struct ThemePreset
+{
+    const char* name = "";
+    bool isDark = true;
+    juce::Colour seedPrimary;
+};
+
+inline const std::array<ThemePreset, 20>& themePresets()
+{
+    static const std::array<ThemePreset, 20> presets {{
+        // Light (0..9)
+        { "Light - Rose",      false, juce::Colour(0xffd81b60) },
+        { "Light - Sky",       false, juce::Colour(0xff0288d1) },
+        { "Light - Teal",      false, juce::Colour(0xff00897b) },
+        { "Light - Indigo",    false, juce::Colour(0xff3949ab) },
+        { "Light - Amber",     false, juce::Colour(0xffff8f00) },
+        { "Light - Mint",      false, juce::Colour(0xff00bfa5) },
+        { "Light - Lavender",  false, juce::Colour(0xff7e57c2) },
+        { "Light - Sage",      false, juce::Colour(0xff2e7d32) },
+        { "Light - Graphite",  false, juce::Colour(0xff546e7a) },
+        { "Light - Berry",     false, juce::Colour(0xff8e24aa) },
+
+        // Dark (10..19)
+        { "Dark - Rose",       true,  juce::Colour(0xffff5c8d) },
+        { "Dark - Sky",        true,  juce::Colour(0xff4fc3f7) },
+        { "Dark - Teal",       true,  juce::Colour(0xff4db6ac) },
+        { "Dark - Indigo",     true,  juce::Colour(0xff8c9eff) },
+        { "Dark - Amber",      true,  juce::Colour(0xffffca28) },
+        { "Dark - Mint",       true,  juce::Colour(0xff64ffda) },
+        { "Dark - Lavender",   true,  juce::Colour(0xffb39ddb) },
+        { "Dark - Sage",       true,  juce::Colour(0xff81c784) },
+        { "Dark - Graphite",   true,  juce::Colour(0xff90a4ae) },
+        { "Dark - Berry",      true,  juce::Colour(0xffea80fc) },
+    }};
+    return presets;
+}
+
+inline ThemeTokens& currentThemeTokens()
+{
+    static ThemeTokens tokens = makeM3Tokens(themePresets()[11].seedPrimary, true);
+    return tokens;
+}
+
+inline void applyAppTheme(int themeId)
+{
+    const int clamped = juce::jlimit(0, (int)themePresets().size() - 1, themeId);
+    appThemeId().store(clamped);
+    const auto& p = themePresets()[(size_t)clamped];
+    currentThemeTokens() = makeM3Tokens(p.seedPrimary, p.isDark);
+    darkModeEnabled().store(p.isDark);
+}
+
+// ── Colour palette ───────────────────────────────────────────────────────────
+// Material Design 3-inspired token roles + JUCE component mapping.
+//
+//  DEFAULT THEMES
+//  ──────────────
+//  Backgrounds:
+//    bg           #1a1a1a  Main dark background
+//    bgLight      #1e1e1e  Panels, tracks
+//    bgLighter    #252525  Headers, sidebars, elevated
+//    panel        #252525  Panel backgrounds
+//    panelBorder  #2d2d2d  Primary border
+//    borderHover  #444     Hover border
+//
+//  Accent (blue – selection/info):
+//    accent       #3b82f6
+//    accentDim    #2563eb
+//    accentBright #60a5fa
+//
+//  Text:
+//    text         #ffffff  Primary
+//    textDim      #a0a0a0  Secondary
+//    textBright   #ffffff
+//    textMuted    #717182  Very subtle
+//
+//  Status:
+//    recordRed    #ef4444  Record, critical
+//    muteYellow   #facc15  Mute active
+//    soloBlue     #3b82f6  Solo active
+//    activeGreen  #22c55e  Active, safe
+//
+namespace colours {
+    inline juce::Colour bg()            { return currentThemeTokens().surface; }
+    inline juce::Colour bgLight()       { return currentThemeTokens().surfaceContainerLow; }
+    inline juce::Colour bgLighter()     { return currentThemeTokens().surfaceContainer; }
+    inline juce::Colour panel()         { return currentThemeTokens().surfaceContainer; }
+    inline juce::Colour panelBorder()   { return currentThemeTokens().outlineVariant; }
+    inline juce::Colour borderHover()   { return currentThemeTokens().outline; }
+
+    inline juce::Colour accent()        { return currentThemeTokens().primary; }
+    inline juce::Colour accentDim()     { return currentThemeTokens().primaryContainer; }
+    inline juce::Colour accentBright()
+    {
+        // Brighter, but avoid washing out in light themes.
+        return mix(currentThemeTokens().primary, juce::Colours::white, currentThemeTokens().isDark ? 0.22f : 0.06f);
+    }
+
+    inline juce::Colour text()          { return currentThemeTokens().onSurface; }
+    inline juce::Colour textDim()       { return currentThemeTokens().onSurfaceVariant; }
+    inline juce::Colour textBright()    { return currentThemeTokens().onSurface; }
+    inline juce::Colour textMuted()     { return currentThemeTokens().outline; }
+
+    inline juce::Colour knobTrack()     { return currentThemeTokens().outlineVariant; }
+
+    inline juce::Colour compSelectionHighlight() { return accent().withAlpha(0.22f); }
+
+    // Piano roll (brighter contrast: white vs black keys, grid more distinct)
+    inline juce::Colour pianoWhiteKey() { return currentThemeTokens().isDark ? juce::Colour(0xff3b3f4a) : juce::Colour(0xfff8fafc); }
+    inline juce::Colour pianoBlackKey() { return currentThemeTokens().isDark ? juce::Colour(0xff0a0b0e) : juce::Colour(0xff1a1a1a); }
+    inline juce::Colour pianoGrid()     { return currentThemeTokens().outlineVariant; }
+    inline juce::Colour noteBlock()     { return accent(); }
+    inline juce::Colour selection()     { return accent().withAlpha(0.25f); }
+    inline juce::Colour playhead()      { return juce::Colour(0xffef4444); } // Red playhead per DAW style guide
+
+    // Lane mute/solo – Mute=Yellow, Solo=Green
+    inline juce::Colour muteYellow()    { return juce::Colour(0xfffacc15); }
+    inline juce::Colour soloBlue()      { return juce::Colour(0xff22c55e); }  // Solo is green
+    inline juce::Colour recordRed()     { return juce::Colour(0xffef4444); }
+    inline juce::Colour activeGreen()   { return juce::Colour(0xff22c55e); }
+
+    // Legacy aliases for compatibility
+    inline juce::Colour muteRed()       { return muteYellow(); }
+    inline juce::Colour soloGreen()     { return soloBlue(); }   // Solo is green
+}
+
+// ── Elevation helpers (M3-inspired) ──────────────────────────────────────────
+inline juce::Colour elevatedSurface(juce::Colour surface, int dp)
+{
+    // In M3 dark theme, elevation is represented via a surface tint overlay.
+    // Approximation: blend primary into surface with increasing alpha.
+    if (!currentThemeTokens().isDark || dp <= 0)
+        return surface;
+
+    const float t = juce::jlimit(0.0f, 1.0f, (float)dp / 6.0f);
+    const float alpha = 0.04f + 0.10f * t; // ~4%..14%
+    return surface.overlaidWith(currentThemeTokens().primary.withAlpha(alpha));
+}
+
+// ── Clip colour presets (DAW Professional track palette) ─────────────────────
 inline std::vector<juce::Colour> getClipColourPresets()
 {
     return {
-        juce::Colour(0xffe85577), // Coral-pink
+        juce::Colour(0xffff6b6b), // Vocals
+        juce::Colour(0xff4ecdc4), // Guitar
+        juce::Colour(0xff45b7d1), // Bass
+        juce::Colour(0xfff9ca24), // Drums
+        juce::Colour(0xffa29bfe), // Keys
+        juce::Colour(0xffff9ff3), // Synth
         juce::Colour(0xff4caf50), // Green
-        juce::Colour(0xff4a90d9), // Blue
+        juce::Colour(0xff3b82f6), // Blue
         juce::Colour(0xff26c6da), // Cyan
-        juce::Colour(0xfffdd835), // Amber
-        juce::Colour(0xffab47bc), // Purple
-        juce::Colour(0xffff7043), // Orange
-        juce::Colour(0xff26a69a), // Teal
-        juce::Colour(0xffec407a), // Rose
-        juce::Colour(0xff5c6bc0), // Indigo
+        juce::Colour(0xfff59e0b), // Orange
     };
 }
 
 // ── Version ─────────────────────────────────────────────────────────────────
 namespace version {
-    constexpr const char* number = "0.4.1";
-    constexpr const char* name   = "PatternFlow";
-    constexpr const char* desc   = "A MIDI composition tool for creative producers. "
-                                   "Arrange, layer, and reshape MIDI clips with "
-                                   "scale quantisation, humanisation, and flexible routing.";
-    constexpr const char* buildDate = __DATE__ " " __TIME__;
+    constexpr const char* name = "PatternFlow";
+    constexpr const char* desc = "A MIDI composition tool for creative producers. "
+                                   "Arrange, layer, and reshape MIDI clips with scale quantisation, "
+                                   "humanisation, and flexible routing.";
     constexpr const char* license =
         "Commercial License\n\n"
         "Copyright (c) 2024-2026 PatternFlow. All rights reserved.\n\n"
@@ -117,22 +288,32 @@ namespace version {
         "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.";
 }
 
-// ── Metrics ──────────────────────────────────────────────────────────────────
+// ── Metrics (DAW Professional Style Guide) ───────────────────────────────────
 namespace metrics {
-    constexpr int browserWidth      = 240;
-    constexpr int controlPanelH     = 90;
-    constexpr int pianoRollH        = 280;
-    constexpr int laneHeaderW       = 130;
-    constexpr int laneHeight        = 60;
+    constexpr int browserWidth      = 256;   // Left sidebar w-64
+    constexpr int browserMinWidth   = 160;
+    constexpr int browserMaxWidth   = 420;
+    constexpr int controlPanelH     = 40;   // Transport (reduced by 2/3)
+    constexpr int pianoRollH        = 420;  // 50% taller than 280
+    constexpr int laneHeaderW       = 120;  // Lane header (compact: name + M/S)
+    constexpr int laneHeight        = 96;   // Default track h
+    constexpr int laneHeightMin     = 40;   // Min when many lanes
+    constexpr int compLaneHeight    = 36;
     constexpr int knobSize          = 52;
     constexpr int knobLabelH        = 16;
     constexpr int knobSpacing       = 68;
-    constexpr float cornerRadius    = 5.0f;
-    constexpr float clipCorner      = 4.0f;
-    constexpr int scrollbarW        = 7;
-    constexpr int buttonH           = 26;
-    constexpr int padding           = 10;
-    constexpr float browserFontSize = 11.5f;
+    // M3 uses larger rounding for touch-friendly components.
+    constexpr float cornerRadius    = 12.0f;
+    constexpr float clipCorner      = 10.0f;
+    constexpr int scrollbarW        = 12;   // Custom scrollbar width
+    constexpr int buttonH           = 32;   // h-8
+    constexpr int padding           = 12;   // p-3
+    constexpr float browserFontSize = 12.0f;
+    // Single top bar: title + transport + tools + scale (same height as former tools row)
+    constexpr int titleBarH         = 59;
+    constexpr int titleBarPadding   = 4;
+    constexpr int comboTextPadding  = 6;
+    constexpr int rulerH            = 32;   // Timeline ruler h-8
 }
 
 // ── Custom LookAndFeel ───────────────────────────────────────────────────────
@@ -150,9 +331,35 @@ public:
                               const juce::Colour& bg,
                               bool highlighted, bool down) override;
 
+    void drawButtonText(juce::Graphics&, juce::TextButton&, bool, bool) override;
+
+    void drawToggleButton(juce::Graphics&, juce::ToggleButton&,
+                          bool shouldDrawButtonAsHighlighted,
+                          bool shouldDrawButtonAsDown) override;
+
     void drawLabel(juce::Graphics&, juce::Label&) override;
 
+    void drawComboBox(juce::Graphics&, int width, int height, bool isButtonDown,
+                      int buttonX, int buttonY, int buttonW, int buttonH,
+                      juce::ComboBox&) override;
+
+    void drawTextEditorOutline(juce::Graphics&, int width, int height,
+                               juce::TextEditor&) override;
+
+    void drawPopupMenuItem(juce::Graphics&, const juce::Rectangle<int>& area,
+                           bool isSeparator, bool isActive, bool isHighlighted,
+                           bool isTicked, bool hasSubMenu, const juce::String& text,
+                           const juce::String& shortcutKeyText, const juce::Drawable* icon,
+                           const juce::Colour* textColourToUse) override;
+
+    void drawScrollbar(juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height,
+                       bool isScrollbarVertical, int thumbStartPosition, int thumbSize,
+                       bool isMouseOver, bool isMouseDown) override;
+
     juce::Font getLabelFont(juce::Label&) override;
+    juce::Font getTextButtonFont(juce::TextButton& btn, int) override;
+    juce::Font getComboBoxFont(juce::ComboBox&) override;
+    juce::Font getPopupMenuFont() override;
 };
 
 } // namespace pflow

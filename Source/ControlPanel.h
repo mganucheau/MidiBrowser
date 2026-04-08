@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
-#include <juce_audio_processors/juce_audio_processors.h>
+#include <tuple>
+#include <functional>
 #include "MidiFileData.h"
 #include "Theme.h"
 
@@ -8,9 +9,7 @@ namespace pflow {
 
 class PatternFlowProcessor;
 
-// ── Top control bar: knobs, scale, split, root note, grid snap ──────────────
 class ControlPanel : public juce::Component,
-                     public juce::Slider::Listener,
                      public juce::ComboBox::Listener
 {
 public:
@@ -19,63 +18,31 @@ public:
     void resized() override;
     void paint(juce::Graphics&) override;
     void refreshComponentColours();
-
-    void sliderValueChanged(juce::Slider*) override;
     void comboBoxChanged(juce::ComboBox*) override;
+
+    std::function<void()> onC0Clicked;
+    std::function<void()> onTransposeClicked;
+    /** Arrangement should repaint when comp mode or comp content changes. */
+    std::function<void()> onTakeCompSwitched;
+
+    void refreshTakeCompUI();
 
 private:
     PatternFlowProcessor& processor;
 
-    // Knobs
-    juce::Slider knobHumanTiming;
-    juce::Slider knobHumanVelocity;
-    juce::Slider knobFeel;
-    juce::Slider knobIntonation;
-    juce::Label  lblHumanTiming   { {}, "Timing" };
-    juce::Label  lblHumanVelocity { {}, "Velocity" };
-    juce::Label  lblFeel          { {}, "Feel" };
-    juce::Label  lblIntonation    { {}, "Intonation" };
+    juce::ToggleButton  btnScaleToggle { "Scale" };
+    juce::ComboBox      cmbScaleRoot;
+    juce::ComboBox      cmbScaleType;
+    juce::TextButton    btnC0 { "C0" };
+    juce::TextButton    btnTranspose { "Transpose" };
 
-    // Scale
-    juce::ToggleButton btnScaleEnable { "Scale" };
-    juce::ComboBox     cmbScaleRoot;
-    juce::ComboBox     cmbScaleType;
+    juce::ToggleButton  btnComp { "Comp" };
+    juce::Slider        sldRandomRegions;
+    juce::TextButton    btnRandomComp { "Random" };
+    juce::TextButton    btnSwapComp { "Swap" };
 
-    // Root note remap
-    juce::ComboBox     cmbRootNote;
-    juce::Label        lblRootNote { {}, "Root" };
-
-    // MIDI split
-    juce::ToggleButton btnSplitEnable { "Split" };
-    juce::TextButton   btnSplitEdit   { "Edit..." };
-
-    // Grid snap selector
-    juce::ComboBox     cmbGridSnap;
-    juce::Label        lblGridSnap { {}, "Grid" };
-
-    // Session bars selector
-    juce::ComboBox     cmbSessionBars;
-    juce::Label        lblSessionBars { {}, "Bars" };
-
-    // New lane button
-    juce::TextButton   btnAddLane { "+ Lane" };
-
-    // Trim button
-    juce::TextButton   btnTrim { "Trim" };
-
-    // Record button
-    juce::TextButton   btnRecord { "Rec" };
-
-    void setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& tooltip);
-
-public:
-    // Expose callbacks
-    std::function<void()> onAddLane;
-    std::function<void(int bars)> onSessionBarsChanged;
-    std::function<void()> onRecordToggle;
-    std::function<void()> onTrimClips;
-
-    void updateRecordButton();
+    /** Last integer region count applied (for randomizing on each step while dragging the knob). */
+    int lastRandomKnobInt = 8;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ControlPanel)
 };

@@ -1,301 +1,274 @@
 #include "ControlPanel.h"
 #include "PluginProcessor.h"
+#include "UndoActions.h"
+#include <cmath>
 
 namespace pflow {
 
+namespace {
+
+constexpr float kToggleFontH  = 13.0f;
+constexpr float kTextBtnFontH = 12.0f;
+
+int textWidthPx(float fontHeight, const juce::String& t)
+{
+    return juce::roundToInt(std::ceil(
+        juce::Font(juce::FontOptions(fontHeight)).getStringWidthFloat(t)));
+}
+
+int minToggleWidth(int comboPad, const juce::String& label)
+{
+    const int tick = juce::roundToInt(std::ceil(kToggleFontH * 1.1f));
+    const int textLeft = 4 + tick + 10;
+    return textLeft + textWidthPx(kToggleFontH, label) + comboPad * 2 + 10;
+}
+
+int minTextButtonWidth(int comboPad, const juce::String& label)
+{
+    return textWidthPx(kTextBtnFontH, label) + comboPad * 2 + 18;
+}
+
+void commitRandomizeTakeCompWithUndo(PatternFlowProcessor& proc)
+{
+    auto before = proc.getActiveTakeCompSegmentsSnapshot();
+    proc.randomizeActiveComp();
+    auto after = proc.getActiveTakeCompSegmentsSnapshot();
+    if (takeCompSegmentsEquivalent(before, after)) return;
+    {
+        juce::ScopedLock sl(proc.laneLock);
+        proc.ensureDefaultTakeComp();
+        proc.takeComps[0].segments = before;
+    }
+    proc.rebuildMasterClip();
+    proc.undoManager.beginNewTransaction();
+    proc.undoManager.perform(new SetTakeCompSegmentsAction(proc, before, after));
+}
+
+void commitCycleCompLanesWithUndo(PatternFlowProcessor& proc)
+{
+    auto before = proc.getActiveTakeCompSegmentsSnapshot();
+    proc.cycleCompSegmentsToNextLane();
+    auto after = proc.getActiveTakeCompSegmentsSnapshot();
+    if (takeCompSegmentsEquivalent(before, after)) return;
+    {
+        juce::ScopedLock sl(proc.laneLock);
+        proc.ensureDefaultTakeComp();
+        proc.takeComps[0].segments = before;
+    }
+    proc.rebuildMasterClip();
+    proc.undoManager.beginNewTransaction();
+    proc.undoManager.perform(new SetTakeCompSegmentsAction(proc, before, after));
+}
+
+int maxScaleTypeComboInnerWidth(float fontHeight)
+{
+    int m = 0;
+    for (int i = 0; i < (int)ScaleType::Count; ++i)
+        m = juce::jmax(m, textWidthPx(fontHeight, scaleTypeName((ScaleType)i)));
+    return m;
+}
+
+} // namespace
+
 ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
 {
-    // Setup knobs with tooltips
-    setupKnob(knobHumanTiming,   lblHumanTiming,   "Randomise note timing (0-100%)");
-    setupKnob(knobHumanVelocity, lblHumanVelocity, "Randomise note velocity (0-100%)");
-    setupKnob(knobFeel,          lblFeel,           "Swing / groove feel amount");
-    setupKnob(knobIntonation,    lblIntonation,     "Pitch micro-variation amount");
-
-    // Scale enable
-    btnScaleEnable.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnScaleEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
-    btnScaleEnable.setTooltip("Enable scale quantisation");
-    btnScaleEnable.onClick = [this]
+    btnScaleToggle.setColour(juce::ToggleButton::textColourId, colours::text());
+    btnScaleToggle.setColour(juce::ToggleButton::tickColourId, colours::accent());
+    btnScaleToggle.setTooltip("Enable or disable scale quantisation (choose root and type anytime)");
+    btnScaleToggle.setToggleState(processor.scaleEnabled.load(), juce::dontSendNotification);
+    btnScaleToggle.onClick = [this]
     {
-        processor.scaleEnabled.store(btnScaleEnable.getToggleState());
+        processor.scaleEnabled.store(btnScaleToggle.getToggleState());
     };
-    addAndMakeVisible(btnScaleEnable);
+    addAndMakeVisible(btnScaleToggle);
 
-    // Scale root (C, C#, D, ... B)
     const char* noteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
     for (int i = 0; i < 12; ++i)
         cmbScaleRoot.addItem(noteNames[i], i + 1);
-    cmbScaleRoot.setSelectedId(1);
-    cmbScaleRoot.setTooltip("Scale root note");
+    cmbScaleRoot.setSelectedId(processor.scaleRoot.load() + 1);
+    cmbScaleRoot.setTooltip("Scale root");
     cmbScaleRoot.addListener(this);
     addAndMakeVisible(cmbScaleRoot);
 
-    // Scale type
     for (int i = 0; i < (int)ScaleType::Count; ++i)
         cmbScaleType.addItem(scaleTypeName((ScaleType)i), i + 1);
-    cmbScaleType.setSelectedId(2); // Major
+    cmbScaleType.setSelectedId(processor.scaleType.load() + 1);
     cmbScaleType.setTooltip("Scale type");
     cmbScaleType.addListener(this);
     addAndMakeVisible(cmbScaleType);
-    // Sync processor with UI defaults
-    processor.scaleRoot.store(0);  // C
-    processor.scaleType.store(1);  // Major
 
-    // Root note remap
-    lblRootNote.setColour(juce::Label::textColourId, colours::textDim());
-    lblRootNote.setFont(juce::Font(12.0f));
-    addAndMakeVisible(lblRootNote);
+    btnC0.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnC0.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    btnC0.setComponentID("ActionButton");
+    btnC0.setTooltip("Transpose all MIDI to C0 octave (0-11)");
+    btnC0.onClick = [this] { if (onC0Clicked) onC0Clicked(); };
+    addAndMakeVisible(btnC0);
 
-    for (int oct = -2; oct <= 8; ++oct)
+    btnTranspose.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnTranspose.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    btnTranspose.setComponentID("ActionButton");
+    btnTranspose.setTooltip("Transpose all MIDI to the selected scale root and scale type");
+    btnTranspose.onClick = [this]
     {
-        int midiNote = (oct + 2) * 12;
-        cmbRootNote.addItem("C" + juce::String(oct), midiNote + 1);
-    }
-    cmbRootNote.setSelectedId(25); // C1 = MIDI 24, id=25
-    cmbRootNote.setTooltip("Root note for transpose");
-    cmbRootNote.addListener(this);
-    addAndMakeVisible(cmbRootNote);
-
-    // MIDI split
-    btnSplitEnable.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnSplitEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
-    btnSplitEnable.setTooltip("Enable MIDI keyboard split routing");
-    btnSplitEnable.onClick = [this]
-    {
-        processor.splitEnabled.store(btnSplitEnable.getToggleState());
+        if (onTransposeClicked) onTransposeClicked();
     };
-    addAndMakeVisible(btnSplitEnable);
+    addAndMakeVisible(btnTranspose);
 
-    btnSplitEdit.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-    btnSplitEdit.setColour(juce::TextButton::textColourOffId, colours::text());
-    btnSplitEdit.setTooltip("Edit split rules");
-    btnSplitEdit.onClick = [this]
+    btnComp.setColour(juce::ToggleButton::textColourId, colours::text());
+    btnComp.setColour(juce::ToggleButton::tickColourId, colours::accent());
+    btnComp.setTooltip("Comp mode: paint and edit comp regions. Turn off to move clips; existing comps stay for playback.");
+    btnComp.onClick = [this]
     {
-        juce::PopupMenu menu;
-        menu.addItem(1, "Drums: C1-B1 -> Ch1, C2-B2 -> Ch2");
-        menu.addItem(2, "Octave Split: Low -> Ch1, High -> Ch2");
-        menu.addItem(3, "Clear All Rules");
+        bool on = btnComp.getToggleState();
+        processor.compsEnabled.store(on);
+        if (on)
+            processor.ensureDefaultTakeComp();
+        refreshTakeCompUI();
+        if (onTakeCompSwitched) onTakeCompSwitched();
+    };
+    addAndMakeVisible(btnComp);
 
-        menu.showMenuAsync(juce::PopupMenu::Options(),
-            [this](int result)
+    sldRandomRegions.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+    sldRandomRegions.setTextBoxStyle(juce::Slider::TextBoxRight, false, 26, 22);
+    sldRandomRegions.setRange(2.0, 16.0, 1.0);
+    sldRandomRegions.setValue((double)processor.compRandomRegionCount.load(), juce::dontSendNotification);
+    lastRandomKnobInt = juce::jlimit(2, 16, juce::roundToInt((float)sldRandomRegions.getValue()));
+    sldRandomRegions.setTooltip("How many regions Random creates (2–16). Dragging runs Random at each step.");
+    sldRandomRegions.onValueChange = [this]
+    {
+        int newN = juce::jlimit(2, 16, juce::roundToInt((float)sldRandomRegions.getValue()));
+        processor.compRandomRegionCount.store(newN);
+        if (!processor.compsEnabled.load())
         {
-            if (result == 1)
-            {
-                juce::ScopedLock sl(processor.splitLock);
-                processor.splitRules.clear();
-                processor.splitRules.push_back({24, 35, 0});
-                processor.splitRules.push_back({36, 47, 1});
-            }
-            else if (result == 2)
-            {
-                juce::ScopedLock sl(processor.splitLock);
-                processor.splitRules.clear();
-                processor.splitRules.push_back({0, 59, 0});
-                processor.splitRules.push_back({60, 127, 1});
-            }
-            else if (result == 3)
-            {
-                juce::ScopedLock sl(processor.splitLock);
-                processor.splitRules.clear();
-            }
-        });
+            lastRandomKnobInt = newN;
+            return;
+        }
+        if (newN == lastRandomKnobInt)
+            return;
+        const int from = lastRandomKnobInt;
+        const int to = newN;
+        const int step = (to > from) ? 1 : -1;
+        for (int n = from + step;; n += step)
+        {
+            processor.compRandomRegionCount.store(n);
+            commitRandomizeTakeCompWithUndo(processor);
+            if (onTakeCompSwitched) onTakeCompSwitched();
+            if (n == to) break;
+        }
+        lastRandomKnobInt = to;
     };
-    addAndMakeVisible(btnSplitEdit);
+    addAndMakeVisible(sldRandomRegions);
 
-    // Grid snap selector
-    lblGridSnap.setColour(juce::Label::textColourId, colours::textDim());
-    lblGridSnap.setFont(juce::Font(12.0f));
-    addAndMakeVisible(lblGridSnap);
+    btnRandomComp.setComponentID("ActionButton");
+    btnRandomComp.setTooltip("Fill the comp with random regions across the session");
+    btnRandomComp.onClick = [this]
+    {
+        if (!processor.compsEnabled.load()) return;
+        commitRandomizeTakeCompWithUndo(processor);
+        if (onTakeCompSwitched) onTakeCompSwitched();
+    };
+    addAndMakeVisible(btnRandomComp);
 
-    cmbGridSnap.addItem("Off", 1);
-    cmbGridSnap.addItem("Bar", 2);
-    cmbGridSnap.addItem("Beat", 3);
-    cmbGridSnap.addItem("1/2", 4);
-    cmbGridSnap.addItem("1/4", 5);
-    cmbGridSnap.addItem("1/8", 6);
-    cmbGridSnap.addItem("1/16", 7);
-    cmbGridSnap.setSelectedId(3); // Beat
-    cmbGridSnap.setTooltip("Grid snap resolution");
-    cmbGridSnap.addListener(this);
-    addAndMakeVisible(cmbGridSnap);
+    btnSwapComp.setComponentID("ActionButton");
+    btnSwapComp.setTooltip("Move all comp regions to the next track down; last track wraps to the first");
+    btnSwapComp.onClick = [this]
+    {
+        if (!processor.compsEnabled.load()) return;
+        commitCycleCompLanesWithUndo(processor);
+        if (onTakeCompSwitched) onTakeCompSwitched();
+    };
+    addAndMakeVisible(btnSwapComp);
 
-    // Session bars selector
-    lblSessionBars.setColour(juce::Label::textColourId, colours::textDim());
-    lblSessionBars.setFont(juce::Font(12.0f));
-    addAndMakeVisible(lblSessionBars);
-
-    const int barOptions[] = { 4, 8, 16, 32, 64 };
-    for (int i = 0; i < 5; ++i)
-        cmbSessionBars.addItem(juce::String(barOptions[i]), i + 1);
-    cmbSessionBars.setSelectedId(2); // 8 bars default
-    cmbSessionBars.setTooltip("Session length in bars");
-    cmbSessionBars.addListener(this);
-    addAndMakeVisible(cmbSessionBars);
-
-    // Add lane button with icon
-    btnAddLane.setButtonText("+ Lane");
-    btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent());
-    btnAddLane.setColour(juce::TextButton::textColourOffId, colours::textBright());
-    btnAddLane.setTooltip("Add a new lane (keyboard: click + in arrangement)");
-    btnAddLane.onClick = [this] { if (onAddLane) onAddLane(); };
-    addAndMakeVisible(btnAddLane);
-
-    // Trim button
-    btnTrim.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-    btnTrim.setColour(juce::TextButton::textColourOffId, colours::text());
-    btnTrim.setTooltip("Trim empty measures from the end of each clip");
-    btnTrim.onClick = [this] { if (onTrimClips) onTrimClips(); };
-    addAndMakeVisible(btnTrim);
-
-    // Record button
-    updateRecordButton();
-    btnRecord.setTooltip("Toggle MIDI recording into a new lane");
-    btnRecord.onClick = [this] { if (onRecordToggle) onRecordToggle(); };
-    addAndMakeVisible(btnRecord);
-}
-
-void ControlPanel::setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& tooltip)
-{
-    knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    knob.setRange(0.0, 1.0, 0.01);
-    knob.setValue(0.0);
-    knob.setTooltip(tooltip);
-    knob.addListener(this);
-    addAndMakeVisible(knob);
-
-    label.setColour(juce::Label::textColourId, colours::textDim());
-    label.setFont(juce::Font(12.0f));
-    label.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(label);
+    refreshTakeCompUI();
 }
 
 void ControlPanel::resized()
 {
-    auto b = getLocalBounds().reduced(metrics::padding, 4);
-    int knobS = metrics::knobSize;
-    int knobSpace = metrics::knobSpacing;
+    auto row1 = getLocalBounds();
+    const int comboPad = metrics::comboTextPadding;
+    const int itemGap = 6;
+    const int btnH1 = juce::jlimit(28, 34, row1.getHeight() - 8);
+    const int rowY1 = row1.getY() + (row1.getHeight() - btnH1) / 2;
+    const int cx = row1.getCentreX();
+    const int halfDiv = 1;
+    juce::Rectangle<int> leftArea(row1.getX(), row1.getY(), cx - row1.getX() - halfDiv, row1.getHeight());
+    juce::Rectangle<int> rightArea(cx + halfDiv, row1.getY(), row1.getRight() - (cx + halfDiv), row1.getHeight());
 
-    // ── Knobs on the left, vertically centered ──
-    int knobRowCY = b.getY() + (knobS / 2) + 2;
-    int x = b.getX() + 4;
+    const int compToggleW = minToggleWidth(comboPad, "Comp");
+    const int knobSide = juce::jmin(40, btnH1 + 8);
+    const int knobW = knobSide + 30;
+    const int randW = minTextButtonWidth(comboPad, "Random");
+    const int swapW = minTextButtonWidth(comboPad, "Swap");
+    const int compClusterW = compToggleW + itemGap + knobW + itemGap + randW + itemGap + swapW;
+    int x = leftArea.getX() + (leftArea.getWidth() - compClusterW) / 2;
+    btnComp.setBounds(x, rowY1, compToggleW, btnH1);
+    x += compToggleW + itemGap;
+    sldRandomRegions.setBounds(x, rowY1 + (btnH1 - knobSide) / 2, knobW, knobSide);
+    x += knobW + itemGap;
+    btnRandomComp.setBounds(x, rowY1, randW, btnH1);
+    x += randW + itemGap;
+    btnSwapComp.setBounds(x, rowY1, swapW, btnH1);
 
-    auto placeKnob = [&](juce::Slider& knob, juce::Label& lbl)
-    {
-        knob.setBounds(x, knobRowCY - knobS / 2, knobS, knobS);
-        lbl.setBounds(x - 4, knobRowCY + knobS / 2 - 2, knobS + 8, metrics::knobLabelH);
-        x += knobSpace;
-    };
-
-    placeKnob(knobHumanTiming,   lblHumanTiming);
-    placeKnob(knobHumanVelocity, lblHumanVelocity);
-    placeKnob(knobFeel,          lblFeel);
-    placeKnob(knobIntonation,    lblIntonation);
-
-    // ── Settings to the right of knobs, arranged in two rows ──
-    int settingsX = x + 12;
-    int secH = 24;
-    int topRowY = b.getY() + 4;
-    int botRowY = b.getBottom() - secH - 2;
-
-    // Top row: Scale enable + root + type
-    btnScaleEnable.setBounds(settingsX, topRowY, 60, secH);
-    cmbScaleRoot.setBounds(settingsX + 62, topRowY, 50, secH);
-    cmbScaleType.setBounds(settingsX + 114, topRowY, 115, secH);
-
-    // Bottom row: Root note + Grid snap
-    lblRootNote.setBounds(settingsX, botRowY, 34, secH);
-    cmbRootNote.setBounds(settingsX + 34, botRowY, 58, secH);
-
-    lblGridSnap.setBounds(settingsX + 100, botRowY, 30, secH);
-    cmbGridSnap.setBounds(settingsX + 130, botRowY, 60, secH);
-
-    lblSessionBars.setBounds(settingsX + 198, botRowY, 30, secH);
-    cmbSessionBars.setBounds(settingsX + 228, botRowY, 58, secH);
-
-    // Split section (right of scale)
-    int splitX = settingsX + 236;
-    btnSplitEnable.setBounds(splitX, topRowY, 55, secH);
-    btnSplitEdit.setBounds(splitX + 57, topRowY, 55, secH);
-
-    // Trim + Record + Add lane (far right, vertically centered)
-    btnTrim.setBounds(b.getRight() - 216, b.getCentreY() - 13, 52, 26);
-    btnRecord.setBounds(b.getRight() - 152, b.getCentreY() - 13, 52, 26);
-    btnAddLane.setBounds(b.getRight() - 76, b.getCentreY() - 13, 72, 26);
+    const int scaleToggleW = minToggleWidth(comboPad, "Scale");
+    const int rootW = textWidthPx(kTextBtnFontH, "C#") + comboPad * 2 + 28;
+    const int typeW = maxScaleTypeComboInnerWidth(kTextBtnFontH) + comboPad * 2 + 30;
+    const int transW = minTextButtonWidth(comboPad, "Transpose");
+    const int c0W = minTextButtonWidth(comboPad, "C0");
+    const int scaleClusterW = scaleToggleW + itemGap + rootW + itemGap + typeW + itemGap + transW + itemGap + c0W;
+    x = rightArea.getX() + (rightArea.getWidth() - scaleClusterW) / 2;
+    btnScaleToggle.setBounds(x, rowY1, scaleToggleW, btnH1);
+    x += scaleToggleW + itemGap;
+    cmbScaleRoot.setBounds(x, rowY1, rootW, btnH1);
+    x += rootW + itemGap;
+    cmbScaleType.setBounds(x, rowY1, typeW, btnH1);
+    x += typeW + itemGap;
+    btnTranspose.setBounds(x, rowY1, transW, btnH1);
+    x += transW + itemGap;
+    btnC0.setBounds(x, rowY1, c0W, btnH1);
 }
 
 void ControlPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::bgLight());
-
-    // Bottom separator
-    g.setColour(colours::panelBorder());
-    g.drawHorizontalLine(getHeight() - 1, 0.0f, (float)getWidth());
-
-    // Subtle accent line at top
-    g.setColour(colours::accent().withAlpha(0.12f));
-    g.fillRect(0.0f, 0.0f, (float)getWidth(), 2.0f);
-
-    // Section dividers between knobs and settings
-    auto b = getLocalBounds().reduced(metrics::padding, 4);
-    int dividerX = b.getX() + 4 + metrics::knobSpacing * 4 + 4;
-    g.setColour(colours::panelBorder().withAlpha(0.4f));
-    g.drawVerticalLine(dividerX, (float)(b.getY() + 4), (float)(b.getBottom() - 4));
+    auto r = getLocalBounds();
+    if (r.getHeight() < 8) return;
+    g.setColour(colours::panelBorder().withAlpha(0.5f));
+    const int cx = r.getCentreX();
+    g.drawVerticalLine(cx, (float)r.getY() + 3.0f, (float)r.getBottom() - 3.0f);
 }
 
-void ControlPanel::updateRecordButton()
+void ControlPanel::refreshTakeCompUI()
 {
-    bool isRec = processor.recording.load();
-    if (isRec)
-    {
-        btnRecord.setButtonText("Stop");
-        btnRecord.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffdc2626));
-        btnRecord.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    }
-    else
-    {
-        btnRecord.setButtonText("Rec");
-        btnRecord.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff8b2020));
-        btnRecord.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    }
+    btnComp.setToggleState(processor.compsEnabled.load(), juce::dontSendNotification);
+    sldRandomRegions.setValue((double)juce::jlimit(2, 16, processor.compRandomRegionCount.load()),
+                              juce::dontSendNotification);
+    lastRandomKnobInt = juce::jlimit(2, 16, processor.compRandomRegionCount.load());
+
+    const bool en = processor.compsEnabled.load();
+    sldRandomRegions.setEnabled(en);
+    btnRandomComp.setEnabled(en);
+    btnSwapComp.setEnabled(en);
 }
 
 void ControlPanel::refreshComponentColours()
 {
-    // Toggle buttons
-    btnScaleEnable.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnScaleEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
-    btnSplitEnable.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnSplitEnable.setColour(juce::ToggleButton::tickColourId, colours::accent());
-
-    // Labels
-    lblRootNote.setColour(juce::Label::textColourId, colours::textDim());
-    lblGridSnap.setColour(juce::Label::textColourId, colours::textDim());
-    lblSessionBars.setColour(juce::Label::textColourId, colours::textDim());
-    lblHumanTiming.setColour(juce::Label::textColourId, colours::textDim());
-    lblHumanVelocity.setColour(juce::Label::textColourId, colours::textDim());
-    lblFeel.setColour(juce::Label::textColourId, colours::textDim());
-    lblIntonation.setColour(juce::Label::textColourId, colours::textDim());
-
-    // Buttons
-    btnSplitEdit.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-    btnSplitEdit.setColour(juce::TextButton::textColourOffId, colours::text());
-    btnTrim.setColour(juce::TextButton::buttonColourId, colours::bgLight());
-    btnTrim.setColour(juce::TextButton::textColourOffId, colours::text());
-    btnAddLane.setColour(juce::TextButton::buttonColourId, colours::accent());
-    btnAddLane.setColour(juce::TextButton::textColourOffId, colours::textBright());
-}
-
-void ControlPanel::sliderValueChanged(juce::Slider* slider)
-{
-    if (slider == &knobHumanTiming)
-        processor.humanTiming.store((float)slider->getValue());
-    else if (slider == &knobHumanVelocity)
-        processor.humanVelocity.store((float)slider->getValue());
-    else if (slider == &knobFeel)
-        processor.humanFeel.store((float)slider->getValue());
-    else if (slider == &knobIntonation)
-        processor.intonation.store((float)slider->getValue());
+    btnScaleToggle.setColour(juce::ToggleButton::textColourId, colours::text());
+    btnScaleToggle.setColour(juce::ToggleButton::tickColourId, colours::accent());
+    btnC0.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnC0.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    btnTranspose.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnTranspose.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    btnComp.setColour(juce::ToggleButton::textColourId, colours::text());
+    btnComp.setColour(juce::ToggleButton::tickColourId, colours::accent());
+    sldRandomRegions.setColour(juce::Slider::rotarySliderFillColourId, colours::accent());
+    sldRandomRegions.setColour(juce::Slider::rotarySliderOutlineColourId, colours::textDim());
+    sldRandomRegions.setColour(juce::Slider::thumbColourId, colours::textBright());
+    sldRandomRegions.setColour(juce::Slider::textBoxTextColourId, colours::text());
+    sldRandomRegions.setColour(juce::Slider::textBoxBackgroundColourId, colours::bgLighter());
+    sldRandomRegions.setColour(juce::Slider::textBoxOutlineColourId, colours::panelBorder());
+    btnRandomComp.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnRandomComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    btnSwapComp.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnSwapComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
 }
 
 void ControlPanel::comboBoxChanged(juce::ComboBox* combo)
@@ -303,39 +276,7 @@ void ControlPanel::comboBoxChanged(juce::ComboBox* combo)
     if (combo == &cmbScaleRoot)
         processor.scaleRoot.store(combo->getSelectedId() - 1);
     else if (combo == &cmbScaleType)
-        processor.scaleType.store(combo->getSelectedId() - 1);
-    else if (combo == &cmbRootNote)
-        processor.rootNoteRemap.store(combo->getSelectedId() - 1);
-    else if (combo == &cmbGridSnap)
-    {
-        // Map combo IDs to GridSize enum
-        using GS = PatternFlowProcessor::GridSize;
-        int id = combo->getSelectedId();
-        GS gs = GS::Beat;
-        switch (id)
-        {
-            case 1: gs = GS::Off;          break;
-            case 2: gs = GS::Bar;          break;
-            case 3: gs = GS::Beat;         break;
-            case 4: gs = GS::HalfBeat;     break;
-            case 5: gs = GS::QuarterBeat;  break;
-            case 6: gs = GS::Eighth;       break;
-            case 7: gs = GS::Sixteenth;    break;
-        }
-        processor.gridSnap.store((int)gs);
-    }
-    else if (combo == &cmbSessionBars)
-    {
-        const int barOptions[] = { 4, 8, 16, 32, 64 };
-        int idx = combo->getSelectedId() - 1;
-        if (idx >= 0 && idx < 5)
-        {
-            int bars = barOptions[idx];
-            processor.arrangementBars.store(bars);
-            processor.loopEndBeat.store((double)(bars * 4));
-            if (onSessionBarsChanged) onSessionBarsChanged(bars);
-        }
-    }
+        processor.scaleType.store(juce::jlimit(0, (int)ScaleType::Count - 1, combo->getSelectedId() - 1));
 }
 
 } // namespace pflow

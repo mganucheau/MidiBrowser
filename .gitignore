@@ -2,7 +2,12 @@ build/
 cmake-build-*/
 .idea/
 .vscode/
+*.code-workspace
 *.user
 *.swp
 *~
 .DS_Store
+
+# Local plugin bundles (build outputs; do not commit)
+*.vst3/
+*.component/

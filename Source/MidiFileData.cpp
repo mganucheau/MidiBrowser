@@ -1,5 +1,4 @@
 #include "MidiFileData.h"
-#include <algorithm>
 
 namespace pflow {
 
@@ -18,6 +17,15 @@ juce::MidiMessageSequence MidiClip::toMidiSequence(double bpm) const
 
         seq.addEvent(juce::MidiMessage::noteOn(n.channel, pitch, (juce::uint8)n.velocity), onTime);
         seq.addEvent(juce::MidiMessage::noteOff(n.channel, pitch), offTime);
+    }
+    for (const auto& entry : automation)
+    {
+        int cc = entry.first;
+        for (const auto& pt : entry.second)
+        {
+            double t = pt.beat * secPerBeat;
+            seq.addEvent(juce::MidiMessage::controllerEvent(1, cc, juce::jlimit(0, 127, pt.value)), t);
+        }
     }
     seq.updateMatchedPairs();
     return seq;
@@ -53,19 +61,25 @@ MidiClip parseMidiFile(const juce::File& file)
     juce::MidiFile midiFile;
     if (!midiFile.readFrom(stream)) return clip;
 
-    // Use ticks directly — do NOT call convertTimestampTicksToSeconds().
-    // Ticks / ticksPerQuarterNote = beat positions directly, with no
-    // tempo-dependent conversion errors that cause gaps or wrong lengths.
-    short tpqn = midiFile.getTimeFormat();
-    bool useTicks = (tpqn > 0);
-    double ticksPerBeat = (double)tpqn;
+    midiFile.convertTimestampTicksToSeconds();
 
-    if (!useTicks)
+    double bpm = 120.0; // default
+    // Try to read tempo from the file
+    if (midiFile.getNumTracks() > 0)
     {
-        // SMPTE format (rare) — fall back to seconds-based conversion
-        midiFile.convertTimestampTicksToSeconds();
+        auto* track = midiFile.getTrack(0);
+        for (int i = 0; i < track->getNumEvents(); ++i)
+        {
+            auto& ev = track->getEventPointer(i)->message;
+            if (ev.isTempoMetaEvent())
+            {
+                bpm = 60.0 / ev.getTempoSecondsPerQuarterNote();
+                break;
+            }
+        }
     }
 
+    double secPerBeat = 60.0 / bpm;
     double maxBeat = 0.0;
 
     for (int t = 0; t < midiFile.getNumTracks(); ++t)
@@ -73,6 +87,7 @@ MidiClip parseMidiFile(const juce::File& file)
         auto* trackPtr = midiFile.getTrack(t);
         if (trackPtr == nullptr) continue;
 
+        // getTrack() returns const* in newer JUCE; copy so we can update pairs
         juce::MidiMessageSequence track(*trackPtr);
         track.updateMatchedPairs();
 
@@ -87,26 +102,12 @@ MidiClip parseMidiFile(const juce::File& file)
                 ne.noteNumber = msg.getNoteNumber();
                 ne.velocity   = msg.getVelocity();
                 ne.channel    = msg.getChannel();
+                ne.startBeat  = msg.getTimeStamp() / secPerBeat;
 
-                if (useTicks)
-                {
-                    ne.startBeat = msg.getTimeStamp() / ticksPerBeat;
-                    if (evHolder->noteOffObject != nullptr)
-                        ne.lengthBeats = (evHolder->noteOffObject->message.getTimeStamp()
-                                          - msg.getTimeStamp()) / ticksPerBeat;
-                    else
-                        ne.lengthBeats = 0.25;
-                }
+                if (evHolder->noteOffObject != nullptr)
+                    ne.lengthBeats = (evHolder->noteOffObject->message.getTimeStamp() - msg.getTimeStamp()) / secPerBeat;
                 else
-                {
-                    double secPerBeat = 0.5; // 60/120
-                    ne.startBeat = msg.getTimeStamp() / secPerBeat;
-                    if (evHolder->noteOffObject != nullptr)
-                        ne.lengthBeats = (evHolder->noteOffObject->message.getTimeStamp()
-                                          - msg.getTimeStamp()) / secPerBeat;
-                    else
-                        ne.lengthBeats = 0.25;
-                }
+                    ne.lengthBeats = 0.25;
 
                 clip.notes.push_back(ne);
                 maxBeat = std::max(maxBeat, ne.startBeat + ne.lengthBeats);
@@ -114,30 +115,61 @@ MidiClip parseMidiFile(const juce::File& file)
         }
     }
 
-    // Round maxBeat up to the nearest bar (4 beats), but snap to the
-    // nearest bar if within tolerance (avoids 8.001 -> 12 instead of 8).
-    double barLen = 4.0;
-    double bars = maxBeat / barLen;
-    double rounded = std::round(bars);
-    if (rounded > 0.0 && std::abs(bars - rounded) < 0.05)
-        bars = rounded;  // snap: e.g. 1.998 -> 2, 2.003 -> 2
+    // Clip length = actual content extent only (no bar quantisation or minimum bar padding).
+    // Empty / note-less files keep a small default length for the UI.
+    if (maxBeat > 0.0)
+        clip.lengthBeats = maxBeat;
     else
-        bars = std::ceil(bars);  // round up to next whole bar
-    clip.lengthBeats = std::max(barLen, bars * barLen);
-
-    DBG("parseMidiFile: " + clip.name
-        + " tpqn=" + juce::String(tpqn)
-        + " maxBeat=" + juce::String(maxBeat, 4)
-        + " bars=" + juce::String(bars, 4)
-        + " lengthBeats=" + juce::String(clip.lengthBeats, 4)
-        + " notes=" + juce::String((int)clip.notes.size()));
-
+        clip.lengthBeats = 4.0;
+    clip.notesAtFileLoad = clip.notes;
     return clip;
+}
+
+void trimEmptyMeasuresInClip(MidiClip& clip, double beatsPerBar)
+{
+    if (beatsPerBar <= 0.0 || clip.notes.empty()) return;
+
+    bool changed = true;
+    int guard = 0;
+    while (changed && guard++ < 10000)
+    {
+        changed = false;
+        double clipEnd = 0.0;
+        for (const auto& n : clip.notes)
+            clipEnd = std::max(clipEnd, n.startBeat + n.lengthBeats);
+        clipEnd = std::max(clipEnd, clip.lengthBeats);
+        int maxM = juce::jmax(1, (int)std::ceil(clipEnd / beatsPerBar));
+
+        for (int m = 0; m < maxM; ++m)
+        {
+            double ms = m * beatsPerBar;
+            double me = (m + 1) * beatsPerBar;
+            bool hasNote = false;
+            for (const auto& n : clip.notes)
+            {
+                if (n.startBeat < me && n.startBeat + n.lengthBeats > ms)
+                {
+                    hasNote = true;
+                    break;
+                }
+            }
+            if (hasNote) continue;
+
+            for (auto& n : clip.notes)
+            {
+                if (n.startBeat >= me)
+                    n.startBeat -= beatsPerBar;
+            }
+            clip.lengthBeats = std::max(beatsPerBar, clip.lengthBeats - beatsPerBar);
+            changed = true;
+            break;
+        }
+    }
 }
 
 // ── Write MIDI file ─────────────────────────────────────────────────────────
 
-bool writeMidiFile(const MidiClip& clip, const juce::File& file, double bpm)
+bool writeMidiFile(const MidiClip& clip, const juce::File& file, double bpm, double maxLengthBeats)
 {
     if (clip.notes.empty()) return false;
 
@@ -154,11 +186,19 @@ bool writeMidiFile(const MidiClip& clip, const juce::File& file, double bpm)
     // Track name
     track.addEvent(juce::MidiMessage::textMetaEvent(3, clip.name), 0.0);
 
+    int offset = juce::jlimit(-127, 127, clip.rootNoteOffset);
     for (auto& n : clip.notes)
     {
+        double noteEnd = n.startBeat + n.lengthBeats;
+        if (maxLengthBeats > 0.0)
+        {
+            if (n.startBeat >= maxLengthBeats) continue;
+            noteEnd = std::min(noteEnd, maxLengthBeats);
+            if (noteEnd <= n.startBeat) continue;
+        }
         double onTick  = n.startBeat * ticksPerBeat;
-        double offTick = (n.startBeat + n.lengthBeats) * ticksPerBeat;
-        int pitch = juce::jlimit(0, 127, n.noteNumber);
+        double offTick = noteEnd * ticksPerBeat;
+        int pitch = juce::jlimit(0, 127, n.noteNumber + offset);
 
         track.addEvent(juce::MidiMessage::noteOn(n.channel, pitch, (juce::uint8)n.velocity), onTick);
         track.addEvent(juce::MidiMessage::noteOff(n.channel, pitch), offTick);
@@ -219,6 +259,22 @@ std::vector<int> scaleIntervals(ScaleType s)
     }
 }
 
+int estimatePitchClassFromNotes(const std::vector<NoteEvent>& notes)
+{
+    if (notes.empty()) return 0;
+    int weight[12] = {};
+    for (const auto& n : notes)
+    {
+        const int pc = ((n.noteNumber % 12) + 12) % 12;
+        const int w = juce::jmax(1, (int)std::lround(n.lengthBeats * 100.0) + 1);
+        weight[pc] += w;
+    }
+    int best = 0;
+    for (int i = 1; i < 12; ++i)
+        if (weight[i] > weight[best]) best = i;
+    return best;
+}
+
 int quantiseToScale(int inNote, int scaleRoot, ScaleType scale)
 {
     if (scale == ScaleType::Chromatic) return inNote;
@@ -241,46 +297,22 @@ int quantiseToScale(int inNote, int scaleRoot, ScaleType scale)
 
 // ── CompLane helpers ─────────────────────────────────────────────────────────
 
-void CompLane::addClip(const MidiClip& clip, double beatPos)
+void CompLane::addClipAtPosition(const MidiClip& clip, double beatPos)
 {
+    int idx = (int)clips.size();
     clips.push_back(clip);
-    clipStarts.push_back(beatPos);
+
+    CompRegion r;
+    r.startBeat = beatPos;
+    r.endBeat   = beatPos + clip.lengthBeats;
+    r.clipIndex  = idx;
+    regions.push_back(r);
 }
 
-void CompLane::removeClip(int index)
+void CompLane::removeRegion(int index)
 {
-    if (index >= 0 && index < (int)clips.size())
-    {
-        clips.erase(clips.begin() + index);
-        clipStarts.erase(clipStarts.begin() + index);
-    }
-}
-
-const MidiClip* CompLane::clipAtBeat(double beat, double& clipStart) const
-{
-    for (int i = 0; i < (int)clips.size(); ++i)
-    {
-        double s = clipStarts[static_cast<size_t>(i)];
-        double e = s + clips[static_cast<size_t>(i)].lengthBeats;
-        if (beat >= s && beat < e)
-        {
-            clipStart = s;
-            return &clips[static_cast<size_t>(i)];
-        }
-    }
-    return nullptr;
-}
-
-int CompLane::clipIndexAtBeat(double beat) const
-{
-    for (int i = 0; i < (int)clips.size(); ++i)
-    {
-        double s = clipStarts[static_cast<size_t>(i)];
-        double e = s + clips[static_cast<size_t>(i)].lengthBeats;
-        if (beat >= s && beat < e)
-            return i;
-    }
-    return -1;
+    if (index >= 0 && index < (int)regions.size())
+        regions.erase(regions.begin() + index);
 }
 
 } // namespace pflow

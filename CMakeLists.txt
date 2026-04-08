@@ -1,9 +1,44 @@
 cmake_minimum_required(VERSION 3.22)
+# If CMake errors about CMakeCache.txt living in a different directory than this
+# source tree, remove the build folder and configure again (stale cache from another path).
 if(APPLE)
-    project(PatternFlow VERSION 1.0.0 LANGUAGES C CXX OBJCXX)
+    project(PatternFlow VERSION 1.0.1 LANGUAGES C CXX OBJCXX)
 else()
-    project(PatternFlow VERSION 1.0.0 LANGUAGES C CXX)
+    project(PatternFlow VERSION 1.0.1 LANGUAGES C CXX)
 endif()
+
+set(PF_VERSION "${PROJECT_VERSION}")
+set(GIT_HASH "unknown")
+set(GIT_DATE "unknown")
+set(GIT_SUBJECT "dev build")
+find_program(GIT_EXECUTABLE git)
+if(GIT_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    # Commit time in America/Los_Angeles (PST/PDT). %ci ignores TZ; iso-local does not.
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env "TZ=America/Los_Angeles"
+            "${GIT_EXECUTABLE}" log -1 --format=%cd --date=iso-local
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE GIT_DATE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" log -1 --format=%s
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE GIT_SUBJECT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+endif()
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/Generated")
+configure_file(
+    "${CMAKE_SOURCE_DIR}/Source/BuildInfo.h.in"
+    "${CMAKE_BINARY_DIR}/Generated/BuildInfo.h"
+    @ONLY)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -40,15 +75,18 @@ juce_add_plugin(PatternFlow
     IS_SYNTH                 TRUE
     NEEDS_MIDI_INPUT         TRUE
     NEEDS_MIDI_OUTPUT        TRUE
-    IS_MIDI_EFFECT           FALSE
+    IS_MIDI_EFFECT           TRUE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD  TRUE
 )
+
+target_include_directories(PatternFlow PRIVATE "${CMAKE_BINARY_DIR}/Generated")
 
 target_sources(PatternFlow PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/MidiFileData.cpp
+    Source/CompingModel.cpp
     Source/FileBrowserPanel.cpp
     Source/ArrangementView.cpp
     Source/PianoRollEditor.cpp
@@ -76,3 +114,29 @@ target_link_libraries(PatternFlow
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# ── Unit tests (Catch2) ───────────────────────────────────────────────────────
+option(PATTERNFLOW_BUILD_TESTS "Build unit tests" ON)
+
+if(PATTERNFLOW_BUILD_TESTS)
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG        v3.5.4
+    )
+    FetchContent_MakeAvailable(Catch2)
+
+    add_executable(PatternFlowTests Tests/main.cpp)
+    target_link_libraries(PatternFlowTests PRIVATE
+        PatternFlow
+        Catch2::Catch2WithMain
+        juce::juce_audio_utils
+        juce::juce_audio_processors
+        juce::juce_gui_extra
+        juce::juce_data_structures
+    )
+    target_include_directories(PatternFlowTests PRIVATE ${CMAKE_SOURCE_DIR}/Source "${CMAKE_BINARY_DIR}/Generated")
+    include(CTest)
+    enable_testing()
+    add_test(NAME PatternFlowTests COMMAND PatternFlowTests)
+endif()
