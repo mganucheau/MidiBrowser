@@ -452,7 +452,7 @@ bool SetTakeCompSegmentsAction::perform()
         proc.ensureDefaultTakeComp();
         proc.takeComps[0].segments = afterSegs;
     }
-    proc.rebuildMasterClip();
+    proc.rebuildCombinedClip();
     proc.scheduleCompBoundaryParamSync();
     return true;
 }
@@ -464,7 +464,7 @@ bool SetTakeCompSegmentsAction::undo()
         proc.ensureDefaultTakeComp();
         proc.takeComps[0].segments = beforeSegs;
     }
-    proc.rebuildMasterClip();
+    proc.rebuildCombinedClip();
     proc.scheduleCompBoundaryParamSync();
     return true;
 }

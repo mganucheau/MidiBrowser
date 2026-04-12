@@ -20,7 +20,7 @@ void commitTakeCompUndoIfChanged(PatternFlowProcessor& proc,
         proc.ensureDefaultTakeComp();
         proc.takeComps[0].segments = before;
     }
-    proc.rebuildMasterClip();
+    proc.rebuildCombinedClip();
     proc.undoManager.beginNewTransaction();
     proc.undoManager.perform(new SetTakeCompSegmentsAction(proc, before, after));
 }
@@ -37,7 +37,7 @@ ArrangementView::ArrangementView(PatternFlowProcessor& proc) : processor(proc)
 void ArrangementView::refresh()
 {
     processor.removeEmptyLanesExceptFirst();
-    processor.rebuildMasterClip();
+    processor.rebuildCombinedClip();
     rebuildClipBlocks();
     repaint();
 }
@@ -75,11 +75,11 @@ int ArrangementView::yToLane(float y) const
 
 float ArrangementView::laneToY(int lane) const
 {
-    // Lane 0 starts below the master lane
+    // Lane 0 starts below the combined lane
     return (float)((lane + 1) * effectiveLaneHeight_) + rulerH - verticalScrollOffset;
 }
 
-float ArrangementView::masterLaneY() const
+float ArrangementView::combinedLaneY() const
 {
     return (float)rulerH - verticalScrollOffset;
 }
@@ -89,7 +89,7 @@ float ArrangementView::arrangementContentBottomY() const
     juce::ScopedLock sl(processor.laneLock);
     int numLanes = (int)processor.lanes.size();
     if (numLanes <= 0)
-        return masterLaneY() + (float)effectiveLaneHeight_;
+        return combinedLaneY() + (float)effectiveLaneHeight_;
     return laneToY(numLanes - 1) + (float)effectiveLaneHeight_;
 }
 
@@ -98,7 +98,7 @@ void ArrangementView::rebuildClipBlocks()
     clipBlocks.clear();
     juce::ScopedLock sl(processor.laneLock);
     int numLanes = (int)processor.lanes.size();
-    int totalRows = numLanes + 1;  // master + lanes
+    int totalRows = numLanes + 1;  // combined + lanes
     int availableH = getHeight() - rulerH;
     int defaultTotalH = totalRows * metrics::laneHeight;
     // Only shrink when lanes would go past the bottom; otherwise use default height
@@ -147,7 +147,7 @@ void ArrangementView::paint(juce::Graphics& g)
     paintRuler(g);
     paintTimeSelection(g);
     paintLoopMarkers(g);
-    paintMasterLane(g);
+    paintCombinedLane(g);
     paintLaneHeaders(g);
     paintClipBlocks(g);
     paintPlayhead(g);
@@ -598,12 +598,12 @@ void ArrangementView::paintClipBlocks(juce::Graphics& g)
     }
 }
 
-void ArrangementView::paintMasterLane(juce::Graphics& g)
+void ArrangementView::paintCombinedLane(juce::Graphics& g)
 {
-    float y = masterLaneY();
+    float y = combinedLaneY();
     float lH = (float)effectiveLaneHeight_;
 
-    // Master lane header
+    // Combined lane header
     g.setColour(colours::bgLight().brighter(0.05f));
     g.fillRect(0.0f, y, (float)metrics::laneHeaderW, lH);
 
@@ -615,11 +615,11 @@ void ArrangementView::paintMasterLane(juce::Graphics& g)
     const bool compHeader = processor.compsEnabled.load();
     g.setColour(colours::textBright());
     g.setFont(12.0f);
-    g.drawText(compHeader ? "COMP" : "MASTER", 18, (int)y, metrics::laneHeaderW - 22,
+    g.drawText(compHeader ? "COMP" : "COMBINED", 18, (int)y, metrics::laneHeaderW - 22,
                (int)(lH * 0.6f), juce::Justification::centredLeft);
 
     // Drag hint when there are notes (only when not in comp-only mode)
-    if (!processor.compsEnabled.load() && !processor.masterClip.notes.empty())
+    if (!processor.compsEnabled.load() && !processor.combinedClip.notes.empty())
     {
         g.setColour(colours::textDim());
         g.setFont(9.0f);
@@ -632,11 +632,11 @@ void ArrangementView::paintMasterLane(juce::Graphics& g)
     g.setColour(colours::panelBorder().withAlpha(0.6f));
     g.drawHorizontalLine((int)(y + lH - 1), 0.0f, (float)getWidth());
 
-    auto& mc = processor.masterClip;
+    auto& mc = processor.combinedClip;
     float clipY = y + 2.0f;
     float clipH = lH - 4.0f;
 
-    const juce::Colour masterBaseGrey(0xff343438);
+    const juce::Colour combinedBaseGrey(0xff343438);
     const juce::Colour compHilight(0xff565662);
 
     bool drewCompSegments = false;
@@ -652,7 +652,7 @@ void ArrangementView::paintMasterLane(juce::Graphics& g)
                     : (double)(processor.arrangementBars.load() * 4);
                 const float clipX = beatToX(0.0);
                 const float clipEndX = beatToX(span);
-                g.setColour(masterBaseGrey);
+                g.setColour(combinedBaseGrey);
                 g.fillRect(clipX, clipY, std::max(1.0f, clipEndX - clipX), clipH);
 
                 for (size_t i = 0; i < segs.size(); ++i)
@@ -709,7 +709,7 @@ void ArrangementView::paintMasterLane(juce::Graphics& g)
         float clipX = beatToX(0.0);
         float clipEndX = beatToX(mc.lengthBeats);
         float clipW = clipEndX - clipX;
-        g.setColour(masterBaseGrey);
+        g.setColour(combinedBaseGrey);
         g.fillRect(clipX, clipY, clipW, clipH);
     }
     else if (mc.notes.empty())
@@ -719,7 +719,7 @@ void ArrangementView::paintMasterLane(juce::Graphics& g)
     float clipEndX = beatToX(mc.lengthBeats > 1.0e-9 ? mc.lengthBeats
         : (double)(processor.arrangementBars.load() * 4));
 
-    // Draw note preview (composite or merged master)
+    // Draw note preview (composite or merged combined)
     int minNote = 127, maxNote = 0;
     for (auto& n : mc.notes) { minNote = std::min(minNote, n.noteNumber); maxNote = std::max(maxNote, n.noteNumber); }
     int noteRange = std::max(1, maxNote - minNote + 1);
@@ -812,7 +812,7 @@ bool ArrangementView::findCompBoundaryAtMouse(float x, float y,
     outEdges.clear();
     if (!processor.compsEnabled.load()) return false;
 
-    const float my = masterLaneY();
+    const float my = combinedLaneY();
     const float lH = (float)effectiveLaneHeight_;
     if (y < my || y >= my + lH || x < (float)metrics::laneHeaderW)
         return false;
@@ -898,9 +898,9 @@ void ArrangementView::mouseMove(const juce::MouseEvent& e)
         setMouseCursor(juce::MouseCursor::IBeamCursor);
         return;
     }
-    // Master / COMP lane cursors
+    // Combined / COMP lane cursors
     {
-        float my = masterLaneY();
+        float my = combinedLaneY();
         float lH = (float)effectiveLaneHeight_;
         if (e.position.y >= my && e.position.y < my + lH
             && e.position.x >= metrics::laneHeaderW)
@@ -917,7 +917,7 @@ void ArrangementView::mouseMove(const juce::MouseEvent& e)
                 setMouseCursor(juce::MouseCursor::NormalCursor);
                 return;
             }
-            if (!processor.masterClip.notes.empty())
+            if (!processor.combinedClip.notes.empty())
             {
                 setMouseCursor(juce::MouseCursor::DraggingHandCursor);
                 return;
@@ -1006,14 +1006,14 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
     selLane = -1; selRegion = -1; draggingClip = false; clipDragPending = false;
     edgeDragging = EdgeDragTarget::None;
     hasTimeSelection = false; // Clear ruler selection when clicking in arrangement
-    draggingMasterClip = false; masterDragInitiated = false;
+    draggingCombinedClip = false; combinedDragInitiated = false;
     selectionBoxDragging = false;
     compSwipeDragging = false;
     compBoundaryDragging = false;
 
-    // Master / COMP lane: comp boundary handles first, then drag-to-DAW when not in comp mode
+    // Combined / COMP lane: comp boundary handles first, then drag-to-DAW when not in comp mode
     {
-        float my = masterLaneY();
+        float my = combinedLaneY();
         float lH = (float)effectiveLaneHeight_;
         if (e.position.y >= my && e.position.y < my + lH && e.position.x >= metrics::laneHeaderW)
         {
@@ -1030,10 +1030,10 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
             }
             if (processor.compsEnabled.load())
                 return;
-            if (!processor.masterClip.notes.empty())
+            if (!processor.combinedClip.notes.empty())
             {
-                draggingMasterClip = true;
-                masterDragStartPos = e.position;
+                draggingCombinedClip = true;
+                combinedDragStartPos = e.position;
                 return;
             }
         }
@@ -1276,18 +1276,18 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         return;
     }
 
-    // Master clip drag-to-DAW
-    if (draggingMasterClip && !masterDragInitiated)
+    // Combined clip drag-to-DAW
+    if (draggingCombinedClip && !combinedDragInitiated)
     {
-        auto dist = e.position.getDistanceFrom(masterDragStartPos);
+        auto dist = e.position.getDistanceFrom(combinedDragStartPos);
         if (dist > 5.0f)
         {
-            masterDragInitiated = true;
-            draggingMasterClip = false;
+            combinedDragInitiated = true;
+            draggingCombinedClip = false;
 
-            // Write master clip to a temp .mid file
+            // Write combined clip to a temp .mid file
             auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
-            auto tempFile = tempDir.getChildFile("PatternFlow-Master.mid");
+            auto tempFile = tempDir.getChildFile("PatternFlow-Combined.mid");
 
             double bpm = processor.hostBpm.load();
             if (bpm <= 0.0) bpm = 120.0;
@@ -1296,7 +1296,7 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
             {
                 juce::ScopedLock sl(processor.laneLock);
                 double sessionLen = (double)(processor.arrangementBars.load() * 4);
-                written = writeMidiFile(processor.masterClip, tempFile, bpm, sessionLen);
+                written = writeMidiFile(processor.combinedClip, tempFile, bpm, sessionLen);
             }
             if (written)
             {
@@ -1377,14 +1377,14 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
         {
             region.startBeat = std::min(beat, region.endBeat - 0.25);
             region.ensureSelectionInBounds();
-            processor.rebuildMasterClip();
+            processor.rebuildCombinedClip();
         }
         else
         {
             const double sessionLen = (double)(processor.arrangementBars.load() * 4);
             region.endBeat = juce::jmin(std::max(beat, region.startBeat + 0.25), sessionLen);
             region.ensureSelectionInBounds();
-            processor.rebuildMasterClip();
+            processor.rebuildCombinedClip();
         }
         repaint();
         return;
@@ -1472,7 +1472,7 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
     }
 
     if (draggingPlayhead) { draggingPlayhead = false; return; }
-    if (draggingMasterClip) { draggingMasterClip = false; masterDragInitiated = false; return; }
+    if (draggingCombinedClip) { draggingCombinedClip = false; combinedDragInitiated = false; return; }
 
     // Edge drag undo (clip resize)
     if (edgeDragging != EdgeDragTarget::None && edgeDragLane >= 0 && edgeDragRegion >= 0)
@@ -1504,7 +1504,7 @@ void ArrangementView::mouseUp(const juce::MouseEvent& e)
 
     if (draggingClip && selLane >= 0 && selRegion >= 0)
     {
-        // Ignore drop when released over ruler or master lane (prevents wrong lane assignment)
+        // Ignore drop when released over ruler or combined lane (prevents wrong lane assignment)
         if (e.position.y < rulerH + effectiveLaneHeight_)
         {
             juce::ScopedLock sl(processor.laneLock);
@@ -1819,7 +1819,7 @@ void ArrangementView::showClipContextMenu(int laneIdx, int regionIdx)
                     if (n.startBeat + n.lengthBeats > refLen) n.lengthBeats = refLen - n.startBeat;
                 region.ensureSelectionInBounds();
             }
-            processor.rebuildMasterClip();
+            processor.rebuildCombinedClip();
         }
         else if (result == 4) { processor.undoManager.beginNewTransaction(); processor.undoManager.perform(new DuplicateRegionAction(processor, laneIdx, regionIdx)); }
         else if (result == 5)

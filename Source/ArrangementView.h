@@ -138,10 +138,10 @@ private:
                          const CompRegion& region, EdgeDragTarget& which,
                          int& /*unused*/, bool /*unused*/) const;
 
-    // Master clip external drag-to-DAW
-    bool draggingMasterClip = false;
-    bool masterDragInitiated = false;
-    juce::Point<float> masterDragStartPos;
+    // Combined clip external drag-to-DAW
+    bool draggingCombinedClip = false;
+    bool combinedDragInitiated = false;
+    juce::Point<float> combinedDragStartPos;
 
     // Selection box drag (marquee select)
     bool selectionBoxDragging = false;
@@ -165,7 +165,7 @@ private:
     float  beatToX(double beat) const;
     int    yToLane(float y) const;
     float  laneToY(int lane) const;
-    float  masterLaneY() const;
+    float  combinedLaneY() const;
     float  arrangementContentBottomY() const;
 
     void rebuildClipBlocks();
@@ -173,7 +173,7 @@ private:
     void paintLaneHeaders(juce::Graphics&);
     void paintClipBlocks(juce::Graphics&);
     void paintPlayhead(juce::Graphics&);
-    void paintMasterLane(juce::Graphics&);
+    void paintCombinedLane(juce::Graphics&);
     void paintDropIndicator(juce::Graphics&);
     void paintBeatGrid(juce::Graphics&);
     void paintLoopMarkers(juce::Graphics&);

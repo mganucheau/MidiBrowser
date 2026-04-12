@@ -201,7 +201,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
             curEnd += useLen;
         }
         processorRef.lanes = std::move(newLanes);
-        processorRef.rebuildMasterClip();
+        processorRef.rebuildCombinedClip();
         arrangementView.refresh();
     };
     btnExtend.onClick = [this]
@@ -218,7 +218,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
                 region.ensureSelectionInBounds();
             }
         }
-        processorRef.rebuildMasterClip();
+        processorRef.rebuildCombinedClip();
         arrangementView.refresh();
     };
     btnTrim.onClick = [this]
@@ -315,7 +315,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
                     n.noteNumber = juce::jlimit(0, 127, nn);
                 }
         }
-        processorRef.rebuildMasterClip();
+        processorRef.rebuildCombinedClip();
         arrangementView.refresh();
         // Refresh piano roll with updated clip so display and edits stay in sync
         if (pianoRoll.hasClip())
@@ -470,7 +470,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
                 }
             }
         }
-        processorRef.rebuildMasterClip();
+        processorRef.rebuildCombinedClip();
         arrangementView.refresh();
     };
     addAndMakeVisible(pianoRoll);
@@ -1177,7 +1177,7 @@ void PatternFlowEditor::timerCallback()
         if (!recNow)
             arrangementView.refresh();
     }
-    // Refresh arrangement periodically during recording so new notes appear in master
+    // Refresh arrangement periodically during recording so new notes appear in combined lane
     else if (recNow && processorRef.hostPlaying.load())
     {
         static int recRefreshCounter = 0;

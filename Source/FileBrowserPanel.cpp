@@ -79,7 +79,7 @@ void FileBrowserPanel::resized()
 
 bool FileBrowserPanel::keyPressed(const juce::KeyPress& key)
 {
-    if (key == juce::KeyPress::returnKey && tryAddSelectedToNewLane())
+    if ((key == juce::KeyPress::returnKey || key == juce::KeyPress::leftKey) && tryAddSelectedToNewLane())
         return true;
     // Up/down: pass to file tree for selection navigation (tree handles natively when focused)
     if ((key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) && fileTree)
@@ -138,9 +138,8 @@ void FileBrowserPanel::mouseDrag(const juce::MouseEvent& e)
     if (dist > 4.0f)
     {
         externalDragStarted = true;
-        juce::StringArray files;
-        files.add(f.getFullPathName());
-        juce::DragAndDropContainer::performExternalDragDropOfFiles(files, false);
+        // Use internal JUCE drag so clips can be added while the host is playing
+        startDragging(f.getFullPathName(), fileTree.get());
     }
 }
 
@@ -254,9 +253,15 @@ void FileBrowserPanel::paint(juce::Graphics& g)
             minN = std::min(minN, n.noteNumber);
             maxN = std::max(maxN, n.noteNumber);
         }
-        int botNote = std::max(0, minN - 1);
-        int topNote = std::min(127, maxN + 1);
-        int range = std::max(1, topNote - botNote + 1);
+        // Ensure at least 2 octaves (24 semitones) of range, centered on content
+        int contentMid = (minN + maxN) / 2;
+        int minRange = 24;
+        int halfRange = minRange / 2;
+        int botNote = std::min(minN - 1, contentMid - halfRange);
+        int topNote = std::max(maxN + 1, contentMid + halfRange);
+        botNote = std::max(0, botNote);
+        topNote = std::min(127, topNote);
+        int range = std::max(minRange, topNote - botNote + 1);
         float noteH = (float)contentH / (float)range;
         float beatsToPx = (float)gridW / (float)std::max(0.25, previewClip.lengthBeats);
 

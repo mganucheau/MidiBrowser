@@ -34,7 +34,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createCompParameterLayout()
     return layout;
 }
 
-/** Internal edges on the master comp lane (0 < beat < sessionLen), sorted unique. */
+/** Internal edges on the combined comp lane (0 < beat < sessionLen), sorted unique. */
 std::vector<double> collectSortedInternalCompBoundaries(const std::vector<TakeCompSegment>& segs,
                                                         double sessionLen)
 {
@@ -459,265 +459,90 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
     juce::ScopedLock sl(laneLock);
     juce::ScopedLock sl2(splitLock);
 
-    if (activeTakeCompIndex >= 0 && activeTakeCompIndex < (int)takeComps.size()
-        && !takeComps[(size_t)activeTakeCompIndex].segments.empty())
+    // Play exclusively from the pre-merged combinedClip.
+    // If it's empty (no clips, or all muted), no MIDI output.
+    if (combinedClip.notes.empty()) return;
+
+    for (auto& note : combinedClip.notes)
     {
-        generateMidiFromActiveComp(startBeat, endBeat, output, numSamples, sampleOffsetBase);
-        return;
-    }
+        double noteGlobalStart = note.startBeat;
+        double noteGlobalEnd   = noteGlobalStart + note.lengthBeats;
 
-    generateMidiMergedLanes(startBeat, endBeat, output, numSamples, sampleOffsetBase);
-}
-
-void PatternFlowProcessor::generateMidiMergedLanes(double startBeat,
-                                                     double endBeat,
-                                                     juce::MidiBuffer& output,
-                                                     int numSamples,
-                                                     int sampleOffsetBase)
-{
-    // Check if any lane has solo enabled
-    bool anySolo = false;
-    for (auto& l : lanes)
-        if (l.solo) { anySolo = true; break; }
-
-    for (int li = 0; li < (int)lanes.size(); ++li)
-    {
-        auto& lane = lanes[li];
-        if (lane.muted || (anySolo && !lane.solo)) continue;
-
-        for (int ri = 0; ri < (int)lane.regions.size(); ++ri)
+        if (noteGlobalStart >= startBeat && noteGlobalStart < endBeat)
         {
-            auto& region = lane.regions[ri];
-            if (region.muted || region.clipIndex < 0 ||
-                region.clipIndex >= (int)lane.clips.size())
-                continue;
+            double fraction = (noteGlobalStart - startBeat) / (endBeat - startBeat);
+            int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1,
+                                                               (int)(fraction * numSamples));
 
-            auto& clip = lane.clips[region.clipIndex];
-            double regionLen = region.endBeat - region.startBeat;
-            double loopLen = clip.lengthBeats;
-            // Tile clip only when region is intentionally longer than the clip; avoid floating-point
-            // edge cases where regionLen ~= loopLen but ceil(regionLen/loopLen) becomes 2.
-            int loopCount = 1;
-            if (loopLen > 1.0e-9 && regionLen > loopLen + 1.0e-6)
-                loopCount = juce::jmax(1, (int)std::ceil(regionLen / loopLen - 1.0e-9));
+            int pitch = note.noteNumber;
+            if (scaleEnabled.load())
+                pitch = quantiseToScale(pitch, scaleRoot.load(),
+                                       (ScaleType)scaleType.load());
+            pitch = juce::jlimit(0, 127, pitch);
 
-            for (int loop = 0; loop < loopCount; ++loop)
+            int vel = applyHumanVelocity(note.velocity);
+            int channel = note.channel;
+
+            if (splitEnabled.load())
             {
-            for (auto& note : clip.notes)
-            {
-                if (region.noteFilter >= 0 && note.noteNumber != region.noteFilter)
-                    continue;
-
-                double adjustedStart = note.startBeat - clip.clipStartOffset;
-                if (adjustedStart < 0.0)
-                    adjustedStart += loopLen;
-
-                double noteGlobalStart = region.startBeat + loop * loopLen + adjustedStart;
-                if (noteGlobalStart >= region.endBeat) continue;
-                double noteGlobalEnd   = noteGlobalStart + note.lengthBeats;
-
-                if (noteGlobalStart >= startBeat && noteGlobalStart < endBeat)
+                for (auto& rule : splitRules)
                 {
-                    double fraction = (noteGlobalStart - startBeat) / (endBeat - startBeat);
-                    int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1,
-                                                                       (int)(fraction * numSamples));
-
-                    int pitch = note.noteNumber + clip.rootNoteOffset;
-                    if (scaleEnabled.load())
-                        pitch = quantiseToScale(pitch, scaleRoot.load(),
-                                               (ScaleType)scaleType.load());
-                    pitch = juce::jlimit(0, 127, pitch);
-
-                    int vel = applyHumanVelocity(note.velocity);
-                    int channel = note.channel;
-
-                    if (splitEnabled.load())
+                    if (pitch >= rule.noteMin && pitch <= rule.noteMax)
                     {
-                        for (auto& rule : splitRules)
-                        {
-                            if (pitch >= rule.noteMin && pitch <= rule.noteMax)
-                            {
-                                channel = juce::jlimit(1, 16, rule.outputIndex + 1);
-                                break;
-                            }
-                        }
+                        channel = juce::jlimit(1, 16, rule.outputIndex + 1);
+                        break;
                     }
-
-                    output.addEvent(
-                        juce::MidiMessage::noteOn(channel, pitch, (juce::uint8)vel),
-                        sampleOffset);
-                    activeNotes_.push_back({ pitch, channel });
-                }
-
-                if (noteGlobalEnd >= startBeat && noteGlobalEnd < endBeat)
-                {
-                    double fraction = (noteGlobalEnd - startBeat) / (endBeat - startBeat);
-                    int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1,
-                                                                       (int)(fraction * numSamples));
-
-                    int pitch = note.noteNumber + clip.rootNoteOffset;
-                    if (scaleEnabled.load())
-                        pitch = quantiseToScale(pitch, scaleRoot.load(),
-                                               (ScaleType)scaleType.load());
-                    pitch = juce::jlimit(0, 127, pitch);
-
-                    int channel = note.channel;
-                    if (splitEnabled.load())
-                    {
-                        for (auto& rule : splitRules)
-                        {
-                            if (pitch >= rule.noteMin && pitch <= rule.noteMax)
-                            {
-                                channel = juce::jlimit(1, 16, rule.outputIndex + 1);
-                                break;
-                            }
-                        }
-                    }
-
-                    output.addEvent(
-                        juce::MidiMessage::noteOff(channel, pitch),
-                        sampleOffset);
-
-                    activeNotes_.erase(
-                        std::remove_if(activeNotes_.begin(), activeNotes_.end(),
-                            [pitch, channel](const ActiveNote& a) {
-                                return a.pitch == pitch && a.channel == channel;
-                            }),
-                        activeNotes_.end());
                 }
             }
-            } // loop iterations
+
+            output.addEvent(
+                juce::MidiMessage::noteOn(channel, pitch, (juce::uint8)vel),
+                sampleOffset);
+            activeNotes_.push_back({ pitch, channel });
+        }
+
+        if (noteGlobalEnd >= startBeat && noteGlobalEnd < endBeat)
+        {
+            double fraction = (noteGlobalEnd - startBeat) / (endBeat - startBeat);
+            int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1,
+                                                               (int)(fraction * numSamples));
+
+            int pitch = note.noteNumber;
+            if (scaleEnabled.load())
+                pitch = quantiseToScale(pitch, scaleRoot.load(),
+                                       (ScaleType)scaleType.load());
+            pitch = juce::jlimit(0, 127, pitch);
+
+            int channel = note.channel;
+            if (splitEnabled.load())
+            {
+                for (auto& rule : splitRules)
+                {
+                    if (pitch >= rule.noteMin && pitch <= rule.noteMax)
+                    {
+                        channel = juce::jlimit(1, 16, rule.outputIndex + 1);
+                        break;
+                    }
+                }
+            }
+
+            output.addEvent(
+                juce::MidiMessage::noteOff(channel, pitch),
+                sampleOffset);
+
+            activeNotes_.erase(
+                std::remove_if(activeNotes_.begin(), activeNotes_.end(),
+                    [pitch, channel](const ActiveNote& a) {
+                        return a.pitch == pitch && a.channel == channel;
+                    }),
+                activeNotes_.end());
         }
     }
 }
 
-void PatternFlowProcessor::generateMidiFromActiveComp(double startBeat,
-                                                      double endBeat,
-                                                      juce::MidiBuffer& output,
-                                                      int numSamples,
-                                                      int sampleOffsetBase)
-{
-    bool anySolo = false;
-    for (auto& l : lanes)
-        if (l.solo) { anySolo = true; break; }
+// generateMidiMergedLanes removed — playback now reads exclusively from combinedClip.
 
-    const auto segs = comping::sortedSegments(takeComps[(size_t)activeTakeCompIndex]);
-
-    for (const auto& seg : segs)
-    {
-        const int li = seg.laneIndex;
-        if (li < 0 || li >= (int)lanes.size()) continue;
-        auto& lane = lanes[li];
-        if (lane.muted || (anySolo && !lane.solo)) continue;
-
-        const double g0 = seg.startBeat;
-        const double g1 = seg.endBeat;
-
-        for (int ri = 0; ri < (int)lane.regions.size(); ++ri)
-        {
-            auto& region = lane.regions[ri];
-            if (region.muted || region.clipIndex < 0 ||
-                region.clipIndex >= (int)lane.clips.size())
-                continue;
-
-            auto& clip = lane.clips[region.clipIndex];
-            double regionLen = region.endBeat - region.startBeat;
-            double loopLen = clip.lengthBeats;
-            int loopCount = 1;
-            if (loopLen > 1.0e-9 && regionLen > loopLen + 1.0e-6)
-                loopCount = juce::jmax(1, (int)std::ceil(regionLen / loopLen - 1.0e-9));
-
-            for (int loop = 0; loop < loopCount; ++loop)
-            {
-                for (auto& note : clip.notes)
-                {
-                    if (region.noteFilter >= 0 && note.noteNumber != region.noteFilter)
-                        continue;
-
-                    double adjustedStart = note.startBeat - clip.clipStartOffset;
-                    if (adjustedStart < 0.0) adjustedStart += loopLen;
-
-                    double noteGlobalStart = region.startBeat + loop * loopLen + adjustedStart;
-                    if (noteGlobalStart >= region.endBeat) continue;
-                    double noteGlobalEnd = noteGlobalStart + note.lengthBeats;
-                    double nEnd = std::min(noteGlobalEnd, region.endBeat);
-
-                    double gs = std::max(g0, noteGlobalStart);
-                    double ge = std::min(g1, nEnd);
-                    if (ge <= gs + 1.0e-12) continue;
-
-                    if (gs >= startBeat && gs < endBeat)
-                    {
-                        double fraction = (gs - startBeat) / (endBeat - startBeat);
-                        int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1,
-                                                                           (int)(fraction * numSamples));
-
-                        int pitch = note.noteNumber + clip.rootNoteOffset;
-                        if (scaleEnabled.load())
-                            pitch = quantiseToScale(pitch, scaleRoot.load(),
-                                                   (ScaleType)scaleType.load());
-                        pitch = juce::jlimit(0, 127, pitch);
-
-                        int vel = applyHumanVelocity(note.velocity);
-                        int channel = note.channel;
-
-                        if (splitEnabled.load())
-                        {
-                            for (auto& rule : splitRules)
-                            {
-                                if (pitch >= rule.noteMin && pitch <= rule.noteMax)
-                                {
-                                    channel = juce::jlimit(1, 16, rule.outputIndex + 1);
-                                    break;
-                                }
-                            }
-                        }
-
-                        output.addEvent(
-                            juce::MidiMessage::noteOn(channel, pitch, (juce::uint8)vel),
-                            sampleOffset);
-                        activeNotes_.push_back({ pitch, channel });
-                    }
-
-                    if (ge >= startBeat && ge < endBeat)
-                    {
-                        double fraction = (ge - startBeat) / (endBeat - startBeat);
-                        int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1,
-                                                                           (int)(fraction * numSamples));
-
-                        int pitch = note.noteNumber + clip.rootNoteOffset;
-                        if (scaleEnabled.load())
-                            pitch = quantiseToScale(pitch, scaleRoot.load(),
-                                                   (ScaleType)scaleType.load());
-                        pitch = juce::jlimit(0, 127, pitch);
-
-                        int channel = note.channel;
-                        if (splitEnabled.load())
-                        {
-                            for (auto& rule : splitRules)
-                            {
-                                if (pitch >= rule.noteMin && pitch <= rule.noteMax)
-                                {
-                                    channel = juce::jlimit(1, 16, rule.outputIndex + 1);
-                                    break;
-                                }
-                            }
-                        }
-
-                        output.addEvent(juce::MidiMessage::noteOff(channel, pitch), sampleOffset);
-
-                        activeNotes_.erase(
-                            std::remove_if(activeNotes_.begin(), activeNotes_.end(),
-                                [pitch, channel](const ActiveNote& a) {
-                                    return a.pitch == pitch && a.channel == channel;
-                                }),
-                            activeNotes_.end());
-                    }
-                }
-            }
-        }
-    }
-}
+// generateMidiFromActiveComp removed — playback now reads exclusively from combinedClip.
 
 int PatternFlowProcessor::applyHumanVelocity(int vel)
 {
@@ -944,19 +769,19 @@ void PatternFlowProcessor::finaliseRecordingClip()
     recordingActiveNotes.clear();
 }
 
-// ── Master clip rebuild ──────────────────────────────────────────────────────
+// ── Combined clip rebuild ────────────────────────────────────────────────────
 
-void PatternFlowProcessor::rebuildMasterClip()
+void PatternFlowProcessor::rebuildCombinedClip()
 {
     juce::ScopedLock sl(laneLock);
-    rebuildMasterClipImpl();
+    rebuildCombinedClipImpl();
 }
 
-void PatternFlowProcessor::rebuildMasterClipImpl()
+void PatternFlowProcessor::rebuildCombinedClipImpl()
 {
-    masterClip.notes.clear();
-    masterClip.name = "Master";
-    masterClip.colour = colours::textMuted();
+    combinedClip.notes.clear();
+    combinedClip.name = "Combined";
+    combinedClip.colour = colours::textMuted();
 
     bool anySolo = false;
     for (auto& lane : lanes)
@@ -966,7 +791,7 @@ void PatternFlowProcessor::rebuildMasterClipImpl()
     for (int li = 0; li < (int)lanes.size(); ++li)
         for (int ri = 0; ri < (int)lanes[li].regions.size(); ++ri)
             maxEndBeat = std::max(maxEndBeat, lanes[li].regions[ri].endBeat);
-    masterClip.lengthBeats = maxEndBeat;
+    combinedClip.lengthBeats = maxEndBeat;
 
     if (activeTakeCompIndex >= 0 && activeTakeCompIndex < (int)takeComps.size())
     {
@@ -1023,7 +848,7 @@ void PatternFlowProcessor::rebuildMasterClipImpl()
                         merged.startBeat   = gs;
                         merged.lengthBeats = ge - gs;
                         merged.channel     = note.channel;
-                        masterClip.notes.push_back(merged);
+                        combinedClip.notes.push_back(merged);
                     }
                 }
             }
@@ -1069,7 +894,7 @@ void PatternFlowProcessor::rebuildMasterClipImpl()
                     merged.startBeat   = globalStart;
                     merged.lengthBeats = globalEnd - globalStart;
                     merged.channel     = note.channel;
-                    masterClip.notes.push_back(merged);
+                    combinedClip.notes.push_back(merged);
                 }
             }
         }
@@ -1167,7 +992,7 @@ void PatternFlowProcessor::clampArrangementToSessionLength()
     if (loopStartBeat.load() >= loopEndBeat.load())
         loopStartBeat.store(std::max(0.0, loopEndBeat.load() - 0.25));
 
-    rebuildMasterClipImpl();
+    rebuildCombinedClipImpl();
     }
 
     {
@@ -1229,7 +1054,7 @@ void PatternFlowProcessor::resetToDefaultSession()
     activeTakeCompIndex = 0;
     compsEnabled.store(false);
     compRandomRegionCount.store(8);
-    rebuildMasterClipImpl();
+    rebuildCombinedClipImpl();
 }
 
 void PatternFlowProcessor::transposeAllClipsToSelectedScale()
@@ -1254,7 +1079,7 @@ void PatternFlowProcessor::transposeAllClipsToSelectedScale()
             clip.rootNoteOffset = 0;
         }
     }
-    rebuildMasterClipImpl();
+    rebuildCombinedClipImpl();
 }
 
 void PatternFlowProcessor::ensureDefaultTakeComp()
@@ -1294,7 +1119,7 @@ void PatternFlowProcessor::applyCompSwipe(int laneIndex, double startBeat, doubl
         double e = juce::jlimit(0.0, sessionLen, endBeat);
         if (s > e) std::swap(s, e);
         comping::applySwipe(takeComps[0], laneIndex, s, e);
-        rebuildMasterClipImpl();
+        rebuildCombinedClipImpl();
     }
     scheduleCompBoundaryParamSync();
 }
@@ -1312,7 +1137,7 @@ void PatternFlowProcessor::randomizeActiveComp()
 
         if (numLanes < 1 || sessionLen <= 1.0e-9)
         {
-            rebuildMasterClipImpl();
+            rebuildCombinedClipImpl();
             scheduleCompBoundaryParamSync();
             return;
         }
@@ -1345,7 +1170,7 @@ void PatternFlowProcessor::randomizeActiveComp()
             comp.segments.push_back({ lane, a, b });
         }
         clampTakeCompsToSessionLengthLocked(sessionLen);
-        rebuildMasterClipImpl();
+        rebuildCombinedClipImpl();
     }
     scheduleCompBoundaryParamSync();
 }
@@ -1366,7 +1191,7 @@ void PatternFlowProcessor::cycleCompSegmentsToNextLane()
         seg.laneIndex = (li + 1) % numLanes;
     }
     comping::mergeAdjacentSameLane(segs);
-    rebuildMasterClipImpl();
+    rebuildCombinedClipImpl();
     scheduleCompBoundaryParamSync();
 }
 
@@ -1471,7 +1296,7 @@ double PatternFlowProcessor::applyCompBoundaryDragLocked(double fromBeat, double
         }
     }
     if (rebuildAfter)
-        rebuildMasterClipImpl();
+        rebuildCombinedClipImpl();
     return outAnchor;
 }
 
@@ -1499,7 +1324,7 @@ void PatternFlowProcessor::applyCompBoundaryMovesFromNorms(const float* norms, i
 
         applyCompBoundaryDragLocked(fromBeat, targetBeat, false, false);
     }
-    rebuildMasterClipImpl();
+    rebuildCombinedClipImpl();
 }
 
 void PatternFlowProcessor::applyCompMovesFromMidiAndHostParameters(juce::MidiBuffer& midi)
@@ -1544,7 +1369,7 @@ void PatternFlowProcessor::deleteCompSegmentCoveringBeat(int laneIndex, double b
             if (beat >= s.startBeat - kEps && beat < s.endBeat - kEps)
             {
                 segs.erase(segs.begin() + (ptrdiff_t)i);
-                rebuildMasterClipImpl();
+                rebuildCombinedClipImpl();
                 changed = true;
                 break;
             }
@@ -1586,13 +1411,13 @@ void PatternFlowProcessor::syncCompBoundaryAutomationParamsFromModel()
 void PatternFlowProcessor::remapLanesAfterDeleteLocked(int removedIndex)
 {
     comping::remapLanesAfterDelete(takeComps, removedIndex);
-    rebuildMasterClipImpl();
+    rebuildCombinedClipImpl();
 }
 
 void PatternFlowProcessor::remapLanesAfterInsertLocked(int insertLaneIndex)
 {
     comping::remapLanesAfterInsert(takeComps, insertLaneIndex);
-    rebuildMasterClipImpl();
+    rebuildCombinedClipImpl();
 }
 
 void PatternFlowProcessor::remapLanesAfterDelete(int removedIndex)

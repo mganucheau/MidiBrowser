@@ -223,11 +223,11 @@ namespace colours {
 
     inline juce::Colour compSelectionHighlight() { return accent().withAlpha(0.22f); }
 
-    // Piano roll (brighter contrast: white vs black keys, grid more distinct)
-    inline juce::Colour pianoWhiteKey() { return currentThemeTokens().isDark ? juce::Colour(0xff3b3f4a) : juce::Colour(0xfff8fafc); }
-    inline juce::Colour pianoBlackKey() { return currentThemeTokens().isDark ? juce::Colour(0xff0a0b0e) : juce::Colour(0xff1a1a1a); }
+    // Piano roll — realistic piano key colours (high-contrast black & white)
+    inline juce::Colour pianoWhiteKey() { return currentThemeTokens().isDark ? juce::Colour(0xffe8e8e8) : juce::Colour(0xfff8f8f8); }
+    inline juce::Colour pianoBlackKey() { return currentThemeTokens().isDark ? juce::Colour(0xff1a1a1a) : juce::Colour(0xff1a1a1a); }
     inline juce::Colour pianoGrid()     { return currentThemeTokens().outlineVariant; }
-    inline juce::Colour noteBlock()     { return accent(); }
+    inline juce::Colour noteBlock()     { return currentThemeTokens().isDark ? juce::Colour(0xffd0d0d0) : juce::Colour(0xff2a2a2a); }
     inline juce::Colour selection()     { return accent().withAlpha(0.25f); }
     inline juce::Colour playhead()      { return juce::Colour(0xffef4444); } // Red playhead per DAW style guide
 

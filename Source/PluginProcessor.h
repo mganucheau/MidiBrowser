@@ -13,7 +13,7 @@ class PatternFlowProcessor : public juce::AudioProcessor
 public:
     /**
      * Automatable DAW parameters + MIDI CC: each index is one **sorted** internal comp edge
-     * (master “slice” boundary, left→right). Value 0–1 = position along the session length.
+     * (combined “slice” boundary, left→right). Value 0–1 = position along the session length.
      * MIDI: map hardware to CC numbers `kCompSliceMidiCcStart` … (+31) on this track.
      */
     static constexpr int kNumCompBoundaryAutomationParams = 32;
@@ -153,9 +153,9 @@ public:
     // User-positionable edit playhead (used when host is stopped)
     std::atomic<double>    editPlayheadBeat { 0.0 };
 
-    // Master lane: merged MIDI clip from all lanes (visual summary + output source)
-    MidiClip masterClip;
-    void rebuildMasterClip();
+    // Combined lane: merged MIDI clip from all lanes (visual summary + output source)
+    MidiClip combinedClip;
+    void rebuildCombinedClip();
     void removeEmptyLanesExceptFirst();
 
     // Session length = arrangementBars × 4 beats; trim/remove regions & take-comp segments, loop, playhead
@@ -227,15 +227,8 @@ private:
                                   juce::MidiBuffer& output, int numSamples,
                                   int sampleOffsetBase = 0);
 
-    void generateMidiMergedLanes(double startBeat, double endBeat,
-                                 juce::MidiBuffer& output, int numSamples,
-                                 int sampleOffsetBase);
-    void generateMidiFromActiveComp(double startBeat, double endBeat,
-                                    juce::MidiBuffer& output, int numSamples,
-                                    int sampleOffsetBase);
-
     /** Internal: assumes `laneLock` is already held. */
-    void rebuildMasterClipImpl();
+    void rebuildCombinedClipImpl();
     /** Clip take-comp segments to [0, sessionLen] and merge; caller holds `laneLock`. */
     void clampTakeCompsToSessionLengthLocked(double sessionLen);
 

@@ -39,7 +39,7 @@ void commitRandomizeTakeCompWithUndo(PatternFlowProcessor& proc)
         proc.ensureDefaultTakeComp();
         proc.takeComps[0].segments = before;
     }
-    proc.rebuildMasterClip();
+    proc.rebuildCombinedClip();
     proc.undoManager.beginNewTransaction();
     proc.undoManager.perform(new SetTakeCompSegmentsAction(proc, before, after));
 }
@@ -55,7 +55,7 @@ void commitCycleCompLanesWithUndo(PatternFlowProcessor& proc)
         proc.ensureDefaultTakeComp();
         proc.takeComps[0].segments = before;
     }
-    proc.rebuildMasterClip();
+    proc.rebuildCombinedClip();
     proc.undoManager.beginNewTransaction();
     proc.undoManager.perform(new SetTakeCompSegmentsAction(proc, before, after));
 }
