@@ -361,6 +361,24 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         arrangementView.refresh();
         resized();
     };
+    fileBrowser.onClipAddToFocusedLaneColumn = [this](const MidiClip& clip)
+    {
+        double beat = processorRef.hostPlaying.load() ? processorRef.hostBeatPos.load() : processorRef.editPlayheadBeat.load();
+        juce::ScopedLock sl(processorRef.laneLock);
+        int lane = arrangementView.selLane;
+        if (lane < 0) lane = 0;
+        if (processorRef.lanes.empty())
+        {
+            arrangementView.addClipToNewLane(clip, beat);
+        }
+        else
+        {
+            lane = juce::jlimit(0, (int)processorRef.lanes.size() - 1, lane);
+            arrangementView.addClipToLane(clip, lane, beat);
+        }
+        arrangementView.refresh();
+        resized();
+    };
     addAndMakeVisible(fileBrowser);
 
     arrangementView.onClipDoubleClicked = [this](const MidiClip& clip, int laneIdx, int regionIdx)

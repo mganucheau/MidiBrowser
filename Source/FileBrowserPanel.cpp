@@ -79,8 +79,35 @@ void FileBrowserPanel::resized()
 
 bool FileBrowserPanel::keyPressed(const juce::KeyPress& key)
 {
-    if ((key == juce::KeyPress::returnKey || key == juce::KeyPress::leftKey) && tryAddSelectedToNewLane())
+    // Return key: add to arrangement (new lane flow)
+    if (key == juce::KeyPress::returnKey && tryAddSelectedToNewLane())
         return true;
+
+    // Left arrow: add to focused lane column (selection lane), if available
+    if (key == juce::KeyPress::leftKey)
+    {
+        if (onClipAddToFocusedLaneColumn)
+        {
+            if (hasPreviewClip)
+            {
+                onClipAddToFocusedLaneColumn(previewClip);
+                return true;
+            }
+            if (fileTree->getNumSelectedFiles() > 0)
+            {
+                juce::File f = fileTree->getSelectedFile(0);
+                if (f.hasFileExtension("mid;midi") && f.existsAsFile())
+                {
+                    MidiClip clip = parseMidiFile(f);
+                    onClipAddToFocusedLaneColumn(clip);
+                    return true;
+                }
+            }
+        }
+        // Fallback: previous behavior
+        if (tryAddSelectedToNewLane())
+            return true;
+    }
     // Up/down: pass to file tree for selection navigation (tree handles natively when focused)
     if ((key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) && fileTree)
     {

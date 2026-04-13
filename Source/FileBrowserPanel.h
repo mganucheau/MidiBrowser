@@ -33,6 +33,8 @@ public:
     std::function<void(const MidiClip&)>           onClipDoubleClicked;
     std::function<void(const MidiClip&)>           onClipAddToNewLane;
     std::function<void(const MidiClip&)>           onClipAddFromBrowser;  // First file -> lane 1, else new lane
+    /** Left arrow: add clip into the focused / selected arrangement lane (Ableton-style column). */
+    std::function<void(const MidiClip&)>           onClipAddToFocusedLaneColumn;
     std::function<void(const juce::File&)>         onFileDragStarted;
     std::function<void(const juce::String&)>       onDirectoryChanged;
 
