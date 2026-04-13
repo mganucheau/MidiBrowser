@@ -42,8 +42,8 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     setLookAndFeel(&lnf);
     applyAppTheme(processorRef.appThemeId.load());
     lnf.refreshColours();
-    // Default height: original content + one extra titleBar row (logo/transport/settings + comp/scale)
-    setSize(1320, 587 + metrics::titleBarH);
+    // Default size = minimum resize limits (comfortable baseline)
+    setSize(1120, 480);
     setResizable(true, true);
     setResizeLimits(1120, 480, 2400, 1600);
     setFocusContainerType(juce::Component::FocusContainerType::focusContainer);
@@ -83,43 +83,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     cmbGridSnap.addListener(this);
     addAndMakeVisible(cmbGridSnap);
 
-    btnLoop.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnLoop.setColour(juce::ToggleButton::tickColourId, colours::accent());
-    btnLoop.setTooltip("Toggle loop (Cmd+L)");
-    btnLoop.onClick = [this]
-    {
-        bool nowEnabled = !processorRef.loopEnabled.load();
-        if (nowEnabled)
-        {
-            double startB = 0.0, endB = 16.0;
-            bool usedSelection = false;
-            if (arrangementView.hasTimeSelection
-                && (arrangementView.timeSelEndBeat - arrangementView.timeSelStartBeat) > 0.01)
-            {
-                startB = arrangementView.timeSelStartBeat;
-                endB = arrangementView.timeSelEndBeat;
-                usedSelection = true;
-            }
-            if (!usedSelection && processorRef.loopEndBeat.load() <= processorRef.loopStartBeat.load())
-            {
-                juce::ScopedLock sl(processorRef.laneLock);
-                for (const auto& lane : processorRef.lanes)
-                    for (const auto& reg : lane.regions)
-                    {
-                        if (startB == 0.0 && endB == 16.0) { startB = reg.startBeat; endB = reg.endBeat; }
-                        else { startB = std::min(startB, reg.startBeat); endB = std::max(endB, reg.endBeat); }
-                    }
-                if (endB <= startB) { startB = 0.0; endB = 16.0; }
-            }
-            processorRef.loopStartBeat.store(startB);
-            processorRef.loopEndBeat.store(endB > startB ? endB : startB + 16.0);
-        }
-        processorRef.loopEnabled.store(nowEnabled);
-        updateLoopButton();
-        arrangementView.refresh();
-    };
-    addAndMakeVisible(btnLoop);
-    updateLoopButton();
+    // Loop is now controlled from the control panel (start/end + ∞ sync).
 
     lblSessionBars.setColour(juce::Label::textColourId, colours::textDim());
     lblSessionBars.setFont(juce::Font(juce::FontOptions(kLabelFontH)));
@@ -336,27 +300,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         }
     };
 
-    controlPanel.onTransposeClicked = [this]
-    {
-        processorRef.transposeAllClipsToSelectedScale();
-        arrangementView.refresh();
-        if (pianoRoll.hasClip())
-        {
-            int li = pianoRoll.getEditLaneIndex();
-            int ri = pianoRoll.getEditRegionIndex();
-            if (li >= 0 && li < (int)processorRef.lanes.size())
-            {
-                auto& lane = processorRef.lanes[li];
-                if (ri >= 0 && ri < (int)lane.regions.size())
-                {
-                    int ci = lane.regions[ri].clipIndex;
-                    if (ci >= 0 && ci < (int)lane.clips.size())
-                        pianoRoll.setClip(lane.clips[ci], li, ri);
-                }
-            }
-        }
-        pianoRoll.repaint();
-    };
+    // Transpose is now a live toggle in the ControlPanel.
 
     arrangementView.onAddLaneClicked = [this]
     {
@@ -369,7 +313,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         processorRef.lanes.push_back(newLane);
         arrangementView.refresh();
     };
-    arrangementView.onLoopChanged = [this] { updateLoopButton(); };
+    arrangementView.onLoopChanged = [this] { /* loop UI lives in control panel */ };
 
     // File browser - restore last directory
     if (processorRef.lastBrowserDir.isNotEmpty())
@@ -955,7 +899,7 @@ bool PatternFlowEditor::keyPressed(const juce::KeyPress& key, juce::Component* o
             processorRef.loopEndBeat.store(endB > startB ? endB : startB + 16.0);
         }
         processorRef.loopEnabled.store(nowEnabled);
-        updateLoopButton();
+        // loop UI lives in control panel
         arrangementView.refresh();
         return true;
     }
@@ -1087,21 +1031,18 @@ void PatternFlowEditor::resized()
     const int rowY = topRow.getY() + (topRow.getHeight() - btnH) / 2;
     const int recSize = juce::jmin(28, btnH);
     const int gridW = textWidthPx(kTextBtnFontH, "1/16T") + comboPad * 2 + 30;
-    const int loopW = minToggleWidth(comboPad, "Loop");
     const int barsLblW = textWidthPx(kLabelFontH, "Bars") + comboPad + 6;
     const int sessionComboW = textWidthPx(kTextBtnFontH, "16") + comboPad * 2 + 34;
     const int stepW = minTextButtonWidth(comboPad, "Step");
     const int extendW = minTextButtonWidth(comboPad, "Extend");
     const int trimW = minTextButtonWidth(comboPad, "Trim");
-    const int transportW = recSize + stepGap + gridW + stepGap + loopW + stepGap + barsLblW + 4 + sessionComboW
+    const int transportW = recSize + stepGap + gridW + stepGap + barsLblW + 4 + sessionComboW
                              + stepGap + stepW + stepGap + extendW + stepGap + trimW;
     int x = topRow.getX() + (topRow.getWidth() - transportW) / 2;
     btnRecord.setBounds(x, rowY + (btnH - recSize) / 2, recSize, recSize);
     x += recSize + stepGap;
     cmbGridSnap.setBounds(x, rowY, gridW, btnH);
     x += gridW + stepGap;
-    btnLoop.setBounds(x, rowY, loopW, btnH);
-    x += loopW + stepGap;
     lblSessionBars.setBounds(x, rowY, barsLblW, btnH);
     x += barsLblW + 4;
     cmbSessionBars.setBounds(x, rowY, sessionComboW, btnH);
@@ -1302,15 +1243,8 @@ void PatternFlowEditor::updateRecordButton()
         btnRecord.setColours(colours::bgLighter(), colours::bgLighter().brighter(0.1f), colours::bgLighter());
 }
 
-void PatternFlowEditor::updateLoopButton()
-{
-    btnLoop.setToggleState(processorRef.loopEnabled.load(), juce::dontSendNotification);
-}
-
 void PatternFlowEditor::refreshTransportColours()
 {
-    btnLoop.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnLoop.setColour(juce::ToggleButton::tickColourId, colours::accent());
     lblSessionBars.setColour(juce::Label::textColourId, colours::textDim());
     btnStep.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
     btnStep.setColour(juce::TextButton::textColourOffId, juce::Colours::white);

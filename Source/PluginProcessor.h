@@ -119,12 +119,17 @@ public:
     std::atomic<bool>   loopEnabled  { false };
     std::atomic<double> loopStartBeat{ 0.0 };
     std::atomic<double> loopEndBeat  { 32.0 };
+    /** When true, moving loop start/end shifts the other by the same delta. */
+    std::atomic<bool>   loopSyncMoveTogether { false };
 
     // Scale / transpose
     std::atomic<int>       scaleRoot    { 0 };
     std::atomic<int>       scaleType    { 0 };
+    /** Live transpose toggle (UI label: Transpose). */
     std::atomic<bool>      scaleEnabled { false };
     std::atomic<int>       rootNoteRemap{ 24 };
+    /** Global octave shift in semitones applied to output + preview (multiples of 12). */
+    std::atomic<int>       octaveShiftSemitones { 0 };
 
     // Humanization parameters (0..1)
     std::atomic<float>     humanTiming  { 0.0f };
@@ -165,6 +170,12 @@ public:
     void resetToDefaultSession();
     /** Transpose all clip notes toward the selected scale root/type (estimates key from note content). */
     void transposeAllClipsToSelectedScale();
+    /** For live Transpose: snapshot clip notes then apply current root/type. */
+    void enableLiveScaleSnapshotsAndApply();
+    /** Restore notes from snapshots (Transpose toggle off). */
+    void disableLiveScaleRevert();
+    /** Re-apply mapping from snapshots (root/type changed while Transpose on). */
+    void applyLiveScaleMappingFromBaselines();
 
     /**
      * Push current comp boundary beats into APVTS (message thread). Coalesced via AsyncUpdater.
@@ -216,6 +227,10 @@ private:
     bool previewHasClip_ = false;
     bool previewMuted_ = true;
     bool previewSoloed_ = false;
+
+    // Live Transpose baseline snapshots (message thread only; protected by laneLock at use sites)
+    bool liveScaleBaselinesValid_ = false;
+    std::vector<std::vector<MidiClip>> liveScaleBaselines_;
 
     void generatePreviewMidi(const MidiClip& clip, double startBeat, double endBeat,
                              juce::MidiBuffer& output, int numSamples, int sampleOffsetBase = 0);

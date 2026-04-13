@@ -10,7 +10,8 @@ namespace pflow {
 class PatternFlowProcessor;
 
 class ControlPanel : public juce::Component,
-                     public juce::ComboBox::Listener
+                     public juce::ComboBox::Listener,
+                     public juce::Timer
 {
 public:
     explicit ControlPanel(PatternFlowProcessor& proc);
@@ -19,9 +20,9 @@ public:
     void paint(juce::Graphics&) override;
     void refreshComponentColours();
     void comboBoxChanged(juce::ComboBox*) override;
+    void timerCallback() override;
 
     std::function<void()> onC0Clicked;
-    std::function<void()> onTransposeClicked;
     /** Arrangement should repaint when comp mode or comp content changes. */
     std::function<void()> onTakeCompSwitched;
 
@@ -30,16 +31,22 @@ public:
 private:
     PatternFlowProcessor& processor;
 
-    juce::ToggleButton  btnScaleToggle { "Scale" };
+    juce::TextButton    btnTransposeToggle { "Transpose" };
     juce::ComboBox      cmbScaleRoot;
     juce::ComboBox      cmbScaleType;
+    juce::ComboBox      cmbOctave;
     juce::TextButton    btnC0 { "C0" };
-    juce::TextButton    btnTranspose { "Transpose" };
 
-    juce::ToggleButton  btnComp { "Comp" };
+    juce::TextButton    btnComp { "Comp" };
     juce::Slider        sldRandomRegions;
     juce::TextButton    btnRandomComp { "Random" };
     juce::TextButton    btnSwapComp { "Swap" };
+
+    juce::Slider        sldLoopStart;
+    juce::TextButton    btnLoopSync { juce::String::charToString(0x221E) }; // ∞
+    juce::Slider        sldLoopEnd;
+
+    bool blinkOn_ = false;
 
     /** Last integer region count applied (for randomizing on each step while dragging the knob). */
     int lastRandomKnobInt = 8;

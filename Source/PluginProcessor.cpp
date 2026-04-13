@@ -321,6 +321,16 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     const double sessionLenBeats = (double)(arrangementBars.load() * 4);
 
+    auto addAllNotesOff = [&](int samplePos)
+    {
+        // Safety: stop any lingering synth voices, including preview notes (preview isn't tracked in activeNotes_).
+        for (int ch = 1; ch <= 16; ++ch)
+        {
+            generated.addEvent(juce::MidiMessage::allNotesOff(ch), samplePos);
+            generated.addEvent(juce::MidiMessage::controllerEvent(ch, 123 /*All Notes Off*/, 0), samplePos);
+        }
+    };
+
     auto playbackSessionWrap = [&]()
     {
         if (sessionLenBeats <= 1.0e-9)
@@ -346,6 +356,7 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             for (auto& an : activeNotes_)
                 generated.addEvent(juce::MidiMessage::noteOff(an.channel, an.pitch), firstSamples);
             activeNotes_.clear();
+            addAllNotesOff(firstSamples);
 
             double secondLen = blockBeats - firstLen;
             if (!playPreviewOnly)
@@ -391,6 +402,7 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 for (auto& an : activeNotes_)
                     generated.addEvent(juce::MidiMessage::noteOff(an.channel, an.pitch), firstSamples);
                 activeNotes_.clear();
+                addAllNotesOff(firstSamples);
 
                 double secondLen = blockBeats - firstLen;
                 if (!playPreviewOnly)
@@ -463,6 +475,7 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
     // If it's empty (no clips, or all muted), no MIDI output.
     if (combinedClip.notes.empty()) return;
 
+    const int octaveShift = octaveShiftSemitones.load();
     for (auto& note : combinedClip.notes)
     {
         double noteGlobalStart = note.startBeat;
@@ -478,7 +491,7 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
             if (scaleEnabled.load())
                 pitch = quantiseToScale(pitch, scaleRoot.load(),
                                        (ScaleType)scaleType.load());
-            pitch = juce::jlimit(0, 127, pitch);
+            pitch = juce::jlimit(0, 127, pitch + octaveShift);
 
             int vel = applyHumanVelocity(note.velocity);
             int channel = note.channel;
@@ -511,7 +524,7 @@ void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
             if (scaleEnabled.load())
                 pitch = quantiseToScale(pitch, scaleRoot.load(),
                                        (ScaleType)scaleType.load());
-            pitch = juce::jlimit(0, 127, pitch);
+            pitch = juce::jlimit(0, 127, pitch + octaveShift);
 
             int channel = note.channel;
             if (splitEnabled.load())
@@ -586,6 +599,7 @@ void PatternFlowProcessor::generatePreviewMidi(const MidiClip& clip, double star
     double blockLen = endBeat - startBeat;
     if (blockLen <= 0.0) return;
 
+    const int octaveShift = octaveShiftSemitones.load();
     for (auto& note : clip.notes)
     {
         double noteStart = note.startBeat - clip.clipStartOffset;
@@ -605,7 +619,7 @@ void PatternFlowProcessor::generatePreviewMidi(const MidiClip& clip, double star
             {
                 double fraction = (globalStart - startBeat) / blockLen;
                 int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1, (int)(fraction * numSamples));
-                int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);
+                int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset + octaveShift);
                 int vel = note.velocity;
                 output.addEvent(juce::MidiMessage::noteOn(note.channel, pitch, (juce::uint8)vel), sampleOffset);
             }
@@ -613,7 +627,7 @@ void PatternFlowProcessor::generatePreviewMidi(const MidiClip& clip, double star
             {
                 double fraction = (globalEnd - startBeat) / blockLen;
                 int sampleOffset = sampleOffsetBase + juce::jlimit(0, numSamples - 1, (int)(fraction * numSamples));
-                int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);
+                int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset + octaveShift);
                 output.addEvent(juce::MidiMessage::noteOff(note.channel, pitch), sampleOffset);
             }
         }
@@ -1035,10 +1049,12 @@ void PatternFlowProcessor::resetToDefaultSession()
     loopEnabled.store(false);
     loopStartBeat.store(0.0);
     loopEndBeat.store(16.0);
+    loopSyncMoveTogether.store(false);
     scaleRoot.store(0);
     scaleType.store(0);
     scaleEnabled.store(false);
     rootNoteRemap.store(24);
+    octaveShiftSemitones.store(0);
     humanVelocity.store(0.0f);
     humanTiming.store(0.0f);
     humanFeel.store(0.0f);
@@ -1068,6 +1084,73 @@ void PatternFlowProcessor::transposeAllClipsToSelectedScale()
     {
         for (auto& clip : lane.clips)
         {
+            if (clip.notes.empty()) continue;
+            const int estPc = estimatePitchClassFromNotes(clip.notes);
+            const int delta = (targetRoot - estPc + 12) % 12;
+            for (auto& n : clip.notes)
+            {
+                const int nn = juce::jlimit(0, 127, n.noteNumber + delta);
+                n.noteNumber = quantiseToScale(nn, targetRoot, st);
+            }
+            clip.rootNoteOffset = 0;
+        }
+    }
+    rebuildCombinedClipImpl();
+}
+
+void PatternFlowProcessor::enableLiveScaleSnapshotsAndApply()
+{
+    {
+        juce::ScopedLock sl(laneLock);
+        liveScaleBaselines_.clear();
+        liveScaleBaselines_.reserve(lanes.size());
+        for (const auto& lane : lanes)
+            liveScaleBaselines_.push_back(lane.clips);
+        liveScaleBaselinesValid_ = true;
+    }
+    applyLiveScaleMappingFromBaselines();
+}
+
+void PatternFlowProcessor::disableLiveScaleRevert()
+{
+    juce::ScopedLock sl(laneLock);
+    if (!liveScaleBaselinesValid_)
+        return;
+    if (liveScaleBaselines_.size() != lanes.size())
+    {
+        liveScaleBaselinesValid_ = false;
+        liveScaleBaselines_.clear();
+        return;
+    }
+    for (size_t i = 0; i < lanes.size(); ++i)
+        lanes[i].clips = liveScaleBaselines_[i];
+    liveScaleBaselinesValid_ = false;
+    liveScaleBaselines_.clear();
+    rebuildCombinedClipImpl();
+}
+
+void PatternFlowProcessor::applyLiveScaleMappingFromBaselines()
+{
+    const int targetRoot = juce::jlimit(0, 11, scaleRoot.load());
+    const int stIdx = juce::jlimit(0, (int)ScaleType::Count - 1, scaleType.load());
+    const auto st = (ScaleType)stIdx;
+
+    juce::ScopedLock sl(laneLock);
+    if (!liveScaleBaselinesValid_)
+        return;
+    if (liveScaleBaselines_.size() != lanes.size())
+        return;
+
+    for (size_t li = 0; li < lanes.size(); ++li)
+    {
+        auto& lane = lanes[li];
+        const auto& baseClips = liveScaleBaselines_[li];
+        if (lane.clips.size() != baseClips.size())
+            continue;
+        for (size_t ci = 0; ci < lane.clips.size(); ++ci)
+        {
+            lane.clips[ci] = baseClips[ci];
+            auto& clip = lane.clips[ci];
             if (clip.notes.empty()) continue;
             const int estPc = estimatePitchClassFromNotes(clip.notes);
             const int delta = (targetRoot - estPc + 12) % 12;

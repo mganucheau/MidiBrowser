@@ -16,13 +16,6 @@ int textWidthPx(float fontHeight, const juce::String& t)
         juce::Font(juce::FontOptions(fontHeight)).getStringWidthFloat(t)));
 }
 
-int minToggleWidth(int comboPad, const juce::String& label)
-{
-    const int tick = juce::roundToInt(std::ceil(kToggleFontH * 1.1f));
-    const int textLeft = 4 + tick + 10;
-    return textLeft + textWidthPx(kToggleFontH, label) + comboPad * 2 + 10;
-}
-
 int minTextButtonWidth(int comboPad, const juce::String& label)
 {
     return textWidthPx(kTextBtnFontH, label) + comboPad * 2 + 18;
@@ -72,15 +65,23 @@ int maxScaleTypeComboInnerWidth(float fontHeight)
 
 ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
 {
-    btnScaleToggle.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnScaleToggle.setColour(juce::ToggleButton::tickColourId, colours::accent());
-    btnScaleToggle.setTooltip("Enable or disable scale quantisation (choose root and type anytime)");
-    btnScaleToggle.setToggleState(processor.scaleEnabled.load(), juce::dontSendNotification);
-    btnScaleToggle.onClick = [this]
+    btnTransposeToggle.setClickingTogglesState(true);
+    btnTransposeToggle.setComponentID("ActionButton");
+    btnTransposeToggle.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnTransposeToggle.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    btnTransposeToggle.setTooltip("Transpose: when on, clips follow the selected root and scale in real time. Off restores originals.");
+    btnTransposeToggle.setToggleState(processor.scaleEnabled.load(), juce::dontSendNotification);
+    btnTransposeToggle.onClick = [this]
     {
-        processor.scaleEnabled.store(btnScaleToggle.getToggleState());
+        const bool on = btnTransposeToggle.getToggleState();
+        processor.scaleEnabled.store(on);
+        if (on)
+            processor.enableLiveScaleSnapshotsAndApply();
+        else
+            processor.disableLiveScaleRevert();
+        if (onTakeCompSwitched) onTakeCompSwitched();
     };
-    addAndMakeVisible(btnScaleToggle);
+    addAndMakeVisible(btnTransposeToggle);
 
     const char* noteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
     for (int i = 0; i < 12; ++i)
@@ -97,6 +98,30 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     cmbScaleType.addListener(this);
     addAndMakeVisible(cmbScaleType);
 
+    cmbOctave.addItem("-2 oct", 1);
+    cmbOctave.addItem("-1 oct", 2);
+    cmbOctave.addItem("0", 3);
+    cmbOctave.addItem("+1 oct", 4);
+    cmbOctave.addItem("+2 oct", 5);
+    {
+        const int s = processor.octaveShiftSemitones.load();
+        int id = 3;
+        if (s <= -24) id = 1;
+        else if (s <= -12) id = 2;
+        else if (s >= 24) id = 5;
+        else if (s >= 12) id = 4;
+        cmbOctave.setSelectedId(id);
+    }
+    cmbOctave.setTooltip("Octave shift");
+    cmbOctave.onChange = [this]
+    {
+        static const int semis[] = { -24, -12, 0, 12, 24 };
+        int idx = cmbOctave.getSelectedId() - 1;
+        if (idx >= 0 && idx < 5)
+            processor.octaveShiftSemitones.store(semis[idx]);
+    };
+    addAndMakeVisible(cmbOctave);
+
     btnC0.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
     btnC0.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     btnC0.setComponentID("ActionButton");
@@ -104,18 +129,10 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     btnC0.onClick = [this] { if (onC0Clicked) onC0Clicked(); };
     addAndMakeVisible(btnC0);
 
-    btnTranspose.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnTranspose.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnTranspose.setComponentID("ActionButton");
-    btnTranspose.setTooltip("Transpose all MIDI to the selected scale root and scale type");
-    btnTranspose.onClick = [this]
-    {
-        if (onTransposeClicked) onTransposeClicked();
-    };
-    addAndMakeVisible(btnTranspose);
-
-    btnComp.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnComp.setColour(juce::ToggleButton::tickColourId, colours::accent());
+    btnComp.setClickingTogglesState(true);
+    btnComp.setComponentID("ActionButton");
+    btnComp.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     btnComp.setTooltip("Comp mode: paint and edit comp regions. Turn off to move clips; existing comps stay for playback.");
     btnComp.onClick = [this]
     {
@@ -179,7 +196,57 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     };
     addAndMakeVisible(btnSwapComp);
 
+    auto setupLoopKnob = [](juce::Slider& s, const juce::String& name)
+    {
+        s.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+        s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        s.setRange(0.0, 64.0, 0.25);
+        s.setTooltip(name);
+    };
+    setupLoopKnob(sldLoopStart, "Loop start (beats)");
+    setupLoopKnob(sldLoopEnd, "Loop end (beats)");
+    sldLoopStart.setValue(processor.loopStartBeat.load(), juce::dontSendNotification);
+    sldLoopEnd.setValue(processor.loopEndBeat.load(), juce::dontSendNotification);
+    sldLoopStart.onValueChange = [this]
+    {
+        processor.loopEnabled.store(true);
+        double ns = sldLoopStart.getValue();
+        double ne = processor.loopEndBeat.load();
+        if (processor.loopSyncMoveTogether.load())
+            ne += (ns - processor.loopStartBeat.load());
+        processor.loopStartBeat.store(ns);
+        processor.loopEndBeat.store(std::max(ns + 0.25, ne));
+        if (onTakeCompSwitched) onTakeCompSwitched();
+    };
+    sldLoopEnd.onValueChange = [this]
+    {
+        processor.loopEnabled.store(true);
+        double ne = sldLoopEnd.getValue();
+        double ns = processor.loopStartBeat.load();
+        if (processor.loopSyncMoveTogether.load())
+            ns += (ne - processor.loopEndBeat.load());
+        processor.loopStartBeat.store(std::max(0.0, std::min(ns, ne - 0.25)));
+        processor.loopEndBeat.store(std::max(processor.loopStartBeat.load() + 0.25, ne));
+        if (onTakeCompSwitched) onTakeCompSwitched();
+    };
+    addAndMakeVisible(sldLoopStart);
+
+    btnLoopSync.setClickingTogglesState(true);
+    btnLoopSync.setComponentID("ActionButton");
+    btnLoopSync.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnLoopSync.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    btnLoopSync.setTooltip("Loop sync (∞): move start/end together");
+    btnLoopSync.setToggleState(processor.loopSyncMoveTogether.load(), juce::dontSendNotification);
+    btnLoopSync.onClick = [this]
+    {
+        processor.loopSyncMoveTogether.store(btnLoopSync.getToggleState());
+    };
+    addAndMakeVisible(btnLoopSync);
+    addAndMakeVisible(sldLoopEnd);
+
     refreshTakeCompUI();
+    refreshComponentColours();
+    startTimerHz(3);
 }
 
 void ControlPanel::resized()
@@ -194,7 +261,7 @@ void ControlPanel::resized()
     juce::Rectangle<int> leftArea(row1.getX(), row1.getY(), cx - row1.getX() - halfDiv, row1.getHeight());
     juce::Rectangle<int> rightArea(cx + halfDiv, row1.getY(), row1.getRight() - (cx + halfDiv), row1.getHeight());
 
-    const int compToggleW = minToggleWidth(comboPad, "Comp");
+    const int compToggleW = minTextButtonWidth(comboPad, "Comp");
     const int knobSide = juce::jmin(40, btnH1 + 8);
     const int knobW = knobSide + 30;
     const int randW = minTextButtonWidth(comboPad, "Random");
@@ -209,21 +276,31 @@ void ControlPanel::resized()
     x += randW + itemGap;
     btnSwapComp.setBounds(x, rowY1, swapW, btnH1);
 
-    const int scaleToggleW = minToggleWidth(comboPad, "Scale");
+    const int transposeW = minTextButtonWidth(comboPad, "Transpose");
     const int rootW = textWidthPx(kTextBtnFontH, "C#") + comboPad * 2 + 28;
     const int typeW = maxScaleTypeComboInnerWidth(kTextBtnFontH) + comboPad * 2 + 30;
-    const int transW = minTextButtonWidth(comboPad, "Transpose");
+    const int octW = textWidthPx(kTextBtnFontH, "+2 oct") + comboPad * 2 + 28;
+    const int loopKnobW = 44;
+    const int loopSyncW = 30;
     const int c0W = minTextButtonWidth(comboPad, "C0");
-    const int scaleClusterW = scaleToggleW + itemGap + rootW + itemGap + typeW + itemGap + transW + itemGap + c0W;
+    const int scaleClusterW = transposeW + itemGap + rootW + itemGap + typeW + itemGap + octW
+                              + itemGap + loopKnobW + itemGap + loopSyncW + itemGap + loopKnobW
+                              + itemGap + c0W;
     x = rightArea.getX() + (rightArea.getWidth() - scaleClusterW) / 2;
-    btnScaleToggle.setBounds(x, rowY1, scaleToggleW, btnH1);
-    x += scaleToggleW + itemGap;
+    btnTransposeToggle.setBounds(x, rowY1, transposeW, btnH1);
+    x += transposeW + itemGap;
     cmbScaleRoot.setBounds(x, rowY1, rootW, btnH1);
     x += rootW + itemGap;
     cmbScaleType.setBounds(x, rowY1, typeW, btnH1);
     x += typeW + itemGap;
-    btnTranspose.setBounds(x, rowY1, transW, btnH1);
-    x += transW + itemGap;
+    cmbOctave.setBounds(x, rowY1, octW, btnH1);
+    x += octW + itemGap;
+    sldLoopStart.setBounds(x, rowY1 + (btnH1 - loopKnobW) / 2, loopKnobW, loopKnobW);
+    x += loopKnobW + itemGap;
+    btnLoopSync.setBounds(x, rowY1, loopSyncW, btnH1);
+    x += loopSyncW + itemGap;
+    sldLoopEnd.setBounds(x, rowY1 + (btnH1 - loopKnobW) / 2, loopKnobW, loopKnobW);
+    x += loopKnobW + itemGap;
     btnC0.setBounds(x, rowY1, c0W, btnH1);
 }
 
@@ -239,6 +316,10 @@ void ControlPanel::paint(juce::Graphics& g)
 void ControlPanel::refreshTakeCompUI()
 {
     btnComp.setToggleState(processor.compsEnabled.load(), juce::dontSendNotification);
+    btnLoopSync.setToggleState(processor.loopSyncMoveTogether.load(), juce::dontSendNotification);
+    btnTransposeToggle.setToggleState(processor.scaleEnabled.load(), juce::dontSendNotification);
+    sldLoopStart.setValue(processor.loopStartBeat.load(), juce::dontSendNotification);
+    sldLoopEnd.setValue(processor.loopEndBeat.load(), juce::dontSendNotification);
     sldRandomRegions.setValue((double)juce::jlimit(2, 16, processor.compRandomRegionCount.load()),
                               juce::dontSendNotification);
     lastRandomKnobInt = juce::jlimit(2, 16, processor.compRandomRegionCount.load());
@@ -251,14 +332,10 @@ void ControlPanel::refreshTakeCompUI()
 
 void ControlPanel::refreshComponentColours()
 {
-    btnScaleToggle.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnScaleToggle.setColour(juce::ToggleButton::tickColourId, colours::accent());
+    btnTransposeToggle.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     btnC0.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
     btnC0.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnTranspose.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnTranspose.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnComp.setColour(juce::ToggleButton::textColourId, colours::text());
-    btnComp.setColour(juce::ToggleButton::tickColourId, colours::accent());
+    btnComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     sldRandomRegions.setColour(juce::Slider::rotarySliderFillColourId, colours::accent());
     sldRandomRegions.setColour(juce::Slider::rotarySliderOutlineColourId, colours::textDim());
     sldRandomRegions.setColour(juce::Slider::thumbColourId, colours::textBright());
@@ -269,6 +346,15 @@ void ControlPanel::refreshComponentColours()
     btnRandomComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     btnSwapComp.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
     btnSwapComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+
+    btnLoopSync.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
+    btnLoopSync.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    sldLoopStart.setColour(juce::Slider::rotarySliderFillColourId, colours::accent());
+    sldLoopStart.setColour(juce::Slider::rotarySliderOutlineColourId, colours::textDim());
+    sldLoopStart.setColour(juce::Slider::thumbColourId, colours::textBright());
+    sldLoopEnd.setColour(juce::Slider::rotarySliderFillColourId, colours::accent());
+    sldLoopEnd.setColour(juce::Slider::rotarySliderOutlineColourId, colours::textDim());
+    sldLoopEnd.setColour(juce::Slider::thumbColourId, colours::textBright());
 }
 
 void ControlPanel::comboBoxChanged(juce::ComboBox* combo)
@@ -277,6 +363,24 @@ void ControlPanel::comboBoxChanged(juce::ComboBox* combo)
         processor.scaleRoot.store(combo->getSelectedId() - 1);
     else if (combo == &cmbScaleType)
         processor.scaleType.store(juce::jlimit(0, (int)ScaleType::Count - 1, combo->getSelectedId() - 1));
+
+    if (processor.scaleEnabled.load())
+        processor.applyLiveScaleMappingFromBaselines();
+    if (onTakeCompSwitched) onTakeCompSwitched();
+}
+
+void ControlPanel::timerCallback()
+{
+    blinkOn_ = !blinkOn_;
+    auto blinkCol = colours::accent().withAlpha(blinkOn_ ? 0.55f : 0.30f);
+
+    btnComp.setColour(juce::TextButton::buttonColourId,
+                      btnComp.getToggleState() ? blinkCol : colours::bgLighter());
+    btnTransposeToggle.setColour(juce::TextButton::buttonColourId,
+                                 btnTransposeToggle.getToggleState() ? blinkCol : colours::bgLighter());
+
+    btnComp.repaint();
+    btnTransposeToggle.repaint();
 }
 
 } // namespace pflow

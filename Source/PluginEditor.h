@@ -51,7 +51,6 @@ private:
     juce::Label lblTitle;
     juce::ShapeButton btnRecord { "Rec", colours::bgLighter(), colours::bgLighter(), colours::bgLighter() };
     juce::ComboBox cmbGridSnap;
-    juce::ToggleButton btnLoop { "Loop" };
     juce::Label lblSessionBars { {}, "Bars" };
     juce::ComboBox cmbSessionBars;
     juce::TextButton btnStep { "Step" };
@@ -60,7 +59,6 @@ private:
     juce::TextButton btnSettings { "" };
 
     void updateRecordButton();
-    void updateLoopButton();
     void refreshTransportColours();
 
     // Resizable panels (VS Code-style): stored sizes, min/max
