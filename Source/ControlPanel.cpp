@@ -256,10 +256,13 @@ void ControlPanel::resized()
     const int itemGap = 6;
     const int btnH1 = juce::jlimit(28, 34, row1.getHeight() - 8);
     const int rowY1 = row1.getY() + (row1.getHeight() - btnH1) / 2;
-    const int cx = row1.getCentreX();
-    const int halfDiv = 1;
-    juce::Rectangle<int> leftArea(row1.getX(), row1.getY(), cx - row1.getX() - halfDiv, row1.getHeight());
-    juce::Rectangle<int> rightArea(cx + halfDiv, row1.getY(), row1.getRight() - (cx + halfDiv), row1.getHeight());
+    const int totalW = row1.getWidth();
+    const int colW1 = totalW / 3;
+    const int colW2 = totalW / 3;
+    const int colW3 = totalW - colW1 - colW2;
+    juce::Rectangle<int> col1(row1.getX(), row1.getY(), colW1, row1.getHeight());
+    juce::Rectangle<int> col2(row1.getX() + colW1, row1.getY(), colW2, row1.getHeight());
+    juce::Rectangle<int> col3(row1.getX() + colW1 + colW2, row1.getY(), colW3, row1.getHeight());
 
     const int compToggleW = minTextButtonWidth(comboPad, "Comp");
     const int knobSide = juce::jmin(40, btnH1 + 8);
@@ -267,7 +270,7 @@ void ControlPanel::resized()
     const int randW = minTextButtonWidth(comboPad, "Random");
     const int swapW = minTextButtonWidth(comboPad, "Swap");
     const int compClusterW = compToggleW + itemGap + knobW + itemGap + randW + itemGap + swapW;
-    int x = leftArea.getX() + (leftArea.getWidth() - compClusterW) / 2;
+    int x = col1.getX() + (col1.getWidth() - compClusterW) / 2;
     btnComp.setBounds(x, rowY1, compToggleW, btnH1);
     x += compToggleW + itemGap;
     sldRandomRegions.setBounds(x, rowY1 + (btnH1 - knobSide) / 2, knobW, knobSide);
@@ -280,13 +283,9 @@ void ControlPanel::resized()
     const int rootW = textWidthPx(kTextBtnFontH, "C#") + comboPad * 2 + 28;
     const int typeW = maxScaleTypeComboInnerWidth(kTextBtnFontH) + comboPad * 2 + 30;
     const int octW = textWidthPx(kTextBtnFontH, "+2 oct") + comboPad * 2 + 28;
-    const int loopKnobW = 44;
-    const int loopSyncW = 30;
     const int c0W = minTextButtonWidth(comboPad, "C0");
-    const int scaleClusterW = transposeW + itemGap + rootW + itemGap + typeW + itemGap + octW
-                              + itemGap + loopKnobW + itemGap + loopSyncW + itemGap + loopKnobW
-                              + itemGap + c0W;
-    x = rightArea.getX() + (rightArea.getWidth() - scaleClusterW) / 2;
+    const int scaleClusterW = transposeW + itemGap + rootW + itemGap + typeW + itemGap + octW + itemGap + c0W;
+    x = col2.getX() + (col2.getWidth() - scaleClusterW) / 2;
     btnTransposeToggle.setBounds(x, rowY1, transposeW, btnH1);
     x += transposeW + itemGap;
     cmbScaleRoot.setBounds(x, rowY1, rootW, btnH1);
@@ -295,13 +294,17 @@ void ControlPanel::resized()
     x += typeW + itemGap;
     cmbOctave.setBounds(x, rowY1, octW, btnH1);
     x += octW + itemGap;
+    btnC0.setBounds(x, rowY1, c0W, btnH1);
+
+    const int loopKnobW = 44;
+    const int loopSyncW = 30;
+    const int loopClusterW = loopKnobW + itemGap + loopSyncW + itemGap + loopKnobW;
+    x = col3.getX() + (col3.getWidth() - loopClusterW) / 2;
     sldLoopStart.setBounds(x, rowY1 + (btnH1 - loopKnobW) / 2, loopKnobW, loopKnobW);
     x += loopKnobW + itemGap;
     btnLoopSync.setBounds(x, rowY1, loopSyncW, btnH1);
     x += loopSyncW + itemGap;
     sldLoopEnd.setBounds(x, rowY1 + (btnH1 - loopKnobW) / 2, loopKnobW, loopKnobW);
-    x += loopKnobW + itemGap;
-    btnC0.setBounds(x, rowY1, c0W, btnH1);
 }
 
 void ControlPanel::paint(juce::Graphics& g)
@@ -309,8 +312,14 @@ void ControlPanel::paint(juce::Graphics& g)
     auto r = getLocalBounds();
     if (r.getHeight() < 8) return;
     g.setColour(colours::panelBorder().withAlpha(0.5f));
-    const int cx = r.getCentreX();
-    g.drawVerticalLine(cx, (float)r.getY() + 3.0f, (float)r.getBottom() - 3.0f);
+    const int w1 = r.getWidth() / 3;
+    const int w2 = r.getWidth() / 3;
+    const int x1 = r.getX() + w1;
+    const int x2 = r.getX() + w1 + w2;
+    const float y0 = (float)r.getY() + 3.0f;
+    const float y1 = (float)r.getBottom() - 3.0f;
+    g.drawVerticalLine(x1, y0, y1);
+    g.drawVerticalLine(x2, y0, y1);
 }
 
 void ControlPanel::refreshTakeCompUI()
