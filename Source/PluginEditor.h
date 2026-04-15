@@ -48,6 +48,11 @@ private:
     PianoRollEditor   pianoRoll;
 
     // Top row: title | [record + grid + session + …] | settings
+    struct HeaderDivider : public juce::Component
+    {
+        void paint(juce::Graphics& g) override { g.fillAll(colours::panelBorder()); }
+    };
+
     juce::Label lblTitle;
     class RecordButton : public juce::Button
     {
@@ -62,16 +67,17 @@ private:
 
     juce::ComboBox cmbHeaderGrid;
     juce::ComboBox cmbHeaderSession;
+    juce::TextButton btnBpmDisplay { "120" };
+    juce::TextButton btnHalfTime { "Half" };
+    juce::TextButton btnDoubleTime { "Double" };
+    HeaderDivider headerDividerBeforeRecord_;
+    juce::TextButton btnSendMainToDaw { "" };
 
     juce::Label lblSessionBars { {}, "Bars" }; // legacy (hidden; kept for existing logic)
     juce::TextButton btnStep { "Step" };
     juce::TextButton btnExtend { "Extend" };
     juce::TextButton btnTrim { "Trim" };
     juce::TextButton btnSettings { "" };
-    struct HeaderDivider : public juce::Component
-    {
-        void paint(juce::Graphics& g) override { g.fillAll(colours::panelBorder()); }
-    };
     HeaderDivider headerDivider_;
 
     void updateRecordButton();

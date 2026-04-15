@@ -50,6 +50,7 @@ private:
     juce::Slider        sldRandomRegions;
     juce::TextButton    btnRandomComp { "Random" };
     juce::TextButton    btnSwapComp { "Swap" };
+    juce::TextButton    btnDefaultComp { "Default" };
 
     juce::Slider        sldLoopStart;
     juce::TextButton    btnLoopSync { juce::String::charToString(0x221E) }; // ∞

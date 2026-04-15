@@ -107,8 +107,8 @@ float ArrangementView::arrangementContentBottomY() const
     juce::ScopedLock sl(processor.laneLock);
     int numLanes = (int)processor.lanes.size();
     if (numLanes <= 0)
-        return combinedLaneY() + (float)effectiveLaneHeight_;
-    return laneToY(numLanes - 1) + (float)effectiveLaneHeight_;
+        return combinedLaneY() + (float)effectiveLaneHeight_ + (float)effectiveLaneHeight_ * 0.5f;
+    return laneToY(numLanes - 1) + (float)effectiveLaneHeight_ + (float)effectiveLaneHeight_ * 0.5f;
 }
 
 void ArrangementView::rebuildClipBlocks()
@@ -286,11 +286,12 @@ void ArrangementView::paintBeatGrid(juce::Graphics& g)
 
 void ArrangementView::paintLoopMarkers(juce::Graphics& g)
 {
+    if (!processor.loopEnabled.load()) return;
+
     float lx = beatToX(processor.loopStartBeat.load());
     float rx = beatToX(processor.loopEndBeat.load());
     float rH = (float)rulerH;
-    const bool loopOn = processor.loopEnabled.load();
-    const juce::Colour accentCol = loopOn ? colours::accent() : colours::textDim();
+    const juce::Colour accentCol = colours::accent();
 
     // ── Loop region highlight in ruler (Ableton-style solid brace) ──
     g.setColour(accentCol.withAlpha(0.35f));
@@ -404,37 +405,35 @@ void ArrangementView::paintLaneHeaders(juce::Graphics& g)
 
         const float leftPad = 18.0f;
         const float nameH = (float)effectiveLaneHeight_ * 0.5f;
-        const float btnSize = 18.0f;
-        const float btnGap = 6.0f;
+        const float btnW = 30.0f;
+        const float btnH = 22.0f;
+        const float btnGap = 8.0f;
 
         // Lane name first (top), left-aligned with padding
-        g.setColour(dimLane ? colours::textDim().withAlpha(0.5f) : colours::text());
-        g.setFont(12.0f);
+        g.setColour(dimLane ? colours::textDim().withAlpha(0.55f) : colours::text());
+        g.setFont(juce::Font(juce::FontOptions(15.0f)));
         g.drawText(lane.name, leftPad, (int)y, metrics::laneHeaderW - (int)leftPad - 4, (int)nameH,
                    juce::Justification::centredLeft);
 
         // Mute and Solo below name, left-aligned and spaced
-        float btnY = y + nameH + (nameH - btnSize) * 0.5f;
-        float cxM = leftPad + btnSize * 0.5f;
-        float cxS = leftPad + btnSize + btnGap + btnSize * 0.5f;
-        float cy = btnY + btnSize * 0.5f;
+        const float cr = metrics::cornerRadius;
+        float btnY = y + nameH + (nameH - btnH) * 0.5f;
+        auto muteR = juce::Rectangle<float>(leftPad, btnY, btnW, btnH);
+        auto soloR = juce::Rectangle<float>(leftPad + btnW + btnGap, btnY, btnW, btnH);
+
         g.setColour(lane.muted ? colours::muteRed() : colours::panelBorder());
-        if (lane.muted)
-            g.fillEllipse(cxM - btnSize * 0.5f, cy - btnSize * 0.5f, btnSize, btnSize);
-        else
-            g.drawEllipse(cxM - btnSize * 0.5f, cy - btnSize * 0.5f, btnSize, btnSize, 1.2f);
+        if (lane.muted) g.fillRoundedRectangle(muteR, cr);
+        else g.drawRoundedRectangle(muteR, cr, 1.2f);
         g.setColour(lane.muted ? juce::Colours::white : colours::textDim());
         g.setFont(juce::Font(10.0f, juce::Font::bold));
-        g.drawText("M", cxM - 6.0f, cy - 6.0f, 12.0f, 12.0f, juce::Justification::centred);
+        g.drawText("M", muteR, juce::Justification::centred);
 
-        g.setColour(lane.solo ? colours::soloGreen() : colours::panelBorder());
-        if (lane.solo)
-            g.fillEllipse(cxS - btnSize * 0.5f, cy - btnSize * 0.5f, btnSize, btnSize);
-        else
-            g.drawEllipse(cxS - btnSize * 0.5f, cy - btnSize * 0.5f, btnSize, btnSize, 1.2f);
+        g.setColour(lane.solo ? colours::soloBlue() : colours::panelBorder());
+        if (lane.solo) g.fillRoundedRectangle(soloR, cr);
+        else g.drawRoundedRectangle(soloR, cr, 1.2f);
         g.setColour(lane.solo ? juce::Colours::white : colours::textDim());
         g.setFont(juce::Font(10.0f, juce::Font::bold));
-        g.drawText("S", cxS - 6.0f, cy - 6.0f, 12.0f, 12.0f, juce::Justification::centred);
+        g.drawText("S", soloR, juce::Justification::centred);
 
         g.setColour(colours::panelBorder());
         g.drawHorizontalLine((int)(y + effectiveLaneHeight_ - 1), 0.0f, (float)getWidth());
@@ -630,22 +629,12 @@ void ArrangementView::paintCombinedLane(juce::Graphics& g)
     g.setColour(colours::accent().withAlpha(0.8f));
     g.fillRoundedRectangle(2.0f, y + 4.0f, 4.0f, lH - 8.0f, 2.0f);
 
-    // Label
+    // Label (match lane titles)
     const bool compHeader = processor.compsEnabled.load();
     g.setColour(colours::textBright());
-    g.setFont(12.0f);
-    g.drawText(compHeader ? "COMP" : "COMBINED", 18, (int)y, metrics::laneHeaderW - 22,
+    g.setFont(juce::Font(juce::FontOptions(15.0f)));
+    g.drawText(compHeader ? "COMP" : "MAIN", 18, (int)y, metrics::laneHeaderW - 22,
                (int)(lH * 0.6f), juce::Justification::centredLeft);
-
-    // Drag hint when there are notes (only when not in comp-only mode)
-    if (!processor.compsEnabled.load() && !processor.combinedClip.notes.empty())
-    {
-        g.setColour(colours::textDim());
-        g.setFont(9.0f);
-        g.drawText("Drag to DAW", 10, (int)(y + lH * 0.55f),
-                   metrics::laneHeaderW - 14, (int)(lH * 0.35f),
-                   juce::Justification::centredLeft);
-    }
 
     // Bottom border
     g.setColour(colours::panelBorder().withAlpha(0.6f));
@@ -762,7 +751,7 @@ void ArrangementView::paintPlayhead(juce::Graphics& g)
     {
         beat = processor.loopEnabled.load()
             ? processor.mappedBeatPos.load()
-            : processor.hostBeatPos.load();
+            : (processor.hostBeatPos.load() * processor.playheadTempoMul.load());
     }
     else
     {
@@ -1076,14 +1065,15 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e)
         // Check M/S buttons on each lane (below name, left-aligned)
         const float leftPad = 18.0f;
         const float nameH = (float)effectiveLaneHeight_ * 0.5f;
-        const float btnSize = 18.0f;
-        const float btnGap = 6.0f;
+        const float btnW = 30.0f;
+        const float btnH = 22.0f;
+        const float btnGap = 8.0f;
         for (int i = 0; i < numLanes; ++i)
         {
             float y = laneToY(i);
-            float btnY = y + nameH + (nameH - btnSize) * 0.5f;
-            auto muteRect = juce::Rectangle<float>(leftPad, btnY, btnSize, btnSize);
-            auto soloRect = juce::Rectangle<float>(leftPad + btnSize + btnGap, btnY, btnSize, btnSize);
+            float btnY = y + nameH + (nameH - btnH) * 0.5f;
+            auto muteRect = juce::Rectangle<float>(leftPad, btnY, btnW, btnH);
+            auto soloRect = juce::Rectangle<float>(leftPad + btnW + btnGap, btnY, btnW, btnH);
 
             if (muteRect.contains(e.position))
             {

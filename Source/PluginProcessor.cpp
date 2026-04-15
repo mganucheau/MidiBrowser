@@ -164,8 +164,9 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     // ── Recording: capture incoming MIDI before clearing ────────────────────
     if (recording.load() && hostPlaying.load())
     {
-        double bpmRec   = hostBpm.load();
-        double beatRec  = hostBeatPos.load();
+        const double mul = playheadTempoMul.load();
+        double bpmRec   = hostBpm.load() * mul;
+        double beatRec  = hostBeatPos.load() * mul;
         if (bpmRec <= 0.0) bpmRec = 120.0;
         double secPerBeatRec = 60.0 / bpmRec;
         double beatsPerSampleRec = 1.0 / (sampleRate_ * secPerBeatRec);
@@ -270,8 +271,9 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    double bpm     = hostBpm.load();
-    double beatPos = hostBeatPos.load();
+    const double mul = playheadTempoMul.load();
+    double bpm     = hostBpm.load() * mul;
+    double beatPos = hostBeatPos.load() * mul;
 
     if (bpm <= 0.0) bpm = 120.0;
 
@@ -461,6 +463,15 @@ void PatternFlowProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     for (const auto metadata : generated)
         midi.addEvent(metadata.getMessage(), metadata.samplePosition);
+}
+
+void PatternFlowProcessor::clearAllComps()
+{
+    juce::ScopedLock sl(laneLock);
+    if (!takeComps.empty())
+        takeComps[0].segments.clear();
+    compsEnabled.store(false);
+    rebuildCombinedClip();
 }
 
 void PatternFlowProcessor::generateMidiForBeatRange(double startBeat,
@@ -1234,15 +1245,23 @@ void PatternFlowProcessor::randomizeActiveComp()
             pts.push_back(rng.nextDouble() * sessionLen);
         std::sort(pts.begin(), pts.end());
         pts.push_back(sessionLen);
-        // Enforce strict increase without pushing past the session end (unbounded +0.01 could exceed sessionLen).
+        // Snap to current grid division (Off still uses a sensible musical snap for editing).
+        const int gs = gridSnap.load();
+        const double div = (gs == (int)GridSize::Off) ? 0.25 : getGridDivision((GridSize)gs);
+        for (auto& p : pts)
+            p = juce::jlimit(0.0, sessionLen, std::round(p / div) * div);
+
+        std::sort(pts.begin(), pts.end());
+        pts.front() = 0.0;
+        pts.back() = sessionLen;
+
+        // Enforce strict increase on-grid (minimum = one grid division).
         for (size_t i = 1; i < pts.size(); ++i)
         {
             if (pts[i] <= pts[i - 1])
-                pts[i] = std::min(sessionLen, pts[i - 1] + 0.01);
+                pts[i] = std::min(sessionLen, pts[i - 1] + div);
         }
-        if (pts.back() > sessionLen)
-            pts.back() = sessionLen;
-        pts.front() = 0.0;
+        pts.back() = sessionLen;
 
         for (size_t i = 0; i + 1 < pts.size(); ++i)
         {

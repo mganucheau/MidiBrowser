@@ -48,6 +48,9 @@ int gridComboIdFromProcessorGS(PatternFlowProcessor::GridSize gs)
         case GS::EighthTriplet: return 5;
         case GS::SixteenthTriplet: return 6;
         case GS::Off: return 7;
+        case GS::Bar: return 1;
+        case GS::Sixteenth: return 3;
+        case GS::ThirtySecond: return 4;
         default: return 3;
     }
 }
@@ -112,9 +115,9 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     applyAppTheme(processorRef.appThemeId.load());
     lnf.refreshColours();
     // Default size = minimum resize limits (comfortable baseline)
-    setSize(1120, 480);
+    setSize(1120, 600);
     setResizable(true, true);
-    setResizeLimits(1120, 480, 2400, 1600);
+    setResizeLimits(1120, 600, 2400, 1600);
     setFocusContainerType(juce::Component::FocusContainerType::focusContainer);
 
     lblTitle.setText("Pattern Flow", juce::dontSendNotification);
@@ -137,6 +140,62 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         arrangementView.refresh();
     };
     addAndMakeVisible(btnRecord);
+
+    btnHalfTime.setClickingTogglesState(true);
+    btnHalfTime.setComponentID("ActionButton");
+    btnHalfTime.setTooltip("Half-time playhead (0.5×)");
+    btnHalfTime.onClick = [this]
+    {
+        const bool on = btnHalfTime.getToggleState();
+        if (on) btnDoubleTime.setToggleState(false, juce::dontSendNotification);
+        processorRef.playheadTempoMul.store(on ? 0.5 : (btnDoubleTime.getToggleState() ? 2.0 : 1.0));
+    };
+    addAndMakeVisible(btnHalfTime);
+
+    btnDoubleTime.setClickingTogglesState(true);
+    btnDoubleTime.setComponentID("ActionButton");
+    btnDoubleTime.setTooltip("Double-time playhead (2×)");
+    btnDoubleTime.onClick = [this]
+    {
+        const bool on = btnDoubleTime.getToggleState();
+        if (on) btnHalfTime.setToggleState(false, juce::dontSendNotification);
+        processorRef.playheadTempoMul.store(on ? 2.0 : (btnHalfTime.getToggleState() ? 0.5 : 1.0));
+    };
+    addAndMakeVisible(btnDoubleTime);
+
+    btnBpmDisplay.setComponentID("ActionButton");
+    btnBpmDisplay.setTooltip("Playhead BPM (after Half/Double)");
+    btnBpmDisplay.setWantsKeyboardFocus(false);
+    btnBpmDisplay.setMouseClickGrabsKeyboardFocus(false);
+    btnBpmDisplay.onClick = [] {};
+    addAndMakeVisible(btnBpmDisplay);
+
+    addAndMakeVisible(headerDividerBeforeRecord_);
+
+    btnSendMainToDaw.setButtonText(juce::String::charToString(0x21AA)); // ↪
+    btnSendMainToDaw.setComponentID("HeaderIcon");
+    btnSendMainToDaw.setTooltip("Drag Main (combined) MIDI to your DAW");
+    btnSendMainToDaw.onClick = [this]
+    {
+        // Best-effort: start an external file drag (hosts don't expose \"insert clip\" APIs to plugins).
+        auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+        auto tempFile = tempDir.getChildFile("PatternFlow-Main.mid");
+        double bpm = processorRef.getPlayheadBpm();
+        if (bpm <= 0.0) bpm = 120.0;
+        bool written = false;
+        {
+            juce::ScopedLock sl(processorRef.laneLock);
+            double sessionLen = (double)(processorRef.arrangementBars.load() * 4);
+            written = writeMidiFile(processorRef.combinedClip, tempFile, bpm, sessionLen);
+        }
+        if (written)
+        {
+            juce::StringArray files;
+            files.add(tempFile.getFullPathName());
+            juce::DragAndDropContainer::performExternalDragDropOfFiles(files, false);
+        }
+    };
+    addAndMakeVisible(btnSendMainToDaw);
 
     // Grid: labels follow note divisions (1/4 = quarter note = 1 beat, etc.)
     cmbHeaderGrid.addItem("1/4", 1);
@@ -172,15 +231,22 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     cmbHeaderSession.addListener(this);
     addAndMakeVisible(cmbHeaderSession);
 
-    btnStep.setComponentID("HeaderGhost");
+    btnStep.setComponentID("ActionButton");
     btnStep.setTooltip("Arrange clips in stair-step order");
-    btnExtend.setComponentID("HeaderGhost");
+    btnExtend.setComponentID("ActionButton");
     btnExtend.setTooltip("Align all clips to session start, extend to session end (loop if needed)");
-    btnTrim.setComponentID("HeaderGhost");
+    btnTrim.setComponentID("ActionButton");
     btnTrim.setTooltip("Remove empty measures from each selected clip");
+    btnStep.setClickingTogglesState(false);
+    btnExtend.setClickingTogglesState(false);
+    btnTrim.setClickingTogglesState(false);
+    btnStep.setToggleState(false, juce::dontSendNotification);
+    btnExtend.setToggleState(false, juce::dontSendNotification);
+    btnTrim.setToggleState(false, juce::dontSendNotification);
 
     btnStep.onClick = [this]
     {
+        btnStep.setToggleState(false, juce::dontSendNotification);
         juce::ScopedLock sl(processorRef.laneLock);
         int numLanes = (int)processorRef.lanes.size();
         if (numLanes < 1) return;
@@ -231,6 +297,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     };
     btnExtend.onClick = [this]
     {
+        btnExtend.setToggleState(false, juce::dontSendNotification);
         juce::ScopedLock sl(processorRef.laneLock);
         double sessionLen = (double)(processorRef.arrangementBars.load() * 4);
         for (auto& lane : processorRef.lanes)
@@ -248,7 +315,16 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     };
     btnTrim.onClick = [this]
     {
-        processorRef.trimEmptyMeasuresInSelectedClips(arrangementView.selectedClips);
+        btnTrim.setToggleState(false, juce::dontSendNotification);
+        // Apply trim to all clips (no selection required).
+        std::vector<std::pair<int, int>> all;
+        {
+            juce::ScopedLock sl(processorRef.laneLock);
+            for (int li = 0; li < (int)processorRef.lanes.size(); ++li)
+                for (int ri = 0; ri < (int)processorRef.lanes[li].regions.size(); ++ri)
+                    all.push_back({ li, ri });
+        }
+        processorRef.trimEmptyMeasuresInSelectedClips(all);
         arrangementView.refresh();
         if (pianoRoll.hasClip())
         {
@@ -1076,11 +1152,20 @@ void PatternFlowEditor::resized()
                          rowY,
                          gearBtnW, btnH);
 
+    const int sendIconW = gearBtnW;
+    auto sendArea = topRow.removeFromRight(sendIconW + pad);
+    btnSendMainToDaw.setBounds(sendArea.getX() + (sendArea.getWidth() - sendIconW) / 2,
+                               rowY,
+                               sendIconW, btnH);
+
     const int chipPadX = juce::roundToInt((float)metrics::comboTextPadding * metrics::uiScale);
     const int chipChevronRoom = juce::roundToInt(12.0f * metrics::uiScale);
     const int gridW = chipPadX * 2 + maxHeaderGridLabelWidthPx(kHeaderComboFontH) + chipChevronRoom;
     const int sessionComboW = chipPadX * 2 + maxHeaderSessionLabelWidthPx(kHeaderComboFontH) + chipChevronRoom;
     const int recW = btnH;
+    const int bpmW = chipPadX * 2 + textWidthPx(15.0f, "240") + 10;
+    const int halfW = chipPadX * 2 + textWidthPx(15.0f, "Half");
+    const int dblW = chipPadX * 2 + textWidthPx(15.0f, "Double");
 
     const int actionIconW = (int)std::round(13.0f * metrics::uiScale);
     const int actionGap = (int)std::round(6.0f * metrics::uiScale);
@@ -1093,9 +1178,18 @@ void PatternFlowEditor::resized()
     const int dividerGap = (int)std::round(12.0f * metrics::uiScale);
     const int groupGap = (int)std::round(8.0f * metrics::uiScale);
 
-    const int rightClusterW = recW + groupGap + gridW + groupGap + sessionComboW + dividerGap + dividerW + dividerGap
+    const int rightClusterW = bpmW + groupGap + halfW + groupGap + dblW + dividerGap + dividerW + dividerGap
+                              + recW + groupGap + gridW + groupGap + sessionComboW + dividerGap + dividerW + dividerGap
                               + stepW + groupGap + extendW + groupGap + trimW;
     int x = topRow.getRight() - rightClusterW;
+    btnBpmDisplay.setBounds(x, rowY, bpmW, btnH);
+    x += bpmW + groupGap;
+    btnHalfTime.setBounds(x, rowY, halfW, btnH);
+    x += halfW + groupGap;
+    btnDoubleTime.setBounds(x, rowY, dblW, btnH);
+    x += dblW + dividerGap;
+    headerDividerBeforeRecord_.setBounds(x, rowY + (btnH - dividerH) / 2, dividerW, dividerH);
+    x += dividerW + dividerGap;
     btnRecord.setBounds(x, rowY, recW, btnH);
     x += recW + groupGap;
     cmbHeaderGrid.setBounds(x, rowY, gridW, btnH);
@@ -1185,6 +1279,12 @@ void PatternFlowEditor::timerCallback()
         static int recRefreshCounter = 0;
         if (++recRefreshCounter >= 5) { recRefreshCounter = 0; arrangementView.refresh(); }
     }
+
+    // Playhead BPM display
+    const int bpmInt = juce::jmax(1, (int)std::round(processorRef.getPlayheadBpm()));
+    const auto bpmText = juce::String(bpmInt);
+    if (btnBpmDisplay.getButtonText() != bpmText)
+        btnBpmDisplay.setButtonText(bpmText);
 
     // Theme crossfade (approx Material motion: fast-out, slow-in-ish)
     if (themeTransitionAlpha_ > 0.0f)

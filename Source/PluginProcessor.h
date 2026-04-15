@@ -151,6 +151,8 @@ public:
     std::atomic<double>    hostBpm      { 120.0 };
     std::atomic<double>    hostBeatPos  { 0.0 };
     std::atomic<bool>      hostPlaying  { false };
+    /** Playback tempo multiplier applied to our internal playhead (0.5, 1.0, 2.0). */
+    std::atomic<double>    playheadTempoMul { 1.0 };
 
     // Loop-wrapped beat position for visual playhead display
     std::atomic<double>    mappedBeatPos { 0.0 };
@@ -210,6 +212,10 @@ public:
 
     struct TransportInfo { double bpm; double beatPos; bool playing; };
     TransportInfo getTransport() const;
+    double getPlayheadBpm() const { return hostBpm.load() * playheadTempoMul.load(); }
+
+    /** Clear all comp segments and disable comping. */
+    void clearAllComps();
 
 private:
     struct CompBoundaryParamSync final : juce::AsyncUpdater

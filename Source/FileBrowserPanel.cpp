@@ -89,7 +89,7 @@ void FileBrowserPanel::resized()
     const int previewH = 150;
     auto abovePreview = b;
     abovePreview.removeFromBottom(previewH);
-    const int btnH = metrics::buttonH;
+    const int btnH = juce::jlimit(22, 28, metrics::controlStripH - 6);
     btnSetRoot.setBounds(0, abovePreview.getY(), getWidth(), btnH);
     abovePreview.removeFromTop(btnH);
     fileTree->setBounds(abovePreview);
@@ -260,10 +260,10 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     const float msBtnH = 22.0f;
     const float btnGap = 8.0f;
     const int msRowH = (int)std::ceil((double)bottomPad + (double)msBtnH + 10.0);
-    const int frameMargin = 8;
+    const int frameMargin = (int)std::round(bottomPad);
 
     float stripY = (float)(getHeight() - previewH);
-    g.setColour(colours::bgLighter());
+    g.setColour(!previewMuted ? colours::accentDim().withAlpha(0.18f) : colours::bgLighter());
     g.fillRect(0.0f, stripY, (float)getWidth(), (float)previewH);
     g.setColour(colours::panelBorder());
     g.drawHorizontalLine(getHeight() - previewH - 1, 0.0f, (float)getWidth());

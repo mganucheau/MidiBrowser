@@ -218,6 +218,16 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     };
     addAndMakeVisible(btnSwapComp);
 
+    btnDefaultComp.setComponentID("ActionButton");
+    btnDefaultComp.setTooltip("Clear all comps (return to default playback)");
+    btnDefaultComp.onClick = [this]
+    {
+        processor.clearAllComps();
+        refreshTakeCompUI();
+        if (onTakeCompSwitched) onTakeCompSwitched();
+    };
+    addAndMakeVisible(btnDefaultComp);
+
     auto setupLoopKnob = [](juce::Slider& s, const juce::String& name)
     {
         s.setSliderStyle(juce::Slider::RotaryVerticalDrag);
@@ -228,8 +238,6 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     setupLoopKnob(sldLoopEnd, "Loop end (beats)");
     sldLoopStart.onValueChange = [this]
     {
-        if (!processor.loopEnabled.load())
-            return;
         double ns = sldLoopStart.getValue();
         double ne = processor.loopEndBeat.load();
         if (processor.loopSyncMoveTogether.load())
@@ -243,14 +251,16 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
         ne = juce::jlimit(ns + minGap, sessionLen, ne);
         processor.loopStartBeat.store(ns);
         processor.loopEndBeat.store(ne);
+        const bool isDefault = (std::abs(ns - 0.0) < 1.0e-9) && (std::abs(ne - sessionLen) < 1.0e-9);
+        processor.loopEnabled.store(!isDefault);
         sldLoopStart.setValue(ns, juce::dontSendNotification);
         sldLoopEnd.setValue(ne, juce::dontSendNotification);
+        btnLoopToggle.setToggleState(processor.loopEnabled.load(), juce::dontSendNotification);
+        refreshTakeCompUI();
         if (onTakeCompSwitched) onTakeCompSwitched();
     };
     sldLoopEnd.onValueChange = [this]
     {
-        if (!processor.loopEnabled.load())
-            return;
         double ne = sldLoopEnd.getValue();
         double ns = processor.loopStartBeat.load();
         if (processor.loopSyncMoveTogether.load())
@@ -263,8 +273,12 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
         ne = juce::jlimit(ns + minGap, sessionLen, ne);
         processor.loopStartBeat.store(ns);
         processor.loopEndBeat.store(ne);
+        const bool isDefault = (std::abs(ns - 0.0) < 1.0e-9) && (std::abs(ne - sessionLen) < 1.0e-9);
+        processor.loopEnabled.store(!isDefault);
         sldLoopStart.setValue(ns, juce::dontSendNotification);
         sldLoopEnd.setValue(ne, juce::dontSendNotification);
+        btnLoopToggle.setToggleState(processor.loopEnabled.load(), juce::dontSendNotification);
+        refreshTakeCompUI();
         if (onTakeCompSwitched) onTakeCompSwitched();
     };
     addAndMakeVisible(sldLoopStart);
@@ -348,8 +362,9 @@ void ControlPanel::resized()
     const int knobSide = juce::jmin(40, btnH1 + 8);
     const int knobW = knobSide + 30;
     const int randW = minTextButtonWidth(comboPad, "Random");
-    const int swapW = minIconTextButtonWidth(comboPad, "Swap");
-    const int compClusterW = compToggleW + itemGap + knobW + itemGap + randW + itemGap + swapW;
+    const int swapW = minTextButtonWidth(comboPad, "Swap");
+    const int defW = minTextButtonWidth(comboPad, "Default");
+    const int compClusterW = compToggleW + itemGap + knobW + itemGap + randW + itemGap + swapW + itemGap + defW;
 
     const int transposeW = minTextButtonWidth(comboPad, "Transpose");
     const int rootW = textWidthPx(kTextBtnFontH, "C#") + comboPad * 2 + 28;
@@ -383,6 +398,8 @@ void ControlPanel::resized()
     btnRandomComp.setBounds(x, rowY1, randW, btnH1);
     x += randW + itemGap;
     btnSwapComp.setBounds(x, rowY1, swapW, btnH1);
+    x += swapW + itemGap;
+    btnDefaultComp.setBounds(x, rowY1, defW, btnH1);
 
     x = col2.getX() + padX;
     btnTransposeToggle.setBounds(x, rowY1, transposeW, btnH1);
@@ -409,6 +426,31 @@ void ControlPanel::paint(juce::Graphics& g)
 {
     auto r = getLocalBounds();
     if (r.getHeight() < 8) return;
+
+    // Active section tint (comp / transpose / loop)
+    if (divX1_ > 0 && divX2_ > divX1_)
+    {
+        auto col1 = juce::Rectangle<int>(r.getX(), r.getY(), divX1_ - r.getX(), r.getHeight());
+        auto col2 = juce::Rectangle<int>(divX1_, r.getY(), divX2_ - divX1_, r.getHeight());
+        auto col3 = juce::Rectangle<int>(divX2_, r.getY(), r.getRight() - divX2_, r.getHeight());
+
+        if (processor.compsEnabled.load())
+        {
+            g.setColour(colours::accentDim().withAlpha(0.10f));
+            g.fillRect(col1);
+        }
+        if (processor.scaleEnabled.load())
+        {
+            g.setColour(colours::accentDim().withAlpha(0.08f));
+            g.fillRect(col2);
+        }
+        if (processor.loopEnabled.load())
+        {
+            g.setColour(colours::accentDim().withAlpha(0.08f));
+            g.fillRect(col3);
+        }
+    }
+
     g.setColour(colours::panelBorder().withAlpha(0.5f));
     const float y0 = (float)r.getY() + 3.0f;
     const float y1 = (float)r.getBottom() - 3.0f;
@@ -432,10 +474,12 @@ void ControlPanel::refreshTakeCompUI()
     sldRandomRegions.setEnabled(en);
     btnRandomComp.setEnabled(en);
     btnSwapComp.setEnabled(en);
+    btnDefaultComp.setEnabled(en);
 
+    // Loop knobs remain functional even when loop is off; only sync is gated.
     const bool loopOn = processor.loopEnabled.load();
-    sldLoopStart.setEnabled(loopOn);
-    sldLoopEnd.setEnabled(loopOn);
+    sldLoopStart.setEnabled(true);
+    sldLoopEnd.setEnabled(true);
     btnLoopSync.setEnabled(loopOn);
     updateLoopControlColours();
 }

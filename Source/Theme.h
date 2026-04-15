@@ -211,7 +211,7 @@ namespace colours {
 
     inline juce::Colour knobTrack()     { return currentThemeTokens().outlineVariant; }
 
-    inline juce::Colour compSelectionHighlight() { return accent().withAlpha(0.22f); }
+    inline juce::Colour compSelectionHighlight() { return accent().withAlpha(0.30f); }
 
     // Piano roll — realistic piano key colours (high-contrast black & white)
     inline juce::Colour pianoWhiteKey() { return currentThemeTokens().isDark ? juce::Colour(0xffe8e8e8) : juce::Colour(0xfff8f8f8); }
@@ -305,9 +305,9 @@ namespace metrics {
     constexpr int buttonH           = (int)(32 * uiScale);   // h-8 scaled
     constexpr int padding           = (int)(12 * uiScale);   // p-3 scaled
     constexpr float browserFontSize = 13.0f; // +1pt vs previous 12pt
-    // Header + control strip heights (+1/8 vs prior 0.75× baseline)
+    // Header + control strip heights (row 1 == row 2)
     constexpr int titleBarH         = (int)(48 * uiScale * 0.75f * 1.125f);
-    constexpr int controlStripH     = (int)(64 * uiScale * 0.75f * 1.125f);
+    constexpr int controlStripH     = titleBarH;
     constexpr int titleBarPadding   = 4;
     constexpr int comboTextPadding  = 6;
     constexpr int rulerH            = 32;   // Timeline ruler h-8

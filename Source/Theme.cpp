@@ -186,7 +186,7 @@ void PatternFlowLookAndFeel::refreshColours()
     setColour(juce::TreeView::linesColourId,              colours::panelBorder());
     // Base selection colour; animation is handled in TreeViewItem paint via repeated repaints,
     // but we keep this value conservative for balanced colour usage.
-    setColour(juce::TreeView::selectedItemBackgroundColourId, colours::accent().withAlpha(0.14f));
+    setColour(juce::TreeView::selectedItemBackgroundColourId, colours::accent().withAlpha(0.18f));
     setColour(juce::TreeView::dragAndDropIndicatorColourId, colours::accent());
 
     // DirectoryContentsDisplayComponent (file browser text)
@@ -379,25 +379,6 @@ void PatternFlowLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton&
         }
 
         g.drawFittedText(text, r, juce::Justification::centredLeft, 1, 1.0f);
-        return;
-    }
-
-    if (btn.getComponentID() == "ActionButton" && text == "Swap")
-    {
-        // Icon + label for Swap (FigmaExample has an icon before Swap)
-        auto r = btn.getLocalBounds().reduced(10, 2);
-        auto iconArea = r.removeFromLeft(13);
-        r.removeFromLeft(6);
-        const float cx = (float)iconArea.getCentreX();
-        const float cy = (float)iconArea.getCentreY();
-        g.setColour(col);
-        // "Rotate" icon approximation: circular arrow
-        juce::Path p;
-        p.addCentredArc(cx, cy, 4.5f, 4.5f, 0.0f, juce::MathConstants<float>::pi * 0.2f, juce::MathConstants<float>::pi * 1.6f, true);
-        g.strokePath(p, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        g.drawLine(cx + 2.0f, cy - 4.0f, cx + 6.0f, cy - 1.0f, 1.4f);
-        g.drawLine(cx + 2.0f, cy - 4.0f, cx + 3.0f, cy + 0.5f, 1.4f);
-        g.drawText(text, r, juce::Justification::centredLeft, true);
         return;
     }
 
