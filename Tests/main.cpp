@@ -122,6 +122,32 @@ TEST_CASE("getGridDivision returns correct values", "[PluginProcessor]")
     REQUIRE(PatternFlowProcessor::getGridDivision(GS::Sixteenth) == 0.0625);
 }
 
+TEST_CASE("randomizeActiveComp snaps edges to grid", "[PluginProcessor]")
+{
+    PatternFlowProcessor proc;
+    {
+        juce::ScopedLock sl(proc.laneLock);
+        proc.lanes.push_back(CompLane());
+        proc.lanes.push_back(CompLane());
+        proc.ensureDefaultTakeComp();
+    }
+    proc.compRandomRegionCount.store(4);
+    proc.gridSnap.store((int)PatternFlowProcessor::GridSize::Eighth);
+
+    proc.randomizeActiveComp();
+
+    const double div = PatternFlowProcessor::getGridDivision(PatternFlowProcessor::GridSize::Eighth);
+    auto segs = proc.getActiveTakeCompSegmentsSnapshot();
+    REQUIRE_FALSE(segs.empty());
+    for (auto& s : segs)
+    {
+        auto q0 = std::round(s.startBeat / div) * div;
+        auto q1 = std::round(s.endBeat / div) * div;
+        REQUIRE(std::abs(s.startBeat - q0) < 1.0e-9);
+        REQUIRE(std::abs(s.endBeat - q1) < 1.0e-9);
+    }
+}
+
 // ── Validation helpers ───────────────────────────────────────────────────────
 
 TEST_CASE("isValidLane validates lane indices", "[PluginProcessor]")

@@ -85,6 +85,7 @@ private:
     PatternFlowProcessor& processor;
 
     std::vector<ClipBlock> clipBlocks;
+    bool clipBlocksDirty_ = true;
     int effectiveLaneHeight_ = metrics::laneHeight;  // Computed from lane count
     int   hoveredLane   = -1;
     int   hoveredRegion = -1;

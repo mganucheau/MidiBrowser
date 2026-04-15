@@ -56,6 +56,7 @@ void ArrangementView::refresh()
 {
     processor.removeEmptyLanesExceptFirst();
     processor.rebuildCombinedClip();
+    clipBlocksDirty_ = true;
     rebuildClipBlocks();
     repaint();
 }
@@ -160,7 +161,11 @@ void ArrangementView::rebuildClipBlocks()
 void ArrangementView::paint(juce::Graphics& g)
 {
     g.fillAll(colours::bg());
-    rebuildClipBlocks();
+    if (clipBlocksDirty_ || draggingClip || clipDragPending)
+    {
+        rebuildClipBlocks();
+        clipBlocksDirty_ = false;
+    }
     paintBeatGrid(g);
     paintRuler(g);
     paintTimeSelection(g);
@@ -1616,6 +1621,7 @@ void ArrangementView::resized()
         initialZoomDone = true;
         zoomToFitSession();
     }
+    clipBlocksDirty_ = true;
     refresh();
 }
 
