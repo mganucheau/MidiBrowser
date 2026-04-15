@@ -7,8 +7,8 @@ namespace pflow {
 
 namespace {
 
-constexpr float kToggleFontH  = 13.0f;
-constexpr float kTextBtnFontH = 12.0f;
+constexpr float kToggleFontH  = 15.0f;
+constexpr float kTextBtnFontH = 15.0f;
 
 int textWidthPx(float fontHeight, const juce::String& t)
 {
@@ -19,6 +19,13 @@ int textWidthPx(float fontHeight, const juce::String& t)
 int minTextButtonWidth(int comboPad, const juce::String& label)
 {
     return textWidthPx(kTextBtnFontH, label) + comboPad * 2 + 18;
+}
+
+int minIconTextButtonWidth(int comboPad, const juce::String& label)
+{
+    // ActionButton icons reserve space in PatternFlowLookAndFeel::drawButtonText (icon + gap).
+    constexpr int kIconReserve = 32;
+    return textWidthPx(kTextBtnFontH, label) + comboPad * 2 + 18 + kIconReserve;
 }
 
 void commitRandomizeTakeCompWithUndo(PatternFlowProcessor& proc)
@@ -61,14 +68,33 @@ int maxScaleTypeComboInnerWidth(float fontHeight)
     return m;
 }
 
+double loopGridIntervalBeats(const PatternFlowProcessor& proc)
+{
+    const int gs = proc.gridSnap.load();
+    return (gs == (int)PatternFlowProcessor::GridSize::Off)
+        ? 0.25
+        : PatternFlowProcessor::getGridDivision((PatternFlowProcessor::GridSize)gs);
+}
+
 } // namespace
 
 ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
 {
+    btnLoopToggle.setClickingTogglesState(true);
+    btnLoopToggle.setComponentID("ActionButton");
+    btnLoopToggle.setTooltip("Loop: enable/disable looping playback and snapping");
+    btnLoopToggle.setToggleState(processor.loopEnabled.load(), juce::dontSendNotification);
+    btnLoopToggle.onClick = [this]
+    {
+        const bool on = btnLoopToggle.getToggleState();
+        processor.loopEnabled.store(on);
+        refreshTakeCompUI();
+        if (onTakeCompSwitched) onTakeCompSwitched();
+    };
+    addAndMakeVisible(btnLoopToggle);
+
     btnTransposeToggle.setClickingTogglesState(true);
     btnTransposeToggle.setComponentID("ActionButton");
-    btnTransposeToggle.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnTransposeToggle.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     btnTransposeToggle.setTooltip("Transpose: when on, clips follow the selected root and scale in real time. Off restores originals.");
     btnTransposeToggle.setToggleState(processor.scaleEnabled.load(), juce::dontSendNotification);
     btnTransposeToggle.onClick = [this]
@@ -122,8 +148,6 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     };
     addAndMakeVisible(cmbOctave);
 
-    btnC0.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnC0.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     btnC0.setComponentID("ActionButton");
     btnC0.setTooltip("Transpose all MIDI to C0 octave (0-11)");
     btnC0.onClick = [this] { if (onC0Clicked) onC0Clicked(); };
@@ -131,8 +155,6 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
 
     btnComp.setClickingTogglesState(true);
     btnComp.setComponentID("ActionButton");
-    btnComp.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     btnComp.setTooltip("Comp mode: paint and edit comp regions. Turn off to move clips; existing comps stay for playback.");
     btnComp.onClick = [this]
     {
@@ -200,77 +222,160 @@ ControlPanel::ControlPanel(PatternFlowProcessor& proc) : processor(proc)
     {
         s.setSliderStyle(juce::Slider::RotaryVerticalDrag);
         s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-        s.setRange(0.0, 64.0, 0.25);
         s.setTooltip(name);
     };
     setupLoopKnob(sldLoopStart, "Loop start (beats)");
     setupLoopKnob(sldLoopEnd, "Loop end (beats)");
-    sldLoopStart.setValue(processor.loopStartBeat.load(), juce::dontSendNotification);
-    sldLoopEnd.setValue(processor.loopEndBeat.load(), juce::dontSendNotification);
     sldLoopStart.onValueChange = [this]
     {
-        processor.loopEnabled.store(true);
+        if (!processor.loopEnabled.load())
+            return;
         double ns = sldLoopStart.getValue();
         double ne = processor.loopEndBeat.load();
         if (processor.loopSyncMoveTogether.load())
             ne += (ns - processor.loopStartBeat.load());
+        // Snap loop markers to current grid.
+        ns = processor.snapBeat(ns);
+        ne = processor.snapBeat(ne);
+        const double sessionLen = (double)(processor.arrangementBars.load() * 4);
+        const double minGap = loopGridIntervalBeats(processor);
+        ns = juce::jlimit(0.0, std::max(0.0, sessionLen - minGap), ns);
+        ne = juce::jlimit(ns + minGap, sessionLen, ne);
         processor.loopStartBeat.store(ns);
-        processor.loopEndBeat.store(std::max(ns + 0.25, ne));
+        processor.loopEndBeat.store(ne);
+        sldLoopStart.setValue(ns, juce::dontSendNotification);
+        sldLoopEnd.setValue(ne, juce::dontSendNotification);
         if (onTakeCompSwitched) onTakeCompSwitched();
     };
     sldLoopEnd.onValueChange = [this]
     {
-        processor.loopEnabled.store(true);
+        if (!processor.loopEnabled.load())
+            return;
         double ne = sldLoopEnd.getValue();
         double ns = processor.loopStartBeat.load();
         if (processor.loopSyncMoveTogether.load())
             ns += (ne - processor.loopEndBeat.load());
-        processor.loopStartBeat.store(std::max(0.0, std::min(ns, ne - 0.25)));
-        processor.loopEndBeat.store(std::max(processor.loopStartBeat.load() + 0.25, ne));
+        ns = processor.snapBeat(ns);
+        ne = processor.snapBeat(ne);
+        const double sessionLen = (double)(processor.arrangementBars.load() * 4);
+        const double minGap = loopGridIntervalBeats(processor);
+        ns = juce::jlimit(0.0, std::max(0.0, sessionLen - minGap), ns);
+        ne = juce::jlimit(ns + minGap, sessionLen, ne);
+        processor.loopStartBeat.store(ns);
+        processor.loopEndBeat.store(ne);
+        sldLoopStart.setValue(ns, juce::dontSendNotification);
+        sldLoopEnd.setValue(ne, juce::dontSendNotification);
         if (onTakeCompSwitched) onTakeCompSwitched();
     };
     addAndMakeVisible(sldLoopStart);
 
     btnLoopSync.setClickingTogglesState(true);
     btnLoopSync.setComponentID("ActionButton");
-    btnLoopSync.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnLoopSync.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     btnLoopSync.setTooltip("Loop sync (∞): move start/end together");
     btnLoopSync.setToggleState(processor.loopSyncMoveTogether.load(), juce::dontSendNotification);
     btnLoopSync.onClick = [this]
     {
+        if (!processor.loopEnabled.load())
+        {
+            btnLoopSync.setToggleState(processor.loopSyncMoveTogether.load(), juce::dontSendNotification);
+            return;
+        }
         processor.loopSyncMoveTogether.store(btnLoopSync.getToggleState());
     };
     addAndMakeVisible(btnLoopSync);
     addAndMakeVisible(sldLoopEnd);
 
+    updateLoopSliderIntervals();
+    syncLoopSliderValuesFromProcessor();
     refreshTakeCompUI();
     refreshComponentColours();
     startTimerHz(3);
+}
+
+void ControlPanel::updateLoopSliderIntervals()
+{
+    const double sessionLen = (double)(processor.arrangementBars.load() * 4);
+    const double step = loopGridIntervalBeats(processor);
+    sldLoopStart.setRange(0.0, std::max(step, sessionLen - step), step);
+    sldLoopEnd.setRange(step, sessionLen, step);
+}
+
+void ControlPanel::syncLoopSliderValuesFromProcessor()
+{
+    const double sessionLen = (double)(processor.arrangementBars.load() * 4);
+    const double step = loopGridIntervalBeats(processor);
+    double ns = processor.snapBeat(processor.loopStartBeat.load());
+    double ne = processor.snapBeat(processor.loopEndBeat.load());
+    const double minGap = step;
+    ns = juce::jlimit(0.0, std::max(0.0, sessionLen - minGap), ns);
+    ne = juce::jlimit(ns + minGap, sessionLen, ne);
+    processor.loopStartBeat.store(ns);
+    processor.loopEndBeat.store(ne);
+    sldLoopStart.setValue(ns, juce::dontSendNotification);
+    sldLoopEnd.setValue(ne, juce::dontSendNotification);
+}
+
+void ControlPanel::clampLoopBeatsToSession()
+{
+    const double sessionLen = (double)(processor.arrangementBars.load() * 4);
+    const double minGap = loopGridIntervalBeats(processor);
+    double ns = processor.snapBeat(processor.loopStartBeat.load());
+    double ne = processor.snapBeat(processor.loopEndBeat.load());
+    ns = juce::jlimit(0.0, std::max(0.0, sessionLen - minGap), ns);
+    ne = juce::jlimit(ns + minGap, sessionLen, ne);
+    processor.loopStartBeat.store(ns);
+    processor.loopEndBeat.store(ne);
+}
+
+void ControlPanel::syncLoopsAfterSessionOrGridChange()
+{
+    clampLoopBeatsToSession();
+    updateLoopSliderIntervals();
+    syncLoopSliderValuesFromProcessor();
 }
 
 void ControlPanel::resized()
 {
     auto row1 = getLocalBounds();
     const int comboPad = metrics::comboTextPadding;
-    const int itemGap = 6;
-    const int btnH1 = juce::jlimit(28, 34, row1.getHeight() - 8);
+    const int itemGap = 8;
+    const int btnH1 = juce::jlimit(22, 28, row1.getHeight() - 6);
     const int rowY1 = row1.getY() + (row1.getHeight() - btnH1) / 2;
+    const int padX = 12;
     const int totalW = row1.getWidth();
-    const int colW1 = totalW / 3;
-    const int colW2 = totalW / 3;
-    const int colW3 = totalW - colW1 - colW2;
-    juce::Rectangle<int> col1(row1.getX(), row1.getY(), colW1, row1.getHeight());
-    juce::Rectangle<int> col2(row1.getX() + colW1, row1.getY(), colW2, row1.getHeight());
-    juce::Rectangle<int> col3(row1.getX() + colW1 + colW2, row1.getY(), colW3, row1.getHeight());
 
     const int compToggleW = minTextButtonWidth(comboPad, "Comp");
     const int knobSide = juce::jmin(40, btnH1 + 8);
     const int knobW = knobSide + 30;
     const int randW = minTextButtonWidth(comboPad, "Random");
-    const int swapW = minTextButtonWidth(comboPad, "Swap");
+    const int swapW = minIconTextButtonWidth(comboPad, "Swap");
     const int compClusterW = compToggleW + itemGap + knobW + itemGap + randW + itemGap + swapW;
-    int x = col1.getX() + (col1.getWidth() - compClusterW) / 2;
+
+    const int transposeW = minTextButtonWidth(comboPad, "Transpose");
+    const int rootW = textWidthPx(kTextBtnFontH, "C#") + comboPad * 2 + 28;
+    const int typeW = maxScaleTypeComboInnerWidth(kTextBtnFontH) + comboPad * 2 + 30;
+    const int octW = textWidthPx(kTextBtnFontH, "+2 oct") + comboPad * 2 + 28;
+    const int c0W = minTextButtonWidth(comboPad, "C0");
+    const int scaleClusterW = transposeW + itemGap + rootW + itemGap + typeW + itemGap + octW + itemGap + c0W;
+
+    const int loopBtnW = minTextButtonWidth(comboPad, "Loop");
+    const int loopKnobW = 44;
+    const int loopSyncW = 30;
+    const int loopClusterW = loopBtnW + itemGap + loopKnobW + itemGap + loopSyncW + itemGap + loopKnobW;
+
+    // Uneven column widths: fit content nicely, left-aligned within each.
+    const int col1W = compClusterW + padX * 2;
+    const int col2W = scaleClusterW + padX * 2;
+    const int col3W = juce::jmax(loopClusterW + padX * 2, totalW - col1W - col2W);
+
+    divX1_ = row1.getX() + col1W;
+    divX2_ = row1.getX() + col1W + col2W;
+
+    auto col1 = juce::Rectangle<int>(row1.getX(), row1.getY(), col1W, row1.getHeight());
+    auto col2 = juce::Rectangle<int>(divX1_, row1.getY(), col2W, row1.getHeight());
+    auto col3 = juce::Rectangle<int>(divX2_, row1.getY(), col3W, row1.getHeight());
+
+    int x = col1.getX() + padX;
     btnComp.setBounds(x, rowY1, compToggleW, btnH1);
     x += compToggleW + itemGap;
     sldRandomRegions.setBounds(x, rowY1 + (btnH1 - knobSide) / 2, knobW, knobSide);
@@ -279,13 +384,7 @@ void ControlPanel::resized()
     x += randW + itemGap;
     btnSwapComp.setBounds(x, rowY1, swapW, btnH1);
 
-    const int transposeW = minTextButtonWidth(comboPad, "Transpose");
-    const int rootW = textWidthPx(kTextBtnFontH, "C#") + comboPad * 2 + 28;
-    const int typeW = maxScaleTypeComboInnerWidth(kTextBtnFontH) + comboPad * 2 + 30;
-    const int octW = textWidthPx(kTextBtnFontH, "+2 oct") + comboPad * 2 + 28;
-    const int c0W = minTextButtonWidth(comboPad, "C0");
-    const int scaleClusterW = transposeW + itemGap + rootW + itemGap + typeW + itemGap + octW + itemGap + c0W;
-    x = col2.getX() + (col2.getWidth() - scaleClusterW) / 2;
+    x = col2.getX() + padX;
     btnTransposeToggle.setBounds(x, rowY1, transposeW, btnH1);
     x += transposeW + itemGap;
     cmbScaleRoot.setBounds(x, rowY1, rootW, btnH1);
@@ -296,10 +395,9 @@ void ControlPanel::resized()
     x += octW + itemGap;
     btnC0.setBounds(x, rowY1, c0W, btnH1);
 
-    const int loopKnobW = 44;
-    const int loopSyncW = 30;
-    const int loopClusterW = loopKnobW + itemGap + loopSyncW + itemGap + loopKnobW;
-    x = col3.getX() + (col3.getWidth() - loopClusterW) / 2;
+    x = col3.getX() + padX;
+    btnLoopToggle.setBounds(x, rowY1, loopBtnW, btnH1);
+    x += loopBtnW + itemGap;
     sldLoopStart.setBounds(x, rowY1 + (btnH1 - loopKnobW) / 2, loopKnobW, loopKnobW);
     x += loopKnobW + itemGap;
     btnLoopSync.setBounds(x, rowY1, loopSyncW, btnH1);
@@ -312,14 +410,10 @@ void ControlPanel::paint(juce::Graphics& g)
     auto r = getLocalBounds();
     if (r.getHeight() < 8) return;
     g.setColour(colours::panelBorder().withAlpha(0.5f));
-    const int w1 = r.getWidth() / 3;
-    const int w2 = r.getWidth() / 3;
-    const int x1 = r.getX() + w1;
-    const int x2 = r.getX() + w1 + w2;
     const float y0 = (float)r.getY() + 3.0f;
     const float y1 = (float)r.getBottom() - 3.0f;
-    g.drawVerticalLine(x1, y0, y1);
-    g.drawVerticalLine(x2, y0, y1);
+    if (divX1_ > 0) g.drawVerticalLine(divX1_, y0, y1);
+    if (divX2_ > 0) g.drawVerticalLine(divX2_, y0, y1);
 }
 
 void ControlPanel::refreshTakeCompUI()
@@ -327,8 +421,9 @@ void ControlPanel::refreshTakeCompUI()
     btnComp.setToggleState(processor.compsEnabled.load(), juce::dontSendNotification);
     btnLoopSync.setToggleState(processor.loopSyncMoveTogether.load(), juce::dontSendNotification);
     btnTransposeToggle.setToggleState(processor.scaleEnabled.load(), juce::dontSendNotification);
-    sldLoopStart.setValue(processor.loopStartBeat.load(), juce::dontSendNotification);
-    sldLoopEnd.setValue(processor.loopEndBeat.load(), juce::dontSendNotification);
+    btnLoopToggle.setToggleState(processor.loopEnabled.load(), juce::dontSendNotification);
+    updateLoopSliderIntervals();
+    syncLoopSliderValuesFromProcessor();
     sldRandomRegions.setValue((double)juce::jlimit(2, 16, processor.compRandomRegionCount.load()),
                               juce::dontSendNotification);
     lastRandomKnobInt = juce::jlimit(2, 16, processor.compRandomRegionCount.load());
@@ -337,33 +432,38 @@ void ControlPanel::refreshTakeCompUI()
     sldRandomRegions.setEnabled(en);
     btnRandomComp.setEnabled(en);
     btnSwapComp.setEnabled(en);
+
+    const bool loopOn = processor.loopEnabled.load();
+    sldLoopStart.setEnabled(loopOn);
+    sldLoopEnd.setEnabled(loopOn);
+    btnLoopSync.setEnabled(loopOn);
+    updateLoopControlColours();
+}
+
+void ControlPanel::updateLoopControlColours()
+{
+    const bool loopOn = processor.loopEnabled.load();
+    const auto fill   = loopOn ? colours::accent() : colours::textDim().withAlpha(0.42f);
+    const auto outline = loopOn ? colours::textDim() : colours::textDim().withAlpha(0.35f);
+    const auto thumb  = loopOn ? colours::textBright() : colours::textDim().withAlpha(0.55f);
+    sldLoopStart.setColour(juce::Slider::rotarySliderFillColourId, fill);
+    sldLoopStart.setColour(juce::Slider::rotarySliderOutlineColourId, outline);
+    sldLoopStart.setColour(juce::Slider::thumbColourId, thumb);
+    sldLoopEnd.setColour(juce::Slider::rotarySliderFillColourId, fill);
+    sldLoopEnd.setColour(juce::Slider::rotarySliderOutlineColourId, outline);
+    sldLoopEnd.setColour(juce::Slider::thumbColourId, thumb);
 }
 
 void ControlPanel::refreshComponentColours()
 {
-    btnTransposeToggle.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnC0.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnC0.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    // Button styling is handled by PatternFlowLookAndFeel to match the FigmaExample design system.
     sldRandomRegions.setColour(juce::Slider::rotarySliderFillColourId, colours::accent());
     sldRandomRegions.setColour(juce::Slider::rotarySliderOutlineColourId, colours::textDim());
     sldRandomRegions.setColour(juce::Slider::thumbColourId, colours::textBright());
     sldRandomRegions.setColour(juce::Slider::textBoxTextColourId, colours::text());
     sldRandomRegions.setColour(juce::Slider::textBoxBackgroundColourId, colours::bgLighter());
     sldRandomRegions.setColour(juce::Slider::textBoxOutlineColourId, colours::panelBorder());
-    btnRandomComp.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnRandomComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnSwapComp.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnSwapComp.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-
-    btnLoopSync.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnLoopSync.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    sldLoopStart.setColour(juce::Slider::rotarySliderFillColourId, colours::accent());
-    sldLoopStart.setColour(juce::Slider::rotarySliderOutlineColourId, colours::textDim());
-    sldLoopStart.setColour(juce::Slider::thumbColourId, colours::textBright());
-    sldLoopEnd.setColour(juce::Slider::rotarySliderFillColourId, colours::accent());
-    sldLoopEnd.setColour(juce::Slider::rotarySliderOutlineColourId, colours::textDim());
-    sldLoopEnd.setColour(juce::Slider::thumbColourId, colours::textBright());
+    updateLoopControlColours();
 }
 
 void ControlPanel::comboBoxChanged(juce::ComboBox* combo)
@@ -380,16 +480,8 @@ void ControlPanel::comboBoxChanged(juce::ComboBox* combo)
 
 void ControlPanel::timerCallback()
 {
-    blinkOn_ = !blinkOn_;
-    auto blinkCol = colours::accent().withAlpha(blinkOn_ ? 0.55f : 0.30f);
-
-    btnComp.setColour(juce::TextButton::buttonColourId,
-                      btnComp.getToggleState() ? blinkCol : colours::bgLighter());
-    btnTransposeToggle.setColour(juce::TextButton::buttonColourId,
-                                 btnTransposeToggle.getToggleState() ? blinkCol : colours::bgLighter());
-
-    btnComp.repaint();
-    btnTransposeToggle.repaint();
+    // Keep the UI responsive without forcing colour overrides (LookAndFeel owns styling).
+    repaint();
 }
 
 } // namespace pflow

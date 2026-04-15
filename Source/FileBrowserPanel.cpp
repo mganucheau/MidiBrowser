@@ -1,18 +1,23 @@
 #include "FileBrowserPanel.h"
 
 namespace pflow {
+namespace {
+
+juce::File getOrCreateEmptyBrowserStubDir()
+{
+    auto d = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                 .getChildFile("PatternFlow")
+                 .getChildFile("browser_empty");
+    d.createDirectory();
+    return d;
+}
+
+} // namespace
 
 FileBrowserPanel::FileBrowserPanel()
 {
-    lblHeader.setText(juce::String::charToString(0x266B) + "  BROWSER", juce::dontSendNotification);
-    lblHeader.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("SemiBold")));
-    lblHeader.setColour(juce::Label::textColourId, colours::text());
-    addAndMakeVisible(lblHeader);
-
     btnSetRoot.setButtonText("Select a folder");
-    btnSetRoot.setComponentID("ActionButton");
-    btnSetRoot.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnSetRoot.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    btnSetRoot.setComponentID("BrowserFolderButton");
     btnSetRoot.onClick = [this]
     {
         auto chooser = std::make_shared<juce::FileChooser>(
@@ -33,21 +38,30 @@ FileBrowserPanel::FileBrowserPanel()
 
     fileFilter = std::make_unique<juce::WildcardFileFilter>("*.mid;*.midi;*.MID;*.MIDI", "*", "MIDI files");
 
-    auto defaultDir = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
     dirContents = std::make_unique<juce::DirectoryContentsList>(fileFilter.get(), *dirThread);
-    dirContents->setDirectory(defaultDir, true, true);
+    dirContents->setDirectory(getOrCreateEmptyBrowserStubDir(), true, true);
 
-    fileTree = std::make_unique<juce::FileTreeComponent>(*dirContents);
-    fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::bgLight());
+    fileTree = std::make_unique<PflowFileTreeComponent>(*dirContents);
+    fileTree->getViewport()->setScrollBarsShown(true, true, false, false);
+    fileTree->setColour(juce::TreeView::backgroundColourId, colours::bgLight());
     fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
     fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
     fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, juce::Colours::white);
     fileTree->setDragAndDropDescription("MidiFileDrag");
-    fileTree->setItemHeight(18);  // Match lane title text (12pt) row height
+    fileTree->setItemHeight(juce::roundToInt(18.0f * (metrics::browserFontSize / 12.0f)));
     fileTree->setWantsKeyboardFocus(true);
     fileTree->addListener(this);
     fileTree->addMouseListener(static_cast<juce::MouseListener*>(this), true);
     addAndMakeVisible(*fileTree);
+    fileTree->setVisible(false);
+
+    browserEmptyHint_.setText("Select a folder to browse MIDI files", juce::dontSendNotification);
+    browserEmptyHint_.setJustificationType(juce::Justification::centred);
+    browserEmptyHint_.setColour(juce::Label::textColourId, colours::textDim());
+    browserEmptyHint_.setFont(juce::Font(juce::FontOptions(14.0f)));
+    browserEmptyHint_.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(browserEmptyHint_);
+
     setWantsKeyboardFocus(true);
 
     previewFileLabel.setVisible(false);
@@ -61,6 +75,8 @@ FileBrowserPanel::~FileBrowserPanel()
 
 void FileBrowserPanel::setRootDirectory(const juce::File& dir)
 {
+    fileTree->setVisible(true);
+    browserEmptyHint_.setVisible(false);
     dirContents->setDirectory(dir, true, true);
     fileTree->refresh();
     if (onDirectoryChanged)
@@ -70,11 +86,14 @@ void FileBrowserPanel::setRootDirectory(const juce::File& dir)
 void FileBrowserPanel::resized()
 {
     auto b = getLocalBounds();
-    lblHeader.setBounds(b.removeFromTop(26).reduced(metrics::padding, 1));
-    btnSetRoot.setBounds(b.removeFromTop(metrics::buttonH).reduced(metrics::padding, 1));
     const int previewH = 150;
-    b.removeFromBottom(previewH);
-    fileTree->setBounds(b.reduced(metrics::padding / 2, 1));
+    auto abovePreview = b;
+    abovePreview.removeFromBottom(previewH);
+    const int btnH = metrics::buttonH;
+    btnSetRoot.setBounds(0, abovePreview.getY(), getWidth(), btnH);
+    abovePreview.removeFromTop(btnH);
+    fileTree->setBounds(abovePreview);
+    browserEmptyHint_.setBounds(abovePreview);
 }
 
 bool FileBrowserPanel::keyPressed(const juce::KeyPress& key)
@@ -129,15 +148,16 @@ void FileBrowserPanel::mouseDown(const juce::MouseEvent& e)
         }
     }
     const int previewH = 150;
-    const float btnSize = 18.0f;
-    const float btnGap = 6.0f;
-    const int msRowH = 28;
+    const float bottomPad = 10.0f;
+    const float msBtnW = 30.0f;
+    const float msBtnH = 22.0f;
+    const float btnGap = 8.0f;
     const int frameMargin = 8;
     float stripY = (float)(getHeight() - previewH);
-    float msY = stripY + (float)(previewH - msRowH);
-    float msX = (float)(getWidth() - frameMargin - btnSize * 2 - btnGap);
-    auto muteRect = juce::Rectangle<float>(msX, msY + (msRowH - btnSize) * 0.5f, btnSize, btnSize);
-    auto soloRect = juce::Rectangle<float>(msX + btnSize + btnGap, msY + (msRowH - btnSize) * 0.5f, btnSize, btnSize);
+    float msY = stripY + (float)previewH - bottomPad - msBtnH;
+    float msX = (float)(getWidth() - frameMargin) - msBtnW * 2.0f - btnGap;
+    auto muteRect = juce::Rectangle<float>(msX, msY, msBtnW, msBtnH);
+    auto soloRect = juce::Rectangle<float>(msX + msBtnW + btnGap, msY, msBtnW, msBtnH);
     if (e.position.y >= getHeight() - previewH && e.position.y < getHeight())
     {
         if (muteRect.contains(e.position))
@@ -235,9 +255,11 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     g.drawLine((float)getWidth() - 0.5f, 0.0f, (float)getWidth() - 0.5f, (float)getHeight(), 1.0f);
     const int previewH = 150;
     const int pianoKeyWidth = 22;
-    const int msRowH = 28;
-    const float btnSize = 18.0f;
-    const float btnGap = 6.0f;
+    const float bottomPad = 10.0f;
+    const float msBtnW = 30.0f;
+    const float msBtnH = 22.0f;
+    const float btnGap = 8.0f;
+    const int msRowH = (int)std::ceil((double)bottomPad + (double)msBtnH + 10.0);
     const int frameMargin = 8;
 
     float stripY = (float)(getHeight() - previewH);
@@ -345,45 +367,39 @@ void FileBrowserPanel::paint(juce::Graphics& g)
         g.drawText("no midi no cry", contentRect.expanded(frameMargin), juce::Justification::centred);
     }
 
-    // M/S buttons below preview (centered in bottom row)
-    float msY = stripY + (float)(previewH - msRowH) + (msRowH - btnSize) * 0.5f;
-    float msX = (float)(getWidth() - frameMargin - btnSize * 2 - btnGap);
-    float cxM = msX + btnSize * 0.5f;
-    float cxS = msX + btnSize + btnGap + btnSize * 0.5f;
-    float cy = msY + btnSize * 0.5f;
-    g.setColour(previewMuted ? colours::muteRed() : colours::panelBorder());
+    // M/S: same corner radius as menu bar buttons; extra bottom padding inside preview strip
+    const float cr = metrics::cornerRadius;
+    float msY = stripY + (float)previewH - bottomPad - msBtnH;
+    float msX = (float)(getWidth() - frameMargin) - msBtnW * 2.0f - btnGap;
+    auto muteR = juce::Rectangle<float>(msX, msY, msBtnW, msBtnH);
+    auto soloR = juce::Rectangle<float>(msX + msBtnW + btnGap, msY, msBtnW, msBtnH);
+
+    g.setColour(previewMuted ? colours::muteInactive() : colours::panelBorder());
     if (previewMuted)
-        g.fillEllipse(cxM - btnSize * 0.5f, cy - btnSize * 0.5f, btnSize, btnSize);
+        g.fillRoundedRectangle(muteR, cr);
     else
-        g.drawEllipse(cxM - btnSize * 0.5f, cy - btnSize * 0.5f, btnSize, btnSize, 1.2f);
+        g.drawRoundedRectangle(muteR, cr, 1.2f);
     g.setColour(previewMuted ? juce::Colours::white : colours::textDim());
     g.setFont(juce::Font(10.0f, juce::Font::bold));
-    g.drawText("M", cxM - 6.0f, cy - 6.0f, 12.0f, 12.0f, juce::Justification::centred);
+    g.drawText("M", muteR, juce::Justification::centred);
 
-    g.setColour(previewSoloed ? colours::soloGreen() : colours::panelBorder());
+    g.setColour(previewSoloed ? colours::soloBlue() : colours::panelBorder());
     if (previewSoloed)
-        g.fillEllipse(cxS - btnSize * 0.5f, cy - btnSize * 0.5f, btnSize, btnSize);
+        g.fillRoundedRectangle(soloR, cr);
     else
-        g.drawEllipse(cxS - btnSize * 0.5f, cy - btnSize * 0.5f, btnSize, btnSize, 1.2f);
+        g.drawRoundedRectangle(soloR, cr, 1.2f);
     g.setColour(previewSoloed ? juce::Colours::white : colours::textDim());
     g.setFont(juce::Font(10.0f, juce::Font::bold));
-    g.drawText("S", cxS - 6.0f, cy - 6.0f, 12.0f, 12.0f, juce::Justification::centred);
-
-    fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::bgLight());
-    fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
-    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
-    lblHeader.setColour(juce::Label::textColourId, colours::text());
+    g.drawText("S", soloR, juce::Justification::centred);
 }
 
 void FileBrowserPanel::refreshComponentColours()
 {
-    fileTree->setColour(juce::FileTreeComponent::backgroundColourId, colours::bgLight());
+    browserEmptyHint_.setColour(juce::Label::textColourId, colours::textDim());
+    fileTree->setColour(juce::TreeView::backgroundColourId, colours::bgLight());
     fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
     fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
     fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, juce::Colours::white);
-    lblHeader.setColour(juce::Label::textColourId, colours::text());
-    btnSetRoot.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnSetRoot.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
 }
 
 void FileBrowserPanel::fileClicked(const juce::File& file, const juce::MouseEvent&)

@@ -85,11 +85,12 @@ TEST_CASE("quantiseToScale maps to nearest scale degree", "[MidiFileData]")
 
 // ── PluginProcessor snapBeat tests ────────────────────────────────────────────
 
-TEST_CASE("snapBeat with GridSize::Off returns beat unchanged", "[PluginProcessor]")
+TEST_CASE("snapBeat with GridSize::Off snaps to quarter beats", "[PluginProcessor]")
 {
     PatternFlowProcessor proc;
     proc.gridSnap.store((int)PatternFlowProcessor::GridSize::Off);
-    REQUIRE(proc.snapBeat(3.7) == 3.7);
+    REQUIRE(proc.snapBeat(3.7) == 3.75);
+    REQUIRE(proc.snapBeat(3.62) == 3.5);
 }
 
 TEST_CASE("snapBeat with GridSize::Beat snaps to whole beats", "[PluginProcessor]")

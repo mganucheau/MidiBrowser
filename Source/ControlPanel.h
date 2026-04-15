@@ -28,9 +28,18 @@ public:
 
     void refreshTakeCompUI();
 
+    /** Keep rotary loop sliders aligned with the current session length + grid interval. */
+    void updateLoopSliderIntervals();
+    /** Push processor loop beats into sliders (used after grid/session changes). */
+    void syncLoopSliderValuesFromProcessor();
+
+    /** Call after grid snap or session length changes: reclamp loops + refresh sliders. */
+    void syncLoopsAfterSessionOrGridChange();
+
 private:
     PatternFlowProcessor& processor;
 
+    juce::TextButton    btnLoopToggle { "Loop" };
     juce::TextButton    btnTransposeToggle { "Transpose" };
     juce::ComboBox      cmbScaleRoot;
     juce::ComboBox      cmbScaleType;
@@ -47,9 +56,14 @@ private:
     juce::Slider        sldLoopEnd;
 
     bool blinkOn_ = false;
+    int divX1_ = 0;
+    int divX2_ = 0;
 
     /** Last integer region count applied (for randomizing on each step while dragging the knob). */
     int lastRandomKnobInt = 8;
+
+    void clampLoopBeatsToSession();
+    void updateLoopControlColours();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ControlPanel)
 };

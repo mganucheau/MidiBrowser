@@ -52,22 +52,22 @@ inline juce::Font fontFor(TextStyle s)
     // Sizes tuned for a compact audio tool UI while keeping M3 hierarchy.
     switch (s)
     {
-        case TextStyle::DisplaySmall:   return juce::Font(juce::FontOptions(28.0f).withStyle("Bold"));
-        case TextStyle::HeadlineSmall:  return juce::Font(juce::FontOptions(20.0f).withStyle("SemiBold"));
-        case TextStyle::TitleLarge:     return juce::Font(juce::FontOptions(16.0f).withStyle("SemiBold"));
-        case TextStyle::TitleMedium:    return juce::Font(juce::FontOptions(14.0f).withStyle("SemiBold"));
-        case TextStyle::BodyLarge:      return juce::Font(juce::FontOptions(13.0f));
-        case TextStyle::BodyMedium:     return juce::Font(juce::FontOptions(12.0f));
-        case TextStyle::LabelLarge:     return juce::Font(juce::FontOptions(12.0f).withStyle("SemiBold"));
-        case TextStyle::LabelMedium:    return juce::Font(juce::FontOptions(11.0f).withStyle("SemiBold"));
-        case TextStyle::LabelSmall:     return juce::Font(juce::FontOptions(10.0f));
+        case TextStyle::DisplaySmall:   return juce::Font(juce::FontOptions(29.0f).withStyle("Bold"));
+        case TextStyle::HeadlineSmall:  return juce::Font(juce::FontOptions(21.0f).withStyle("SemiBold"));
+        case TextStyle::TitleLarge:     return juce::Font(juce::FontOptions(17.0f).withStyle("SemiBold"));
+        case TextStyle::TitleMedium:    return juce::Font(juce::FontOptions(15.0f).withStyle("SemiBold"));
+        case TextStyle::BodyLarge:      return juce::Font(juce::FontOptions(14.0f));
+        case TextStyle::BodyMedium:     return juce::Font(juce::FontOptions(13.0f));
+        case TextStyle::LabelLarge:     return juce::Font(juce::FontOptions(15.0f).withStyle("SemiBold"));
+        case TextStyle::LabelMedium:    return juce::Font(juce::FontOptions(12.0f).withStyle("SemiBold"));
+        case TextStyle::LabelSmall:     return juce::Font(juce::FontOptions(11.0f));
     }
     return juce::Font(juce::FontOptions(12.0f));
 }
 
 inline std::atomic<int>& appThemeId()
 {
-    static std::atomic<int> id { 10 }; // Default: dark preset
+    static std::atomic<int> id { 0 }; // Single DAW theme
     return id;
 }
 
@@ -99,16 +99,28 @@ inline ThemeTokens makeM3Tokens(juce::Colour seedPrimary, bool dark)
     t.primaryContainer = dark ? mix(seedPrimary, black, 0.55f) : mix(seedPrimary, white, 0.70f);
     t.onPrimaryContainer = dark ? mix(seedPrimary, white, 0.70f) : mix(seedPrimary, black, 0.82f);
 
-    t.surface = dark ? juce::Colour(0xff0f1115) : juce::Colour(0xfffffbfe);
-    t.surfaceContainerLow  = dark ? juce::Colour(0xff151820) : juce::Colour(0xfff7f2fa);
-    t.surfaceContainer     = dark ? juce::Colour(0xff1b1f2a) : juce::Colour(0xfff2ecf5);
-    t.surfaceContainerHigh = dark ? juce::Colour(0xff23283a) : juce::Colour(0xffece6ef);
+    // FigmaExample is a fixed DAW palette: in dark mode, prefer the canonical blue accent.
+    if (dark)
+    {
+        t.primary = juce::Colour(0xff3b82f6);                // blue-500
+        t.onPrimary = juce::Colours::white;
+        t.primaryContainer = juce::Colour(0xff1e3a8a);       // blue-900 (used as "active tint" source)
+        t.onPrimaryContainer = juce::Colour(0xff60a5fa);     // blue-400/300-ish for active text
+    }
 
-    t.onSurface = dark ? juce::Colour(0xffe7eaf0) : juce::Colour(0xff1a1c1e);
-    t.onSurfaceVariant = dark ? juce::Colour(0xffb9c0cc) : juce::Colour(0xff44474f);
+    // DAW-style surfaces (matches Design/FigmaExample palette + style guide).
+    // Light themes still use a softer M3-like palette; dark is deliberately "studio neutral".
+    t.surface = dark ? juce::Colour(0xff1a1a1a) : juce::Colour(0xfffffbfe);
+    t.surfaceContainerLow  = dark ? juce::Colour(0xff1e1e1e) : juce::Colour(0xfff7f2fa);
+    t.surfaceContainer     = dark ? juce::Colour(0xff252525) : juce::Colour(0xfff2ecf5);
+    t.surfaceContainerHigh = dark ? juce::Colour(0xff2a2a2a) : juce::Colour(0xffece6ef);
 
-    t.outline = dark ? juce::Colour(0xff7a8291) : juce::Colour(0xff74777f);
-    t.outlineVariant = dark ? juce::Colour(0xff343a48) : juce::Colour(0xffc4c6d0);
+    t.onSurface = dark ? juce::Colours::white : juce::Colour(0xff1a1c1e);
+    t.onSurfaceVariant = dark ? juce::Colour(0xffa0a0a0) : juce::Colour(0xff44474f);
+
+    // Borders/separators
+    t.outline = dark ? juce::Colour(0xff444444) : juce::Colour(0xff74777f);
+    t.outlineVariant = dark ? juce::Colour(0xff2d2d2d) : juce::Colour(0xffc4c6d0);
 
     t.error = juce::Colour(0xffef4444);
     t.onError = juce::Colours::white;
@@ -123,39 +135,17 @@ struct ThemePreset
     juce::Colour seedPrimary;
 };
 
-inline const std::array<ThemePreset, 20>& themePresets()
+inline const std::array<ThemePreset, 1>& themePresets()
 {
-    static const std::array<ThemePreset, 20> presets {{
-        // Light (0..9)
-        { "Light - Rose",      false, juce::Colour(0xffd81b60) },
-        { "Light - Sky",       false, juce::Colour(0xff0288d1) },
-        { "Light - Teal",      false, juce::Colour(0xff00897b) },
-        { "Light - Indigo",    false, juce::Colour(0xff3949ab) },
-        { "Light - Amber",     false, juce::Colour(0xffff8f00) },
-        { "Light - Mint",      false, juce::Colour(0xff00bfa5) },
-        { "Light - Lavender",  false, juce::Colour(0xff7e57c2) },
-        { "Light - Sage",      false, juce::Colour(0xff2e7d32) },
-        { "Light - Graphite",  false, juce::Colour(0xff546e7a) },
-        { "Light - Berry",     false, juce::Colour(0xff8e24aa) },
-
-        // Dark (10..19)
-        { "Dark - Rose",       true,  juce::Colour(0xffff5c8d) },
-        { "Dark - Sky",        true,  juce::Colour(0xff4fc3f7) },
-        { "Dark - Teal",       true,  juce::Colour(0xff4db6ac) },
-        { "Dark - Indigo",     true,  juce::Colour(0xff8c9eff) },
-        { "Dark - Amber",      true,  juce::Colour(0xffffca28) },
-        { "Dark - Mint",       true,  juce::Colour(0xff64ffda) },
-        { "Dark - Lavender",   true,  juce::Colour(0xffb39ddb) },
-        { "Dark - Sage",       true,  juce::Colour(0xff81c784) },
-        { "Dark - Graphite",   true,  juce::Colour(0xff90a4ae) },
-        { "Dark - Berry",      true,  juce::Colour(0xffea80fc) },
+    static const std::array<ThemePreset, 1> presets {{
+        { "Dark - DAW (FigmaExample)", true, juce::Colour(0xff3b82f6) },
     }};
     return presets;
 }
 
 inline ThemeTokens& currentThemeTokens()
 {
-    static ThemeTokens tokens = makeM3Tokens(themePresets()[11].seedPrimary, true);
+    static ThemeTokens tokens = makeM3Tokens(themePresets()[0].seedPrimary, true);
     return tokens;
 }
 
@@ -231,15 +221,17 @@ namespace colours {
     inline juce::Colour selection()     { return accent().withAlpha(0.25f); }
     inline juce::Colour playhead()      { return juce::Colour(0xffef4444); } // Red playhead per DAW style guide
 
-    // Lane mute/solo – Mute=Yellow, Solo=Green
-    inline juce::Colour muteYellow()    { return juce::Colour(0xfffacc15); }
-    inline juce::Colour soloBlue()      { return juce::Colour(0xff22c55e); }  // Solo is green
+    // Lane mute/solo – Mute=Orange (less "warning"), Solo=Blue
+    /** Preview / UI mute (dark neutral — use in file preview, etc.). */
+    inline juce::Colour muteInactive()  { return juce::Colour(0xff3d3d3d); }
+    inline juce::Colour muteYellow()    { return juce::Colour(0xfff59e0b); } // orange-500 (lanes)
+    inline juce::Colour soloBlue()      { return juce::Colour(0xff3b82f6); }
     inline juce::Colour recordRed()     { return juce::Colour(0xffef4444); }
     inline juce::Colour activeGreen()   { return juce::Colour(0xff22c55e); }
 
     // Legacy aliases for compatibility
     inline juce::Colour muteRed()       { return muteYellow(); }
-    inline juce::Colour soloGreen()     { return soloBlue(); }   // Solo is green
+    inline juce::Colour soloGreen()     { return activeGreen(); }   // Legacy name; solo is now blue in UI
 }
 
 // ── Elevation helpers (M3-inspired) ──────────────────────────────────────────
@@ -290,7 +282,8 @@ namespace version {
 
 // ── Metrics (DAW Professional Style Guide) ───────────────────────────────────
 namespace metrics {
-    constexpr int browserWidth      = 256;   // Left sidebar w-64
+    // Slightly narrower default browser column (~10% vs the original w-64 baseline)
+    constexpr int browserWidth      = 230;
     constexpr int browserMinWidth   = 160;
     constexpr int browserMaxWidth   = 420;
     constexpr int controlPanelH     = 40;   // Transport (reduced by 2/3)
@@ -299,18 +292,22 @@ namespace metrics {
     constexpr int laneHeight        = 96;   // Default track h
     constexpr int laneHeightMin     = 40;   // Min when many lanes
     constexpr int compLaneHeight    = 36;
-    constexpr int knobSize          = 52;
-    constexpr int knobLabelH        = 16;
-    constexpr int knobSpacing       = 68;
-    // M3 uses larger rounding for touch-friendly components.
-    constexpr float cornerRadius    = 12.0f;
-    constexpr float clipCorner      = 10.0f;
+    // Global UI scale (requested +0.5x = 1.5x)
+    constexpr float uiScale         = 1.5f;
+
+    constexpr int knobSize          = (int)(52 * uiScale);
+    constexpr int knobLabelH        = (int)(16 * uiScale);
+    constexpr int knobSpacing       = (int)(68 * uiScale);
+    // FigmaExample buttons/inputs use a tighter radius than the older M3 preset.
+    constexpr float cornerRadius    = 6.0f;
+    constexpr float clipCorner      = 8.0f;
     constexpr int scrollbarW        = 12;   // Custom scrollbar width
-    constexpr int buttonH           = 32;   // h-8
-    constexpr int padding           = 12;   // p-3
-    constexpr float browserFontSize = 12.0f;
-    // Single top bar: title + transport + tools + scale (same height as former tools row)
-    constexpr int titleBarH         = 59;
+    constexpr int buttonH           = (int)(32 * uiScale);   // h-8 scaled
+    constexpr int padding           = (int)(12 * uiScale);   // p-3 scaled
+    constexpr float browserFontSize = 13.0f; // +1pt vs previous 12pt
+    // Header + control strip heights (+1/8 vs prior 0.75× baseline)
+    constexpr int titleBarH         = (int)(48 * uiScale * 0.75f * 1.125f);
+    constexpr int controlStripH     = (int)(64 * uiScale * 0.75f * 1.125f);
     constexpr int titleBarPadding   = 4;
     constexpr int comboTextPadding  = 6;
     constexpr int rulerH            = 32;   // Timeline ruler h-8
@@ -342,6 +339,16 @@ public:
     void drawComboBox(juce::Graphics&, int width, int height, bool isButtonDown,
                       int buttonX, int buttonY, int buttonW, int buttonH,
                       juce::ComboBox&) override;
+
+    void positionComboBoxText(juce::ComboBox&, juce::Label&) override;
+
+    void drawFileBrowserRow(juce::Graphics&, int width, int height,
+                            const juce::File& file, const juce::String& filename, juce::Image* icon,
+                            const juce::String& fileSizeDescription,
+                            const juce::String& fileTimeDescription,
+                            bool isDirectory, bool isItemSelected,
+                            int itemIndex,
+                            juce::DirectoryContentsDisplayComponent& dcc) override;
 
     void drawTextEditorOutline(juce::Graphics&, int width, int height,
                                juce::TextEditor&) override;

@@ -10,6 +10,24 @@ namespace pflow {
 
 namespace {
 
+double loopMinSeparationBeats(const PatternFlowProcessor& proc)
+{
+    const int gs = proc.gridSnap.load();
+    const double div = (gs == (int)PatternFlowProcessor::GridSize::Off)
+        ? 0.25
+        : PatternFlowProcessor::getGridDivision((PatternFlowProcessor::GridSize)gs);
+    return juce::jmax(1.0 / 64.0, div);
+}
+
+/** Visual grid step in the arrangement (matches beats dropdown; Off → beat lines). */
+double arrangementGridStepBeats(const PatternFlowProcessor& proc)
+{
+    const int gs = proc.gridSnap.load();
+    if (gs == (int)PatternFlowProcessor::GridSize::Off)
+        return 1.0;
+    return PatternFlowProcessor::getGridDivision((PatternFlowProcessor::GridSize)gs);
+}
+
 void commitTakeCompUndoIfChanged(PatternFlowProcessor& proc,
                                  const std::vector<TakeCompSegment>& before,
                                  const std::vector<TakeCompSegment>& after)
@@ -201,13 +219,15 @@ void ArrangementView::paintRuler(juce::Graphics& g)
     g.setColour(colours::panelBorder());
     g.drawHorizontalLine(rulerH - 1, 0.0f, (float)getWidth());
 
-    // Bar numbers with beat tick marks
     int totalBeats = processor.arrangementBars.load() * 4;
-    for (double beat = 0; beat <= totalBeats; beat += 1.0)
+    const double gridDiv = arrangementGridStepBeats(processor);
+
+    for (double beat = 0; beat <= totalBeats; beat += gridDiv)
     {
         float x = beatToX(beat);
         if (x < metrics::laneHeaderW || x > getWidth()) continue;
         bool isBar = (std::fmod(beat, 4.0) < 0.001);
+        bool isBeat = (std::fmod(beat, 1.0) < 0.001);
 
         if (isBar)
         {
@@ -217,15 +237,18 @@ void ArrangementView::paintRuler(juce::Graphics& g)
             int barNum = (int)(beat / 4.0) + 1;
             g.drawText(juce::String(barNum), (int)x + 3, 1, 24, rulerH - 4,
                        juce::Justification::centredLeft);
-            // Tick mark
             g.setColour(colours::textDim().withAlpha(0.4f));
             g.drawVerticalLine((int)x, (float)(rulerH - 6), (float)(rulerH - 1));
         }
-        else
+        else if (isBeat)
         {
-            // Sub-beat tick
             g.setColour(colours::textDim().withAlpha(0.2f));
             g.drawVerticalLine((int)x, (float)(rulerH - 4), (float)(rulerH - 1));
+        }
+        else
+        {
+            g.setColour(colours::textDim().withAlpha(0.12f));
+            g.drawVerticalLine((int)x, (float)(rulerH - 3), (float)(rulerH - 1));
         }
     }
 }
@@ -243,10 +266,7 @@ void ArrangementView::paintBeatGrid(juce::Graphics& g)
         g.fillRect(endX, (float)rulerH, (float)getWidth() - endX, (float)(getHeight() - rulerH));
     }
 
-    int gs = processor.gridSnap.load();
-    double gridDiv = (gs == (int)PatternFlowProcessor::GridSize::Off)
-        ? 1.0
-        : PatternFlowProcessor::getGridDivision((PatternFlowProcessor::GridSize)gs);
+    const double gridDiv = arrangementGridStepBeats(processor);
 
     for (double beat = 0; beat <= totalBeats; beat += gridDiv)
     {
@@ -266,12 +286,11 @@ void ArrangementView::paintBeatGrid(juce::Graphics& g)
 
 void ArrangementView::paintLoopMarkers(juce::Graphics& g)
 {
-    if (!processor.loopEnabled.load()) return;
-
     float lx = beatToX(processor.loopStartBeat.load());
     float rx = beatToX(processor.loopEndBeat.load());
     float rH = (float)rulerH;
-    auto accentCol = colours::accent();
+    const bool loopOn = processor.loopEnabled.load();
+    const juce::Colour accentCol = loopOn ? colours::accent() : colours::textDim();
 
     // ── Loop region highlight in ruler (Ableton-style solid brace) ──
     g.setColour(accentCol.withAlpha(0.35f));
@@ -1335,10 +1354,11 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e)
     {
         double beat = std::max(0.0, xToBeat(e.position.x));
         beat = processor.snapBeat(beat);
+        const double minGap = loopMinSeparationBeats(processor);
         if (loopDragging == LoopDragTarget::Start)
-            processor.loopStartBeat.store(std::min(beat, processor.loopEndBeat.load() - 1.0));
+            processor.loopStartBeat.store(std::min(beat, processor.loopEndBeat.load() - minGap));
         else if (loopDragging == LoopDragTarget::End)
-            processor.loopEndBeat.store(std::max(beat, processor.loopStartBeat.load() + 1.0));
+            processor.loopEndBeat.store(std::max(beat, processor.loopStartBeat.load() + minGap));
         else if (loopDragging == LoopDragTarget::Body)
         {
             double newStart = std::max(0.0, processor.snapBeat(beat - loopDragBodyOffset));

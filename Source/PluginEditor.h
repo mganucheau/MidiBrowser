@@ -47,16 +47,32 @@ private:
     ArrangementView   arrangementView;
     PianoRollEditor   pianoRoll;
 
-    // Top row: logo | transport (rec, grid, loop, bars, step, extend, trim) | settings
+    // Top row: title | [record + grid + session + …] | settings
     juce::Label lblTitle;
-    juce::ShapeButton btnRecord { "Rec", colours::bgLighter(), colours::bgLighter(), colours::bgLighter() };
-    juce::ComboBox cmbGridSnap;
-    juce::Label lblSessionBars { {}, "Bars" };
-    juce::ComboBox cmbSessionBars;
+    class RecordButton : public juce::Button
+    {
+    public:
+        RecordButton() : juce::Button("Record") {}
+        void setRecording(bool r) { isRecording_ = r; repaint(); }
+        void paintButton(juce::Graphics& g, bool over, bool down) override;
+    private:
+        bool isRecording_ = false;
+    };
+    RecordButton btnRecord;
+
+    juce::ComboBox cmbHeaderGrid;
+    juce::ComboBox cmbHeaderSession;
+
+    juce::Label lblSessionBars { {}, "Bars" }; // legacy (hidden; kept for existing logic)
     juce::TextButton btnStep { "Step" };
     juce::TextButton btnExtend { "Extend" };
     juce::TextButton btnTrim { "Trim" };
     juce::TextButton btnSettings { "" };
+    struct HeaderDivider : public juce::Component
+    {
+        void paint(juce::Graphics& g) override { g.fillAll(colours::panelBorder()); }
+    };
+    HeaderDivider headerDivider_;
 
     void updateRecordButton();
     void refreshTransportColours();

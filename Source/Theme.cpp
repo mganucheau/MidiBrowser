@@ -161,9 +161,9 @@ void PatternFlowLookAndFeel::refreshColours()
     setColour(juce::TextEditor::backgroundColourId,       colours::bg());
     setColour(juce::TextEditor::textColourId,             colours::text());
     setColour(juce::TextEditor::outlineColourId,          colours::knobTrack());
-    setColour(juce::ComboBox::backgroundColourId,         colours::bg());
+    setColour(juce::ComboBox::backgroundColourId,         colours::bgLighter());
     setColour(juce::ComboBox::textColourId,               juce::Colours::white);
-    setColour(juce::ComboBox::outlineColourId,            colours::knobTrack());
+    setColour(juce::ComboBox::outlineColourId,            colours::panelBorder());
     setColour(juce::ComboBox::arrowColourId,              colours::text());
     setColour(juce::PopupMenu::backgroundColourId,        colours::bgLight());
     setColour(juce::PopupMenu::textColourId,              juce::Colours::white);
@@ -176,6 +176,7 @@ void PatternFlowLookAndFeel::refreshColours()
     setColour(juce::ToggleButton::textColourId,           colours::text());
     setColour(juce::ToggleButton::tickColourId,           colours::accent());
     setColour(juce::ToggleButton::tickDisabledColourId,   colours::textDim());
+    // Default: FigmaExample filled button base (#252525)
     setColour(juce::TextButton::buttonColourId,           colours::bgLighter());
     setColour(juce::TextButton::textColourOffId,          colours::text());
     setColour(juce::TextButton::textColourOnId,           colours::textBright());
@@ -246,62 +247,45 @@ void PatternFlowLookAndFeel::drawButtonBackground(juce::Graphics& g,
                                                     const juce::Colour&,
                                                     bool highlighted, bool down)
 {
-    if (btn.getComponentID() == "Settings")
-        return;
     auto bounds = btn.getLocalBounds().toFloat().reduced(1.0f);
-    const float r = metrics::cornerRadius;
-
-    juce::Colour baseColour = colours::bgLight();
-    juce::Colour outlineCol = colours::panelBorder();
-    juce::Colour ink = stateLayerColourOnSurface();
+    const juce::String id = btn.getComponentID();
+    const float r = (id == "BrowserFolderButton") ? 0.0f : metrics::cornerRadius;
 
     const bool focused = btn.hasKeyboardFocus(true);
+    const bool toggled = btn.getToggleState();
 
-    int elevationDp = 0;
-    if (btn.getComponentID() == "ActivePill")
+    const bool isGhost = (id == "HeaderGhost" || id == "HeaderIcon");
+
+    if (isGhost)
     {
-        baseColour = down ? colours::accentDim()
-                  : (highlighted ? colours::accentBright() : colours::accent());
-        outlineCol = juce::Colours::transparentBlack;
-        ink = stateLayerColourOnPrimary();
-        elevationDp = (down ? 1 : (highlighted ? 2 : 1));
-    }
-    else if (btn.getComponentID() == "ActionButton")
-    {
-        // Tonal button (primaryContainer)
-        baseColour = colours::accentDim();
-        outlineCol = juce::Colours::transparentBlack;
-        ink = colours::accentBright();
-        elevationDp = (down ? 0 : (highlighted ? 1 : 0));
-    }
-    else
-    {
-        // Outlined button
-        baseColour = colours::bgLight();
-        outlineCol = highlighted ? colours::borderHover() : colours::panelBorder();
+        // Header ghost buttons: transparent base, hover bg #2a2a2a, no border.
+        if (highlighted || down || focused)
+        {
+            g.setColour(colours::bgLighter().brighter(0.05f));   // ~#2a2a2a feel
+            g.fillRoundedRectangle(bounds, r);
+        }
+        return;
     }
 
-    // Elevation shadow + surface tint (dark theme)
-    if (elevationDp > 0)
-        drawElevationShadow(g, bounds, r, elevationDp);
+    // Filled button (control strip + app-wide): bg #252525, border #333, hover -> #2a2a2a / #444
+    juce::Colour base = colours::bgLighter();                 // #252525
+    juce::Colour border = juce::Colour(0xff333333);
+    juce::Colour activeBg = colours::accentDim().withAlpha(0.30f); // blue-900 @ 30% alpha feel
+    juce::Colour activeBorder = colours::accent().withAlpha(0.50f);
 
-    baseColour = elevatedSurface(baseColour, elevationDp);
-    g.setColour(baseColour);
+    const bool active = toggled && btn.getClickingTogglesState();
+    if (active)
+        base = activeBg;
+    else if (highlighted || down)
+        base = colours::bgLighter().brighter(0.05f); // ~#2a2a2a
+
+    g.setColour(base);
     g.fillRoundedRectangle(bounds, r);
 
-    const float targetA = stateLayerAlpha(highlighted, down, focused);
-    const float a = animatedAlpha(btn, targetA, 110.0f);
-    if (a > 0.0f)
-    {
-        g.setColour(ink.withAlpha(a));
-        g.fillRoundedRectangle(bounds, r);
-    }
-
-    if (outlineCol != juce::Colours::transparentBlack)
-    {
-        g.setColour(outlineCol.withAlpha(0.8f));
-        g.drawRoundedRectangle(bounds, r, focused ? 1.6f : 1.0f);
-    }
+    // Border
+    juce::Colour useBorder = active ? activeBorder : (highlighted ? juce::Colour(0xff444444) : border);
+    g.setColour(useBorder);
+    g.drawRoundedRectangle(bounds, r, focused ? 1.6f : 1.0f);
 }
 
 void PatternFlowLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
@@ -321,16 +305,31 @@ juce::Font PatternFlowLookAndFeel::getLabelFont(juce::Label&)
 
 juce::Font PatternFlowLookAndFeel::getTextButtonFont(juce::TextButton& btn, int)
 {
-    if (btn.getComponentID() == "Settings")
-        return fontFor(TextStyle::DisplaySmall);
-    if (btn.getComponentID() == "ActivePill" || btn.getComponentID() == "ActionButton")
-        return fontFor(TextStyle::LabelLarge);
-    return juce::LookAndFeel_V4::getTextButtonFont(btn, 0);
+    if (btn.getComponentID() == "HeaderIcon")
+        return juce::Font(juce::FontOptions(40.0f));
+    if (btn.getComponentID() == "HeaderGhost")
+        return juce::Font(juce::FontOptions(15.0f));
+    return juce::Font(juce::FontOptions(15.0f));
 }
 
 juce::Font PatternFlowLookAndFeel::getComboBoxFont(juce::ComboBox&)
 {
     return fontFor(TextStyle::LabelLarge);
+}
+
+void PatternFlowLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
+{
+    // FigmaExample: select text has comfortable left padding (matches buttons' px-2/px-3 feel).
+    // Leave room for chevron at the right.
+    label.setFont(getComboBoxFont(box));
+    label.setJustificationType(juce::Justification::centredLeft);
+    // Avoid "..." / multi-line shrinking for short labels (especially when paired with icons in the header).
+    label.setMinimumHorizontalScale(1.0f);
+
+    auto b = box.getLocalBounds();
+    const int leftPad = juce::roundToInt((float)metrics::comboTextPadding * metrics::uiScale);
+    const int rightPad = juce::roundToInt(12.0f * metrics::uiScale); // chevron + breathing room
+    label.setBounds(b.withTrimmedLeft(leftPad).withTrimmedRight(rightPad));
 }
 
 juce::Font PatternFlowLookAndFeel::getPopupMenuFont()
@@ -341,11 +340,69 @@ juce::Font PatternFlowLookAndFeel::getPopupMenuFont()
 void PatternFlowLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& btn,
                                             bool, bool)
 {
-    g.setColour(btn.findColour(btn.getToggleState() ? juce::TextButton::textColourOnId
-                                                    : juce::TextButton::textColourOffId));
+    const bool active = btn.getToggleState() && btn.getClickingTogglesState();
+    juce::Colour col = colours::text();
+    if (active)
+        col = colours::accentBright();
+    g.setColour(col);
     g.setFont(getTextButtonFont(btn, 0));
+    auto text = btn.getButtonText();
+
+    if (btn.getComponentID() == "HeaderIcon")
+    {
+        g.drawText(text, btn.getLocalBounds(), juce::Justification::centred);
+        return;
+    }
+
+    if (btn.getComponentID() == "HeaderGhost")
+    {
+        // Icon + label (FigmaExample: size-3 icon, gap-1.5, px-3, h-8)
+        auto r = btn.getLocalBounds().reduced(12, 2);
+        auto iconArea = r.removeFromLeft(13);
+        r.removeFromLeft(6);
+
+        const float cx = (float)iconArea.getCentreX();
+        const float cy = (float)iconArea.getCentreY();
+        g.setColour(col);
+
+        if (text == "Trim")
+        {
+            // Simple "scissors" approximation: X glyph
+            g.drawLine(cx - 4.0f, cy - 4.0f, cx + 4.0f, cy + 4.0f, 1.6f);
+            g.drawLine(cx - 4.0f, cy + 4.0f, cx + 4.0f, cy - 4.0f, 1.6f);
+        }
+        else
+        {
+            // Plus icon (Step/Extend)
+            g.drawLine(cx - 4.0f, cy, cx + 4.0f, cy, 1.6f);
+            g.drawLine(cx, cy - 4.0f, cx, cy + 4.0f, 1.6f);
+        }
+
+        g.drawFittedText(text, r, juce::Justification::centredLeft, 1, 1.0f);
+        return;
+    }
+
+    if (btn.getComponentID() == "ActionButton" && text == "Swap")
+    {
+        // Icon + label for Swap (FigmaExample has an icon before Swap)
+        auto r = btn.getLocalBounds().reduced(10, 2);
+        auto iconArea = r.removeFromLeft(13);
+        r.removeFromLeft(6);
+        const float cx = (float)iconArea.getCentreX();
+        const float cy = (float)iconArea.getCentreY();
+        g.setColour(col);
+        // "Rotate" icon approximation: circular arrow
+        juce::Path p;
+        p.addCentredArc(cx, cy, 4.5f, 4.5f, 0.0f, juce::MathConstants<float>::pi * 0.2f, juce::MathConstants<float>::pi * 1.6f, true);
+        g.strokePath(p, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.drawLine(cx + 2.0f, cy - 4.0f, cx + 6.0f, cy - 1.0f, 1.4f);
+        g.drawLine(cx + 2.0f, cy - 4.0f, cx + 3.0f, cy + 0.5f, 1.4f);
+        g.drawText(text, r, juce::Justification::centredLeft, true);
+        return;
+    }
+
     auto r = btn.getLocalBounds().reduced(6, 2);
-    g.drawFittedText(btn.getButtonText(), r, juce::Justification::centred, 1, 1.0f);
+    g.drawFittedText(text, r, juce::Justification::centred, 1, 1.0f);
 }
 
 void PatternFlowLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
@@ -391,23 +448,21 @@ void PatternFlowLookAndFeel::drawComboBox(juce::Graphics& g, int width, int heig
     const float r = metrics::cornerRadius;
     const bool focused = box.hasKeyboardFocus(true);
 
-    const int elevationDp = box.isPopupActive() ? 2 : (box.isMouseOverOrDragging() ? 1 : 0);
-    if (elevationDp > 0)
-        drawElevationShadow(g, bounds, r, elevationDp);
-
-    g.setColour(elevatedSurface(colours::bgLight(), elevationDp));
-    g.fillRoundedRectangle(bounds, r);
-
-    const float targetA = stateLayerAlpha(box.isMouseOverOrDragging(), isButtonDown, focused);
-    const float a = animatedAlpha(box, targetA, 110.0f);
-    if (a > 0.0f)
+    // If this ComboBox lives inside our HeaderSelect wrapper, the wrapper paints the chip.
+    // Drawing another filled rounded-rect here makes it look like there's a button behind.
+    const bool isHeaderSelect = box.getProperties().contains("header_select");
+    if (!isHeaderSelect)
     {
-        g.setColour(stateLayerColourOnSurface().withAlpha(a));
+        // FigmaExample select style: bg #252525, border #333, hover border #444.
+        const bool hover = box.isMouseOverOrDragging();
+        g.setColour(colours::bgLighter());
         g.fillRoundedRectangle(bounds, r);
-    }
 
-    g.setColour((focused ? colours::accent() : colours::panelBorder()).withAlpha(0.9f));
-    g.drawRoundedRectangle(bounds, r, focused ? 1.6f : 1.0f);
+        juce::Colour border = focused ? colours::accent().withAlpha(0.80f)
+                                      : (hover ? juce::Colour(0xff444444) : juce::Colour(0xff333333));
+        g.setColour(border);
+        g.drawRoundedRectangle(bounds, r, focused ? 1.6f : 1.0f);
+    }
 
     // Dropdown chevron
     const float cx = bounds.getRight() - 12.0f;
@@ -418,6 +473,76 @@ void PatternFlowLookAndFeel::drawComboBox(juce::Graphics& g, int width, int heig
     p.lineTo(cx + 5.0f, cy - 2.0f);
     g.setColour(juce::Colours::white.withAlpha(0.85f));
     g.strokePath(p, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void PatternFlowLookAndFeel::drawFileBrowserRow(juce::Graphics& g, int width, int height,
+                                               const juce::File&, const juce::String& filename, juce::Image* icon,
+                                               const juce::String& fileSizeDescription,
+                                               const juce::String& fileTimeDescription,
+                                               bool isDirectory, bool isItemSelected,
+                                               int /*itemIndex*/, juce::DirectoryContentsDisplayComponent& dcc)
+{
+    // Based on LookAndFeel_V2::drawFileBrowserRow, but with explicit typography for the sidebar.
+    auto* fileListComp = dynamic_cast<juce::Component*>(&dcc);
+
+    if (isItemSelected)
+        g.fillAll(fileListComp != nullptr ? fileListComp->findColour(juce::DirectoryContentsDisplayComponent::highlightColourId)
+                                          : findColour(juce::DirectoryContentsDisplayComponent::highlightColourId));
+
+    const int x = 32;
+
+    if (icon != nullptr && icon->isValid())
+    {
+        g.drawImageWithin(*icon, 2, 2, x - 4, height - 4,
+                          juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize,
+                          false);
+    }
+    else
+    {
+        if (auto* d = isDirectory ? getDefaultFolderImage()
+                                  : getDefaultDocumentFileImage())
+            d->drawWithin(g, juce::Rectangle<float>(2.0f, 2.0f, (float)(x - 4), (float)height - 4.0f),
+                          juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize, 1.0f);
+    }
+
+    if (isItemSelected)
+        g.setColour(fileListComp != nullptr ? fileListComp->findColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId)
+                                            : findColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId));
+    else
+        g.setColour(fileListComp != nullptr ? fileListComp->findColour(juce::DirectoryContentsDisplayComponent::textColourId)
+                                            : findColour(juce::DirectoryContentsDisplayComponent::textColourId));
+
+    g.setFont(juce::Font(juce::FontOptions(metrics::browserFontSize)));
+
+    if (width > 450 && ! isDirectory)
+    {
+        auto sizeX = juce::roundToInt((float)width * 0.7f);
+        auto dateX = juce::roundToInt((float)width * 0.8f);
+
+        g.drawText(filename,
+                   x, 0, sizeX - x, height,
+                   juce::Justification::centredLeft, false);
+
+        g.setFont(juce::Font(juce::FontOptions(juce::jmax(10.0f, metrics::browserFontSize - 2.0f))));
+        g.setColour(colours::textDim());
+
+        if (! isDirectory)
+        {
+            g.drawText(fileSizeDescription,
+                       sizeX, 0, dateX - sizeX - 8, height,
+                       juce::Justification::centredRight, false);
+
+            g.drawText(fileTimeDescription,
+                       dateX, 0, width - 8 - dateX, height,
+                       juce::Justification::centredRight, false);
+        }
+    }
+    else
+    {
+        g.drawText(filename,
+                   x, 0, width - x, height,
+                   juce::Justification::centredLeft, false);
+    }
 }
 
 void PatternFlowLookAndFeel::drawTextEditorOutline(juce::Graphics& g, int width, int height,

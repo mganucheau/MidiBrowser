@@ -313,8 +313,8 @@ void PianoRollEditor::paintNoteGrid(juce::Graphics& g)
     }
 
     int gs = processor.gridSnap.load();
-    double gridDiv = (gs == (int)PatternFlowProcessor::GridSize::Off)
-        ? 0.25
+    const double gridDiv = (gs == (int)PatternFlowProcessor::GridSize::Off)
+        ? 1.0
         : PatternFlowProcessor::getGridDivision((PatternFlowProcessor::GridSize)gs);
 
     for (double beat = std::floor(scrollBeatX); beat < scrollBeatX + getWidth() / pixelsPerBeat + 1; beat += gridDiv)

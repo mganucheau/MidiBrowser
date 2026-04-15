@@ -68,7 +68,7 @@ public:
     std::atomic<int> arrangementBars { 4 };
 
     // Grid snap
-    enum class GridSize { Off, Bar, Beat, HalfBeat, QuarterBeat, Eighth, Sixteenth, EighthTriplet, SixteenthTriplet };
+    enum class GridSize { Off, Bar, Beat, HalfBeat, QuarterBeat, Eighth, Sixteenth, ThirtySecond, EighthTriplet, SixteenthTriplet };
     std::atomic<int> gridSnap { (int)GridSize::Beat };
     double snapBeat(double beat) const;
 
@@ -118,7 +118,7 @@ public:
     // Loop mode
     std::atomic<bool>   loopEnabled  { false };
     std::atomic<double> loopStartBeat{ 0.0 };
-    std::atomic<double> loopEndBeat  { 32.0 };
+    std::atomic<double> loopEndBeat  { 16.0 }; // default session = 4 bars × 4 beats
     /** When true, moving loop start/end shifts the other by the same delta. */
     std::atomic<bool>   loopSyncMoveTogether { false };
 

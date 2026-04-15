@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "MidiFileData.h"
+#include "PflowFileTreeComponent.h"
 #include "Theme.h"
 
 namespace pflow {
@@ -53,13 +54,13 @@ public:
 
 private:
     std::unique_ptr<juce::WildcardFileFilter>   fileFilter;
-    std::unique_ptr<juce::FileTreeComponent>     fileTree;
+    std::unique_ptr<PflowFileTreeComponent>     fileTree;
     std::unique_ptr<juce::TimeSliceThread>       dirThread;
     std::unique_ptr<juce::DirectoryContentsList> dirContents;
 
     juce::TextButton  btnSetRoot { "Select a folder" };
-    juce::Label       lblHeader;
     juce::Label       previewFileLabel { {}, "no midi no cry" };
+    juce::Label       browserEmptyHint_;
 
     MidiClip previewClip;
     bool     hasPreviewClip = false;

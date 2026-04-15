@@ -101,6 +101,7 @@ double PatternFlowProcessor::getGridDivision(GridSize gs)
         case GridSize::QuarterBeat:     return 0.25;
         case GridSize::Eighth:          return 0.125;
         case GridSize::Sixteenth:       return 0.0625;
+        case GridSize::ThirtySecond:    return 0.03125;
         case GridSize::EighthTriplet:   return 1.0 / 3.0;
         case GridSize::SixteenthTriplet: return 1.0 / 6.0;
         case GridSize::Off:             return 1.0;  // unused when Off
@@ -111,8 +112,8 @@ double PatternFlowProcessor::getGridDivision(GridSize gs)
 double PatternFlowProcessor::snapBeat(double beat) const
 {
     int g = gridSnap.load();
-    if (g == (int)GridSize::Off) return beat;
-    double div = getGridDivision((GridSize)g);
+    // "Off" still snaps to a reasonable musical grid for editing (matches PianoRollEditor default visuals).
+    const double div = (g == (int)GridSize::Off) ? 0.25 : getGridDivision((GridSize)g);
     return std::round(beat / div) * div;
 }
 

@@ -8,9 +8,9 @@ namespace pflow {
 
 namespace {
 
-constexpr float kToggleFontH  = 13.0f;
-constexpr float kTextBtnFontH = 12.0f;
-constexpr float kLabelFontH   = 11.0f;
+constexpr float kLabelFontH   = 12.0f;
+constexpr float kTitleFontH     = 80.0f; // 2× prior 40pt wordmark
+constexpr float kHeaderComboFontH = 15.0f; // matches ControlPanel scale combos (LabelLarge)
 
 int textWidthPx(float fontHeight, const juce::String& t)
 {
@@ -18,19 +18,88 @@ int textWidthPx(float fontHeight, const juce::String& t)
         juce::Font(juce::FontOptions(fontHeight)).getStringWidthFloat(t)));
 }
 
-int minToggleWidth(int comboPad, const juce::String& label)
+int maxHeaderGridLabelWidthPx(float fontHeight)
 {
-    const int tick = juce::roundToInt(std::ceil(kToggleFontH * 1.1f));
-    const int textLeft = 4 + tick + 10;
-    return textLeft + textWidthPx(kToggleFontH, label) + comboPad * 2 + 10;
+    const char* labels[] = { "1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T", "Off" };
+    int m = 0;
+    for (auto* s : labels)
+        m = juce::jmax(m, textWidthPx(fontHeight, s));
+    return m;
 }
 
-int minTextButtonWidth(int comboPad, const juce::String& label)
+int maxHeaderSessionLabelWidthPx(float fontHeight)
 {
-    return textWidthPx(kTextBtnFontH, label) + comboPad * 2 + 18;
+    const char* labels[] = { "4 bars", "8 bars", "16 bars" };
+    int m = 0;
+    for (auto* s : labels)
+        m = juce::jmax(m, textWidthPx(fontHeight, s));
+    return m;
+}
+
+int gridComboIdFromProcessorGS(PatternFlowProcessor::GridSize gs)
+{
+    using GS = PatternFlowProcessor::GridSize;
+    switch (gs)
+    {
+        case GS::Beat: return 1;
+        case GS::HalfBeat: return 2;
+        case GS::QuarterBeat: return 3;
+        case GS::Eighth: return 4;
+        case GS::EighthTriplet: return 5;
+        case GS::SixteenthTriplet: return 6;
+        case GS::Off: return 7;
+        default: return 3;
+    }
 }
 
 } // namespace
+
+// ── Header components (FigmaExample parity) ───────────────────────────────────
+void PatternFlowEditor::RecordButton::paintButton(juce::Graphics& g, bool over, bool down)
+{
+    // Ensure no rectangular focus/outline is drawn by JUCE; we fully own visuals here.
+    g.setOpacity(1.0f);
+    auto r = getLocalBounds().toFloat();
+    auto cx = r.getCentreX();
+    auto cy = r.getCentreY();
+    const bool hover = over || down;
+
+    if (isRecording_)
+    {
+        // bg-red-600 + glow + pulse
+        const double t = juce::Time::getMillisecondCounterHiRes() / 1000.0;
+        // Tailwind animate-pulse is ~2s ease-in-out; approximate with a sine.
+        const float s = 0.5f + 0.5f * std::sin((float)(t * juce::MathConstants<double>::twoPi / 2.0)); // 2s period
+        const float pulse = 0.50f + 0.50f * s; // 0.5..1.0
+        // Glow must stay inside bounds; otherwise JUCE clips and you see box corners.
+        g.setColour(colours::recordRed().withAlpha(0.55f * pulse));
+        for (int i = 0; i < 4; ++i)
+        {
+            const float inset = 0.5f + (float)i * 0.9f;
+            g.fillEllipse(r.reduced(inset));
+        }
+
+        g.setColour(juce::Colour(0xffdc2626));
+        g.fillEllipse(r.reduced(1.0f));
+
+        // inner white dot (lucide Circle fill)
+        g.setColour(juce::Colours::white);
+        g.fillEllipse(cx - 3.5f, cy - 3.5f, 7.0f, 7.0f);
+    }
+    else
+    {
+        // bg #252525, border #333, hover border #444
+        g.setColour(colours::bgLighter());
+        g.fillEllipse(r.reduced(1.0f));
+
+        g.setColour(hover ? juce::Colour(0xff444444) : juce::Colour(0xff333333));
+        g.drawEllipse(r.reduced(1.0f), 1.0f);
+
+        // inner red dot (lucide Circle, red-500)
+        g.setColour(colours::recordRed());
+        g.fillEllipse(cx - 3.5f, cy - 3.5f, 7.0f, 7.0f);
+    }
+}
 
 PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     : AudioProcessorEditor(&p),
@@ -48,16 +117,16 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     setResizeLimits(1120, 480, 2400, 1600);
     setFocusContainerType(juce::Component::FocusContainerType::focusContainer);
 
-    lblTitle.setText("PatternFlow", juce::dontSendNotification);
-    lblTitle.setFont(juce::Font(juce::FontOptions(18.0f).withStyle("Bold")));
+    lblTitle.setText("Pattern Flow", juce::dontSendNotification);
+    lblTitle.setFont(juce::Font(juce::FontOptions(kTitleFontH).withStyle("Medium")));
+    lblTitle.setMinimumHorizontalScale(1.0f);
     lblTitle.setColour(juce::Label::textColourId, colours::text());
     addAndMakeVisible(lblTitle);
 
-    juce::Path recCircle;
-    recCircle.addEllipse(0.0f, 0.0f, 1.0f, 1.0f);
-    btnRecord.setShape(recCircle, false, true, true);
     updateRecordButton();
     btnRecord.setTooltip("Toggle MIDI recording");
+    btnRecord.setWantsKeyboardFocus(false);
+    btnRecord.setMouseClickGrabsKeyboardFocus(false);
     btnRecord.onClick = [this]
     {
         if (processorRef.recording.load())
@@ -69,53 +138,45 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     };
     addAndMakeVisible(btnRecord);
 
-    cmbGridSnap.addItem("Off", 1);
-    cmbGridSnap.addItem("Bar", 2);
-    cmbGridSnap.addItem("Beat", 3);
-    cmbGridSnap.addItem("1/2", 4);
-    cmbGridSnap.addItem("1/4", 5);
-    cmbGridSnap.addItem("1/8", 6);
-    cmbGridSnap.addItem("1/16", 7);
-    cmbGridSnap.addItem("1/8T", 8);
-    cmbGridSnap.addItem("1/16T", 9);
-    cmbGridSnap.setSelectedId(3);
-    cmbGridSnap.setTooltip("Grid snap");
-    cmbGridSnap.addListener(this);
-    addAndMakeVisible(cmbGridSnap);
-
-    // Loop is now controlled from the control panel (start/end + ∞ sync).
+    // Grid: labels follow note divisions (1/4 = quarter note = 1 beat, etc.)
+    cmbHeaderGrid.addItem("1/4", 1);
+    cmbHeaderGrid.addItem("1/8", 2);
+    cmbHeaderGrid.addItem("1/16", 3);
+    cmbHeaderGrid.addItem("1/32", 4);
+    cmbHeaderGrid.addItem("1/8T", 5);
+    cmbHeaderGrid.addItem("1/16T", 6);
+    cmbHeaderGrid.addItem("Off", 7);
+    cmbHeaderGrid.setSelectedId(gridComboIdFromProcessorGS((PatternFlowProcessor::GridSize)processorRef.gridSnap.load()));
+    cmbHeaderGrid.setTooltip("Grid snap / arrangement lines");
+    cmbHeaderGrid.addListener(this);
+    addAndMakeVisible(cmbHeaderGrid);
 
     lblSessionBars.setColour(juce::Label::textColourId, colours::textDim());
     lblSessionBars.setFont(juce::Font(juce::FontOptions(kLabelFontH)));
     lblSessionBars.setMinimumHorizontalScale(1.0f);
     addAndMakeVisible(lblSessionBars);
+    lblSessionBars.setVisible(false);
     {
         const int barOptions[] = { 4, 8, 16 };
         for (int i = 0; i < 3; ++i)
-            cmbSessionBars.addItem(juce::String(barOptions[i]), i + 1);
+            cmbHeaderSession.addItem(juce::String(barOptions[i]) + " bars", i + 1);
         int bars = processorRef.arrangementBars.load();
         int id = 1;
         for (int i = 0; i < 3; ++i)
             if (bars <= barOptions[i]) { id = i + 1; break; }
             else id = i + 2;
         if (bars > 16) { processorRef.arrangementBars.store(16); id = 3; }
-        cmbSessionBars.setSelectedId(id);
+        cmbHeaderSession.setSelectedId(id);
     }
-    cmbSessionBars.setTooltip("Session length in bars");
-    cmbSessionBars.addListener(this);
-    addAndMakeVisible(cmbSessionBars);
+    cmbHeaderSession.setTooltip("Session length in bars");
+    cmbHeaderSession.addListener(this);
+    addAndMakeVisible(cmbHeaderSession);
 
-    btnStep.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnStep.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnStep.setComponentID("ActionButton");
+    btnStep.setComponentID("HeaderGhost");
     btnStep.setTooltip("Arrange clips in stair-step order");
-    btnExtend.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnExtend.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnExtend.setComponentID("ActionButton");
+    btnExtend.setComponentID("HeaderGhost");
     btnExtend.setTooltip("Align all clips to session start, extend to session end (loop if needed)");
-    btnTrim.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnTrim.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnTrim.setComponentID("ActionButton");
+    btnTrim.setComponentID("HeaderGhost");
     btnTrim.setTooltip("Remove empty measures from each selected clip");
 
     btnStep.onClick = [this]
@@ -207,14 +268,12 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
     addAndMakeVisible(btnStep);
     addAndMakeVisible(btnExtend);
     addAndMakeVisible(btnTrim);
+    addAndMakeVisible(headerDivider_);
 
     refreshTransportColours();
 
     btnSettings.setButtonText(juce::String::charToString(0x2699));
-    btnSettings.setComponentID("Settings");
-    btnSettings.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    btnSettings.setColour(juce::TextButton::textColourOffId, colours::text());
-    btnSettings.setColour(juce::TextButton::textColourOnId, colours::text());
+    btnSettings.setComponentID("HeaderIcon");
     btnSettings.setTooltip("Settings & Info");
     btnSettings.onClick = [this] { showSettingsDialog(); };
     addAndMakeVisible(btnSettings);
@@ -313,7 +372,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
         processorRef.lanes.push_back(newLane);
         arrangementView.refresh();
     };
-    arrangementView.onLoopChanged = [this] { /* loop UI lives in control panel */ };
+    arrangementView.onLoopChanged = [] { /* loop UI lives in control panel */ };
 
     // File browser - restore last directory
     if (processorRef.lastBrowserDir.isNotEmpty())
@@ -472,7 +531,7 @@ void PatternFlowEditor::paint(juce::Graphics& g)
     g.fillAll(colours::bg());
     // Toolbar: row1 = logo + transport + settings; row2 = comp + scale
     g.setColour(colours::bgLight());
-    const int headerH = 2 * metrics::titleBarH;
+    const int headerH = metrics::titleBarH + metrics::controlStripH;
     g.fillRect(0.0f, 0.0f, (float)getWidth(), (float)headerH);
     g.setColour(colours::panelBorder());
     g.drawHorizontalLine(metrics::titleBarH - 1, 0.0f, (float)getWidth());
@@ -504,18 +563,6 @@ void PatternFlowEditor::showSettingsDialog()
         l->setBounds(20, y, w, rowH);
         content->addAndMakeVisible(l);
     };
-
-    addLabel("Theme", 80);
-    auto* cmbTheme = new juce::ComboBox();
-    // 10 light + 10 dark presets (Material Design 3-inspired)
-    for (int i = 0; i < (int)themePresets().size(); ++i)
-        cmbTheme->addItem(themePresets()[(size_t)i].name, i + 1);
-    cmbTheme->setSelectedId(processorRef.appThemeId.load() + 1, juce::dontSendNotification);
-    cmbTheme->setBounds(110, y, 260, rowH);
-    cmbTheme->setColour(juce::ComboBox::backgroundColourId, colours::bgLight());
-    cmbTheme->setColour(juce::ComboBox::textColourId, colours::textBright());
-    content->addAndMakeVisible(cmbTheme);
-    y += rowH + 8;
 
     addLabel("MIDI In", 80);
     auto* cmbMidiIn = new juce::ComboBox();
@@ -589,31 +636,6 @@ void PatternFlowEditor::showSettingsDialog()
     licenseEditor->setText(version::license);
     licenseEditor->setBounds(20, y, 380, 120);
     content->addAndMakeVisible(licenseEditor);
-
-    cmbTheme->onChange = [this, cmbTheme]()
-    {
-        int themeId = cmbTheme->getSelectedId() - 1;
-        processorRef.appThemeId.store(themeId);
-        // Theme transition: snapshot old UI then fade to new.
-        auto snapshot = createComponentSnapshot(getLocalBounds());
-        applyAppTheme(themeId);
-        lnf.refreshColours();
-        lblTitle.setColour(juce::Label::textColourId, colours::text());
-        btnSettings.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-        btnSettings.setColour(juce::TextButton::textColourOffId, colours::text());
-        controlPanel.refreshComponentColours();
-        refreshTransportColours();
-        fileBrowser.refreshComponentColours();
-        arrangementView.refreshComponentColours();
-        pianoRoll.refreshComponentColours();
-        themeTransitionSnapshot_ = snapshot;
-        themeTransitionAlpha_ = 1.0f;
-        themeTransitionStartMs_ = juce::Time::getMillisecondCounter();
-        startTimerHz(60);
-        repaint();
-        arrangementView.refresh();
-        pianoRoll.repaint();
-    };
 
     auto* viewport = new juce::Viewport();
     viewport->setViewedComponent(content, false);
@@ -1031,53 +1053,72 @@ void PatternFlowEditor::resized()
 {
     auto b = getLocalBounds();
 
-    // Row 1: logo | transport (centered) | settings; row 2: control panel (comp | scale)
+    // Row 1: [title] | [record + combos + …] | [settings]
     const int pad = metrics::titleBarPadding;
-    const int logoW = 120;
-    const int gearSize = 36;
-    const int comboPad = metrics::comboTextPadding;
-    const int stepGap = 8;
-
+    const int gearPad = juce::roundToInt(12.0f * metrics::uiScale);
+    const int gearIconPx = 40;
+    const int gearBtnW = gearPad * 2 + gearIconPx;
     auto topRow = b.removeFromTop(metrics::titleBarH);
-    lblTitle.setBounds(topRow.removeFromLeft(logoW).reduced(pad, pad));
-    auto gearArea = topRow.removeFromRight(gearSize + pad * 2);
-    btnSettings.setBounds(gearArea.getX() + (gearArea.getWidth() - gearSize) / 2,
-                         gearArea.getY() + (gearArea.getHeight() - gearSize) / 2,
-                         gearSize, gearSize);
+    const int px = metrics::padding; // scaled
+    topRow.removeFromLeft(px);
+    topRow.removeFromRight(px);
 
-    const int btnH = juce::jlimit(28, 34, topRow.getHeight() - 8);
+    const int btnH = juce::jlimit(22, 28, topRow.getHeight() - 4); // match ControlPanel scale row
     const int rowY = topRow.getY() + (topRow.getHeight() - btnH) / 2;
-    const int recSize = juce::jmin(28, btnH);
-    const int gridW = textWidthPx(kTextBtnFontH, "1/16T") + comboPad * 2 + 30;
-    const int barsLblW = textWidthPx(kLabelFontH, "Bars") + comboPad + 6;
-    const int sessionComboW = textWidthPx(kTextBtnFontH, "16") + comboPad * 2 + 34;
-    const int stepW = minTextButtonWidth(comboPad, "Step");
-    const int extendW = minTextButtonWidth(comboPad, "Extend");
-    const int trimW = minTextButtonWidth(comboPad, "Trim");
-    const int transportW = recSize + stepGap + gridW + stepGap + barsLblW + 4 + sessionComboW
-                             + stepGap + stepW + stepGap + extendW + stepGap + trimW;
-    int x = topRow.getX() + (topRow.getWidth() - transportW) / 2;
-    btnRecord.setBounds(x, rowY + (btnH - recSize) / 2, recSize, recSize);
-    x += recSize + stepGap;
-    cmbGridSnap.setBounds(x, rowY, gridW, btnH);
-    x += gridW + stepGap;
-    lblSessionBars.setBounds(x, rowY, barsLblW, btnH);
-    x += barsLblW + 4;
-    cmbSessionBars.setBounds(x, rowY, sessionComboW, btnH);
-    x += sessionComboW + stepGap;
+    const int titleW = textWidthPx(kTitleFontH, "Pattern Flow");
+    const int leftClusterW = titleW + 6;
+    auto leftCluster = topRow.removeFromLeft(leftClusterW);
+
+    lblTitle.setBounds(leftCluster.getX(), topRow.getY(), titleW + 6, topRow.getHeight());
+
+    auto gearArea = topRow.removeFromRight(gearBtnW + pad * 2);
+    btnSettings.setBounds(gearArea.getX() + (gearArea.getWidth() - gearBtnW) / 2,
+                         rowY,
+                         gearBtnW, btnH);
+
+    const int chipPadX = juce::roundToInt((float)metrics::comboTextPadding * metrics::uiScale);
+    const int chipChevronRoom = juce::roundToInt(12.0f * metrics::uiScale);
+    const int gridW = chipPadX * 2 + maxHeaderGridLabelWidthPx(kHeaderComboFontH) + chipChevronRoom;
+    const int sessionComboW = chipPadX * 2 + maxHeaderSessionLabelWidthPx(kHeaderComboFontH) + chipChevronRoom;
+    const int recW = btnH;
+
+    const int actionIconW = (int)std::round(13.0f * metrics::uiScale);
+    const int actionGap = (int)std::round(6.0f * metrics::uiScale);
+    const int actionPadX = (int)std::round(12.0f * metrics::uiScale); // px-3 scaled
+    const int stepW = actionPadX * 2 + actionIconW + actionGap + textWidthPx(15.0f, "Step");
+    const int extendW = actionPadX * 2 + actionIconW + actionGap + textWidthPx(15.0f, "Extend");
+    const int trimW = actionPadX * 2 + actionIconW + actionGap + textWidthPx(15.0f, "Trim");
+    const int dividerW = 1;
+    const int dividerH = 24;
+    const int dividerGap = (int)std::round(12.0f * metrics::uiScale);
+    const int groupGap = (int)std::round(8.0f * metrics::uiScale);
+
+    const int rightClusterW = recW + groupGap + gridW + groupGap + sessionComboW + dividerGap + dividerW + dividerGap
+                              + stepW + groupGap + extendW + groupGap + trimW;
+    int x = topRow.getRight() - rightClusterW;
+    btnRecord.setBounds(x, rowY, recW, btnH);
+    x += recW + groupGap;
+    cmbHeaderGrid.setBounds(x, rowY, gridW, btnH);
+    x += gridW + groupGap;
+    cmbHeaderSession.setBounds(x, rowY, sessionComboW, btnH);
+    x += sessionComboW + dividerGap;
+    headerDivider_.setBounds(x, rowY + (btnH - dividerH) / 2, dividerW, dividerH);
+    x += dividerW + dividerGap;
     btnStep.setBounds(x, rowY, stepW, btnH);
-    x += stepW + stepGap;
+    x += stepW + groupGap;
     btnExtend.setBounds(x, rowY, extendW, btnH);
-    x += extendW + stepGap;
+    x += extendW + groupGap;
     btnTrim.setBounds(x, rowY, trimW, btnH);
 
-    auto controlStrip = b.removeFromTop(metrics::titleBarH);
+    // FigmaExample toolbar doesn't show a "Bars" label; session length is in the dropdown.
+    lblSessionBars.setBounds(0, 0, 0, 0);
+
+    auto controlStrip = b.removeFromTop(metrics::controlStripH);
     controlStrip.removeFromLeft(pad);
     controlStrip.removeFromRight(pad);
     controlPanel.setBounds(controlStrip);
 
     int contentH = b.getHeight();
-    int contentW = b.getWidth();
 
     // Resizable: browser (left) | resizer | arrangement | [resizer | piano when visible]
     if (fileBrowserVisible_)
@@ -1136,8 +1177,10 @@ void PatternFlowEditor::timerCallback()
         if (!recNow)
             arrangementView.refresh();
     }
+    if (recNow)
+        btnRecord.repaint(); // animate pulse/glow like FigmaExample
     // Refresh arrangement periodically during recording so new notes appear in combined lane
-    else if (recNow && processorRef.hostPlaying.load())
+    else if (processorRef.hostPlaying.load())
     {
         static int recRefreshCounter = 0;
         if (++recRefreshCounter >= 5) { recRefreshCounter = 0; arrangementView.refresh(); }
@@ -1255,26 +1298,17 @@ void PatternFlowEditor::zoomToFit()
 void PatternFlowEditor::updateRecordButton()
 {
     bool isRec = processorRef.recording.load();
-    if (isRec)
-        btnRecord.setColours(colours::recordRed(), colours::recordRed().brighter(0.1f), colours::recordRed());
-    else
-        btnRecord.setColours(colours::bgLighter(), colours::bgLighter().brighter(0.1f), colours::bgLighter());
+    btnRecord.setRecording(isRec);
 }
 
 void PatternFlowEditor::refreshTransportColours()
 {
     lblSessionBars.setColour(juce::Label::textColourId, colours::textDim());
-    btnStep.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnStep.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnExtend.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnExtend.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    btnTrim.setColour(juce::TextButton::buttonColourId, colours::bgLighter());
-    btnTrim.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
 }
 
 void PatternFlowEditor::comboBoxChanged(juce::ComboBox* combo)
 {
-    if (combo == &cmbSessionBars)
+    if (combo == &cmbHeaderSession)
     {
         const int barOptions[] = { 4, 8, 16 };
         int idx = combo->getSelectedId() - 1;
@@ -1286,27 +1320,28 @@ void PatternFlowEditor::comboBoxChanged(juce::ComboBox* combo)
             processorRef.loopStartBeat.store(0.0);
             processorRef.loopEndBeat.store(sessionBeats);
             processorRef.clampArrangementToSessionLength();
+            controlPanel.syncLoopsAfterSessionOrGridChange();
             arrangementView.zoomToFitSession();
         }
     }
-    else if (combo == &cmbGridSnap)
+    else if (combo == &cmbHeaderGrid)
     {
         using GS = PatternFlowProcessor::GridSize;
-        int id = combo->getSelectedId();
-        GS gs = GS::Beat;
+        const int id = combo->getSelectedId();
+        GS gs = GS::QuarterBeat;
         switch (id)
         {
-            case 1: gs = GS::Off;              break;
-            case 2: gs = GS::Bar;              break;
-            case 3: gs = GS::Beat;             break;
-            case 4: gs = GS::HalfBeat;         break;
-            case 5: gs = GS::QuarterBeat;      break;
-            case 6: gs = GS::Eighth;           break;
-            case 7: gs = GS::Sixteenth;        break;
-            case 8: gs = GS::EighthTriplet;    break;
-            case 9: gs = GS::SixteenthTriplet; break;
+            case 1: gs = GS::Beat;              break; // 1/4 note
+            case 2: gs = GS::HalfBeat;          break; // 1/8
+            case 3: gs = GS::QuarterBeat;       break; // 1/16
+            case 4: gs = GS::Eighth;            break; // 1/32
+            case 5: gs = GS::EighthTriplet;     break;
+            case 6: gs = GS::SixteenthTriplet;  break;
+            case 7: gs = GS::Off;               break;
         }
         processorRef.gridSnap.store((int)gs);
+        controlPanel.syncLoopsAfterSessionOrGridChange();
+        arrangementView.repaint();
     }
 }
 

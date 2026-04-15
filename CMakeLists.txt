@@ -83,6 +83,7 @@ juce_add_plugin(PatternFlow
 target_include_directories(PatternFlow PRIVATE "${CMAKE_BINARY_DIR}/Generated")
 
 target_sources(PatternFlow PRIVATE
+    Source/PflowFileTreeComponent.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/MidiFileData.cpp
