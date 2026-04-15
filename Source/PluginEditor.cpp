@@ -172,12 +172,14 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
 
     addAndMakeVisible(headerDividerBeforeRecord_);
 
-    btnSendMainToDaw.setButtonText(juce::String::charToString(0x21AA)); // ↪
-    btnSendMainToDaw.setComponentID("HeaderIcon");
-    btnSendMainToDaw.setTooltip("Drag Main (combined) MIDI to your DAW");
-    btnSendMainToDaw.onClick = [this]
+    btnExport.setComponentID("ActionButton");
+    btnExport.setClickingTogglesState(false);
+    btnExport.setTooltip("Export Main MIDI to DAW (drag-drop)");
+    btnExport.onClick = [this]
     {
-        // Best-effort: start an external file drag (hosts don't expose \"insert clip\" APIs to plugins).
+        btnExport.setToggleState(false, juce::dontSendNotification);
+
+        // Best-effort: start an external file drag (hosts don't expose “insert clip” APIs to plugins).
         auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
         auto tempFile = tempDir.getChildFile("PatternFlow-Main.mid");
         double bpm = processorRef.getPlayheadBpm();
@@ -195,7 +197,7 @@ PatternFlowEditor::PatternFlowEditor(PatternFlowProcessor& p)
             juce::DragAndDropContainer::performExternalDragDropOfFiles(files, false);
         }
     };
-    addAndMakeVisible(btnSendMainToDaw);
+    addAndMakeVisible(btnExport);
 
     // Grid: labels follow note divisions (1/4 = quarter note = 1 beat, etc.)
     cmbHeaderGrid.addItem("1/4", 1);
@@ -1152,11 +1154,11 @@ void PatternFlowEditor::resized()
                          rowY,
                          gearBtnW, btnH);
 
-    const int sendIconW = gearBtnW;
-    auto sendArea = topRow.removeFromRight(sendIconW + pad);
-    btnSendMainToDaw.setBounds(sendArea.getX() + (sendArea.getWidth() - sendIconW) / 2,
-                               rowY,
-                               sendIconW, btnH);
+    const int exportW = gearPad * 2 + textWidthPx(15.0f, "Export") + 10;
+    auto exportArea = topRow.removeFromRight(exportW + pad);
+    btnExport.setBounds(exportArea.getX() + (exportArea.getWidth() - exportW) / 2,
+                        rowY,
+                        exportW, btnH);
 
     const int chipPadX = juce::roundToInt((float)metrics::comboTextPadding * metrics::uiScale);
     const int chipChevronRoom = juce::roundToInt(12.0f * metrics::uiScale);
