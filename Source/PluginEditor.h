@@ -71,7 +71,6 @@ private:
     juce::TextButton btnHalfTime { "Half" };
     juce::TextButton btnDoubleTime { "Double" };
     HeaderDivider headerDividerBeforeRecord_;
-    juce::TextButton btnExport { "Export" };
 
     juce::Label lblSessionBars { {}, "Bars" }; // legacy (hidden; kept for existing logic)
     juce::TextButton btnStep { "Step" };

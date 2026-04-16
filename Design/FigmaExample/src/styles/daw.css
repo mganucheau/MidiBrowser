@@ -1,0 +1,208 @@
+/* Audio DAW Custom Styles */
+
+@layer components {
+  /* DAW Container */
+  .daw-container {
+    @apply size-full bg-[#1a1a1a] text-white select-none;
+  }
+
+  /* Track Waveform */
+  .track-waveform {
+    background: 
+      linear-gradient(to bottom, transparent 48%, #333 48%, #333 52%, transparent 52%),
+      repeating-linear-gradient(to right, transparent, transparent 49px, #252525 49px, #252525 50px);
+  }
+
+  /* Meter Gradients */
+  .vu-meter-green {
+    background: linear-gradient(to top, #22c55e, #16a34a);
+  }
+
+  .vu-meter-yellow {
+    background: linear-gradient(to top, #facc15, #eab308);
+  }
+
+  .vu-meter-red {
+    background: linear-gradient(to top, #ef4444, #dc2626);
+  }
+
+  /* Transport Button Active States */
+  .transport-play-active {
+    @apply bg-green-600/20 hover:bg-green-600/30;
+  }
+
+  .transport-record-active {
+    @apply bg-red-600/20 hover:bg-red-600/30;
+  }
+
+  /* Fader Track */
+  .fader-track {
+    background: linear-gradient(to bottom, 
+      #dc2626 0%, 
+      #dc2626 5%,
+      #f59e0b 5%,
+      #f59e0b 15%,
+      #22c55e 15%,
+      #22c55e 100%
+    );
+  }
+
+  /* Track Header Hover */
+  .track-header:hover {
+    @apply bg-[#2a2a2a];
+  }
+
+  /* Scrollbar Styling */
+  .daw-scrollbar::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  .daw-scrollbar::-webkit-scrollbar-track {
+    background: #1a1a1a;
+  }
+
+  .daw-scrollbar::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 6px;
+    border: 2px solid #1a1a1a;
+  }
+
+  .daw-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #444;
+  }
+
+  /* Timeline Markers */
+  .timeline-marker {
+    @apply absolute top-0 bottom-0 w-px bg-blue-500/30;
+  }
+
+  .timeline-playhead {
+    @apply absolute top-0 bottom-0 w-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] z-10;
+  }
+
+  /* Track Region */
+  .track-region {
+    @apply absolute top-1 bottom-1 rounded bg-gradient-to-br opacity-80;
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.1), inset 0 -1px 2px rgba(0, 0, 0, 0.2);
+  }
+
+  .track-region:hover {
+    @apply opacity-100;
+  }
+
+  /* Knob Control */
+  .knob-control {
+    @apply relative w-12 h-12 rounded-full bg-gradient-to-br from-[#333] to-[#1a1a1a] border-2 border-[#444];
+    box-shadow: 
+      inset 0 2px 4px rgba(0, 0, 0, 0.5),
+      0 1px 2px rgba(255, 255, 255, 0.1);
+  }
+
+  .knob-indicator {
+    @apply absolute w-1 h-4 bg-blue-400 rounded-full;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0 0 4px rgba(96, 165, 250, 0.8);
+  }
+
+  /* Plugin Slot */
+  .plugin-slot {
+    @apply p-3 rounded border border-[#333] bg-[#1e1e1e] hover:border-[#444] hover:bg-[#252525] cursor-pointer transition-all;
+  }
+
+  .plugin-slot-active {
+    @apply border-blue-500/50 bg-blue-500/5;
+  }
+
+  /* Grid Lines */
+  .grid-lines {
+    background-image: 
+      linear-gradient(to right, #252525 1px, transparent 1px),
+      linear-gradient(to bottom, #252525 1px, transparent 1px);
+    background-size: 50px 24px;
+  }
+
+  /* Toolbar Separator */
+  .toolbar-separator {
+    @apply w-px h-6 bg-[#2d2d2d] mx-1;
+  }
+
+  /* Status Indicator */
+  .status-indicator {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-active {
+    @apply bg-green-500;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  }
+
+  .status-recording {
+    @apply bg-red-500 animate-pulse;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+  }
+
+  .status-idle {
+    @apply bg-gray-600;
+  }
+
+  /* Channel Strip */
+  .channel-strip {
+    @apply relative flex flex-col items-center gap-2 p-2 bg-gradient-to-b from-[#252525] to-[#1e1e1e] border-r border-[#2d2d2d];
+  }
+
+  /* Automation Lane */
+  .automation-lane {
+    @apply h-16 bg-[#1a1a1a] border-t border-[#2d2d2d] relative;
+  }
+
+  .automation-curve {
+    @apply absolute top-0 left-0 w-full h-full;
+  }
+
+  /* Mini Waveform */
+  .mini-waveform {
+    background: 
+      repeating-linear-gradient(
+        to right,
+        transparent,
+        transparent 2px,
+        rgba(255, 255, 255, 0.05) 2px,
+        rgba(255, 255, 255, 0.05) 4px
+      );
+  }
+
+  /* Panel Header */
+  .panel-header {
+    @apply h-10 bg-[#252525] border-b border-[#2d2d2d] flex items-center px-3 gap-2;
+  }
+
+  /* Track Color Indicator */
+  .track-color {
+    @apply w-1 h-full absolute left-0 top-0;
+  }
+
+  /* Zoom Control */
+  .zoom-control {
+    @apply flex items-center gap-2 px-3 py-1.5 bg-[#1a1a1a] rounded border border-[#333];
+  }
+}
+
+/* Animations */
+@keyframes pulse-meter {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.meter-pulse {
+  animation: pulse-meter 1s ease-in-out infinite;
+}
+
+/* Custom Focus Styles */
+.daw-container input:focus,
+.daw-container button:focus-visible {
+  outline: 2px solid rgb(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}
