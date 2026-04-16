@@ -68,10 +68,14 @@ private:
     juce::ComboBox cmbHeaderGrid;
     juce::ComboBox cmbHeaderSession;
     juce::TextButton btnBpmDisplay { "120" };
+    juce::Label lblBpmUnit { {}, "BPM" };
     juce::TextButton btnHalfTime { "Half" };
     juce::TextButton btnDoubleTime { "Double" };
+    HeaderDivider headerDividerAfterTitle_;
     HeaderDivider headerDividerBeforeRecord_;
 
+    juce::Label lblGrid { {}, "Grid" };
+    juce::Label lblSession { {}, "Session" };
     juce::Label lblSessionBars { {}, "Bars" }; // legacy (hidden; kept for existing logic)
     juce::TextButton btnStep { "Step" };
     juce::TextButton btnExtend { "Extend" };

@@ -36,6 +36,9 @@ public:
     /** Call after grid snap or session length changes: reclamp loops + refresh sliders. */
     void syncLoopsAfterSessionOrGridChange();
 
+    /** Total width of comp + gap + transpose + gap + loop sections (no outer window padding). */
+    int getStripContentWidth() const { return stripContentWidth_; }
+
 private:
     PatternFlowProcessor& processor;
 
@@ -48,17 +51,25 @@ private:
 
     juce::TextButton    btnComp { "Comp" };
     juce::Slider        sldRandomRegions;
+    juce::Label         lblRegions { {}, "Regions" };
     juce::TextButton    btnRandomComp { "Random" };
     juce::TextButton    btnSwapComp { "Swap" };
     juce::TextButton    btnDefaultComp { "Default" };
 
     juce::Slider        sldLoopStart;
+    juce::Label         lblLoopStart { {}, "Start" };
     juce::TextButton    btnLoopSync { juce::String::charToString(0x221E) }; // ∞
     juce::Slider        sldLoopEnd;
+    juce::Label         lblLoopEnd { {}, "End" };
 
     bool blinkOn_ = false;
     int divX1_ = 0;
     int divX2_ = 0;
+    int divX3_ = 0;
+    juce::Rectangle<int> compSectionBounds_;
+    juce::Rectangle<int> transposeSectionBounds_;
+    juce::Rectangle<int> loopSectionBounds_;
+    int stripContentWidth_ = 0;
 
     /** Last integer region count applied (for randomizing on each step while dragging the knob). */
     int lastRandomKnobInt = 8;
