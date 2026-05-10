@@ -6,7 +6,7 @@ namespace {
 juce::File getOrCreateEmptyBrowserStubDir()
 {
     auto d = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                 .getChildFile("PatternFlow")
+                 .getChildFile("MidiBrowser")
                  .getChildFile("browser_empty");
     d.createDirectory();
     return d;
@@ -64,7 +64,6 @@ FileBrowserPanel::FileBrowserPanel()
 
     setWantsKeyboardFocus(true);
 
-    previewFileLabel.setVisible(false);
     startTimerHz(30);
 }
 
@@ -89,7 +88,7 @@ void FileBrowserPanel::resized()
     const int previewH = 150;
     auto abovePreview = b;
     abovePreview.removeFromBottom(previewH);
-    const int btnH = juce::jlimit(22, 28, metrics::controlStripH - 6);
+    const int btnH = juce::jlimit(22, 28, juce::jmax(28, metrics::titleBarH - 8));
     btnSetRoot.setBounds(0, abovePreview.getY(), getWidth(), btnH);
     abovePreview.removeFromTop(btnH);
     fileTree->setBounds(abovePreview);
@@ -98,36 +97,6 @@ void FileBrowserPanel::resized()
 
 bool FileBrowserPanel::keyPressed(const juce::KeyPress& key)
 {
-    // Return key: add to arrangement (new lane flow)
-    if (key == juce::KeyPress::returnKey && tryAddSelectedToNewLane())
-        return true;
-
-    // Left arrow: add to focused lane column (selection lane), if available
-    if (key == juce::KeyPress::leftKey)
-    {
-        if (onClipAddToFocusedLaneColumn)
-        {
-            if (hasPreviewClip)
-            {
-                onClipAddToFocusedLaneColumn(previewClip);
-                return true;
-            }
-            if (fileTree->getNumSelectedFiles() > 0)
-            {
-                juce::File f = fileTree->getSelectedFile(0);
-                if (f.hasFileExtension("mid;midi") && f.existsAsFile())
-                {
-                    MidiClip clip = parseMidiFile(f);
-                    onClipAddToFocusedLaneColumn(clip);
-                    return true;
-                }
-            }
-        }
-        // Fallback: previous behavior
-        if (tryAddSelectedToNewLane())
-            return true;
-    }
-    // Up/down: pass to file tree for selection navigation (tree handles natively when focused)
     if ((key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) && fileTree)
     {
         fileTree->grabKeyboardFocus();
@@ -151,24 +120,16 @@ void FileBrowserPanel::mouseDown(const juce::MouseEvent& e)
     const float bottomPad = 10.0f;
     const float msBtnW = 30.0f;
     const float msBtnH = 22.0f;
-    const float btnGap = 8.0f;
     const int frameMargin = 8;
     float stripY = (float)(getHeight() - previewH);
     float msY = stripY + (float)previewH - bottomPad - msBtnH;
-    float msX = (float)(getWidth() - frameMargin) - msBtnW * 2.0f - btnGap;
+    float msX = (float)(getWidth() - frameMargin) - msBtnW;
     auto muteRect = juce::Rectangle<float>(msX, msY, msBtnW, msBtnH);
-    auto soloRect = juce::Rectangle<float>(msX + msBtnW + btnGap, msY, msBtnW, msBtnH);
-    if (e.position.y >= getHeight() - previewH && e.position.y < getHeight())
+    if (e.position.y >= (float)(getHeight() - previewH) && e.position.y < (float)getHeight())
     {
         if (muteRect.contains(e.position))
         {
             previewMuted = !previewMuted;
-            repaint();
-            return;
-        }
-        if (soloRect.contains(e.position))
-        {
-            previewSoloed = !previewSoloed;
             repaint();
             return;
         }
@@ -229,19 +190,6 @@ void FileBrowserPanel::timerCallback()
     repaint();
 }
 
-bool FileBrowserPanel::tryAddSelectedToNewLane()
-{
-    if (fileTree->getNumSelectedFiles() <= 0) return false;
-    juce::File f = fileTree->getSelectedFile(0);
-    if (!f.hasFileExtension("mid;midi") || !f.existsAsFile()) return false;
-    MidiClip clip = parseMidiFile(f);
-    if (onClipAddFromBrowser)
-        onClipAddFromBrowser(clip);
-    else if (onClipAddToNewLane)
-        onClipAddToNewLane(clip);
-    return true;
-}
-
 static bool isBlackKey(int noteNum)
 {
     int n = noteNum % 12;
@@ -258,7 +206,6 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     const float bottomPad = 10.0f;
     const float msBtnW = 30.0f;
     const float msBtnH = 22.0f;
-    const float btnGap = 8.0f;
     const int msRowH = (int)std::ceil((double)bottomPad + (double)msBtnH + 10.0);
     const int frameMargin = (int)std::round(bottomPad);
 
@@ -282,11 +229,17 @@ void FileBrowserPanel::paint(juce::Graphics& g)
         if (onGetPlayheadState && onGetSessionLengthBeats)
         {
             auto [sessionBeat, loopStart, loopEnd, loopEnabled] = onGetPlayheadState();
-            double sessionLen = onGetSessionLengthBeats();
-            double sessionBeatLooped = std::fmod(sessionBeat, sessionLen);
-            if (sessionBeatLooped < 0) sessionBeatLooped += sessionLen;
-            displayPlayheadBeat = std::fmod(sessionBeatLooped, previewClip.lengthBeats);
-            if (displayPlayheadBeat < 0) displayPlayheadBeat += previewClip.lengthBeats;
+            const double sessionLen = onGetSessionLengthBeats();
+            double phaseBeat = sessionBeat;
+            if (loopEnabled && loopEnd > loopStart + 1.0e-6)
+                phaseBeat = loopStart + std::fmod(sessionBeat - loopStart, loopEnd - loopStart);
+            else if (sessionLen > 1.0e-9)
+            {
+                phaseBeat = std::fmod(sessionBeat, sessionLen);
+                if (phaseBeat < 0.0) phaseBeat += sessionLen;
+            }
+            displayPlayheadBeat = std::fmod(phaseBeat, previewClip.lengthBeats);
+            if (displayPlayheadBeat < 0.0) displayPlayheadBeat += previewClip.lengthBeats;
         }
         else
         {
@@ -367,12 +320,11 @@ void FileBrowserPanel::paint(juce::Graphics& g)
         g.drawText("no midi no cry", contentRect.expanded(frameMargin), juce::Justification::centred);
     }
 
-    // M/S: same corner radius as menu bar buttons; extra bottom padding inside preview strip
+    // Mute: preview to instrument track is silent when engaged
     const float cr = metrics::cornerRadius;
     float msY = stripY + (float)previewH - bottomPad - msBtnH;
-    float msX = (float)(getWidth() - frameMargin) - msBtnW * 2.0f - btnGap;
+    float msX = (float)(getWidth() - frameMargin) - msBtnW;
     auto muteR = juce::Rectangle<float>(msX, msY, msBtnW, msBtnH);
-    auto soloR = juce::Rectangle<float>(msX + msBtnW + btnGap, msY, msBtnW, msBtnH);
 
     g.setColour(previewMuted ? colours::muteInactive() : colours::panelBorder());
     if (previewMuted)
@@ -380,17 +332,8 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     else
         g.drawRoundedRectangle(muteR, cr, 1.2f);
     g.setColour(previewMuted ? juce::Colours::white : colours::textDim());
-    g.setFont(juce::Font(10.0f, juce::Font::bold));
+    g.setFont(juce::Font(juce::FontOptions(10.0f).withStyle("Bold")));
     g.drawText("M", muteR, juce::Justification::centred);
-
-    g.setColour(previewSoloed ? colours::soloBlue() : colours::panelBorder());
-    if (previewSoloed)
-        g.fillRoundedRectangle(soloR, cr);
-    else
-        g.drawRoundedRectangle(soloR, cr, 1.2f);
-    g.setColour(previewSoloed ? juce::Colours::white : colours::textDim());
-    g.setFont(juce::Font(10.0f, juce::Font::bold));
-    g.drawText("S", soloR, juce::Justification::centred);
 }
 
 void FileBrowserPanel::refreshComponentColours()
@@ -413,12 +356,7 @@ void FileBrowserPanel::fileClicked(const juce::File& file, const juce::MouseEven
 
 void FileBrowserPanel::fileDoubleClicked(const juce::File& file)
 {
-    if (file.hasFileExtension("mid;midi"))
-    {
-        auto clip = parseMidiFile(file);
-        if (onClipDoubleClicked)
-            onClipDoubleClicked(clip);
-    }
+    juce::ignoreUnused(file);
 }
 
 } // namespace pflow

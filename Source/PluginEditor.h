@@ -1,123 +1,36 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
-#include <functional>
-#include <memory>
 #include "PluginProcessor.h"
 #include "FileBrowserPanel.h"
-#include "ArrangementView.h"
-#include "PianoRollEditor.h"
-#include "ControlPanel.h"
 #include "Theme.h"
 
 namespace pflow {
 
-class PatternFlowEditor : public juce::AudioProcessorEditor,
-                          public juce::DragAndDropContainer,
+class MidiBrowserEditor : public juce::AudioProcessorEditor,
                           public juce::Timer,
-                          public juce::KeyListener,
                           public juce::ComboBox::Listener
 {
 public:
-    explicit PatternFlowEditor(PatternFlowProcessor&);
-    ~PatternFlowEditor() override;
+    explicit MidiBrowserEditor(MidiBrowserProcessor&);
+    ~MidiBrowserEditor() override;
 
-    void paint(juce::Graphics&) override;
     void resized() override;
-    void parentHierarchyChanged() override;
-    void focusGained(juce::Component::FocusChangeType) override;
     void timerCallback() override;
-    using juce::Component::keyPressed;
-    bool keyPressed(const juce::KeyPress& key, juce::Component* originatingComponent) override;
     void comboBoxChanged(juce::ComboBox*) override;
 
 private:
-    PatternFlowProcessor& processorRef;
-
+    MidiBrowserProcessor& processorRef;
     PatternFlowLookAndFeel lnf;
 
-    // Theme transition (Material motion-inspired crossfade)
-    juce::Image themeTransitionSnapshot_;
-    float themeTransitionAlpha_ = 0.0f;
-    juce::uint32 themeTransitionStartMs_ = 0;
-
-    // Panels
-    ControlPanel      controlPanel;
-    FileBrowserPanel  fileBrowser;
-    ArrangementView   arrangementView;
-    PianoRollEditor   pianoRoll;
-
-    // Top row: title | [record + grid + session + …] | settings
-    struct HeaderDivider : public juce::Component
-    {
-        void paint(juce::Graphics& g) override { g.fillAll(colours::panelBorder()); }
-    };
-
     juce::Label lblTitle;
-    class RecordButton : public juce::Button
-    {
-    public:
-        RecordButton() : juce::Button("Record") {}
-        void setRecording(bool r) { isRecording_ = r; repaint(); }
-        void paintButton(juce::Graphics& g, bool over, bool down) override;
-    private:
-        bool isRecording_ = false;
-    };
-    RecordButton btnRecord;
+    juce::Label lblBpm { {}, "120 BPM" };
+    juce::Label lblSession { {}, "Wrap" };
+    juce::ComboBox cmbSessionBars;
 
-    juce::ComboBox cmbHeaderGrid;
-    juce::ComboBox cmbHeaderSession;
-    juce::TextButton btnBpmDisplay { "120" };
-    juce::Label lblBpmUnit { {}, "BPM" };
-    juce::TextButton btnHalfTime { "Half" };
-    juce::TextButton btnDoubleTime { "Double" };
-    HeaderDivider headerDividerAfterTitle_;
-    HeaderDivider headerDividerBeforeRecord_;
+    FileBrowserPanel fileBrowser;
 
-    juce::Label lblGrid { {}, "Grid" };
-    juce::Label lblSession { {}, "Session" };
-    juce::Label lblSessionBars { {}, "Bars" }; // legacy (hidden; kept for existing logic)
-    juce::TextButton btnStep { "Step" };
-    juce::TextButton btnExtend { "Extend" };
-    juce::TextButton btnTrim { "Trim" };
-    juce::TextButton btnSettings { "" };
-    HeaderDivider headerDivider_;
-
-    void updateRecordButton();
-    void refreshTransportColours();
-
-    // Resizable panels (VS Code-style): stored sizes, min/max
-    int browserWidth_    = metrics::browserWidth;
-    int pianoRollHeight_ = metrics::pianoRollH;
-    bool fileBrowserVisible_ = true;
-    static constexpr int resizerStripSize = 5;
-
-    class ResizerStrip : public juce::Component
-    {
-    public:
-        enum class Direction { Vertical, Horizontal };
-        ResizerStrip(Direction d, int& valueRef, int minVal, int maxVal,
-                     std::function<int()> getTotalSize, std::function<void()> onResize);
-        void paint(juce::Graphics& g) override;
-        void mouseDown(const juce::MouseEvent& e) override;
-        void mouseDrag(const juce::MouseEvent& e) override;
-    private:
-        Direction direction_;
-        int* valueRef_;
-        int minVal_, maxVal_;
-        std::function<int()> getTotalSize_;
-        std::function<void()> onResize_;
-        int dragStartValue_ = 0;
-        int dragStartPos_   = 0;
-    };
-    std::unique_ptr<ResizerStrip> leftResizer_;
-    std::unique_ptr<ResizerStrip> bottomResizer_;
-
-    void showSettingsDialog();
-    void exportMidi();
-    void zoomToFit();
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PatternFlowEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiBrowserEditor)
 };
 
 } // namespace pflow

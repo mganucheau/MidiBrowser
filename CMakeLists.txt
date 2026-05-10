@@ -1,10 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
-# If CMake errors about CMakeCache.txt living in a different directory than this
-# source tree, remove the build folder and configure again (stale cache from another path).
 if(APPLE)
-    project(PatternFlow VERSION 1.0.1 LANGUAGES C CXX OBJCXX)
+    project(MidiBrowser VERSION 1.0.0 LANGUAGES C CXX OBJCXX)
 else()
-    project(PatternFlow VERSION 1.0.1 LANGUAGES C CXX)
+    project(MidiBrowser VERSION 1.0.0 LANGUAGES C CXX)
 endif()
 
 set(PF_VERSION "${PROJECT_VERSION}")
@@ -19,7 +17,6 @@ if(GIT_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
         OUTPUT_VARIABLE GIT_HASH
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET)
-    # Commit time in America/Los_Angeles (PST/PDT). %ci ignores TZ; iso-local does not.
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env "TZ=America/Los_Angeles"
             "${GIT_EXECUTABLE}" log -1 --format=%cd --date=iso-local
@@ -44,10 +41,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
 
-# Workaround: Xcode 26 / macOS 26 SDK marks older CoreGraphics APIs as
-# unavailable.  Cap the SDK version the headers advertise so JUCE can still
-# compile until upstream adds macOS 26 support.
-# Set via CMAKE_*_FLAGS so the flag propagates to all sub-builds (juceaide).
 if(APPLE)
     set(_sdk_compat "-DMAC_OS_X_VERSION_MIN_REQUIRED=130000 -DMAC_OS_X_VERSION_MAX_ALLOWED=150400")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_sdk_compat}")
@@ -56,7 +49,6 @@ if(APPLE)
     set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} ${_sdk_compat}")
 endif()
 
-# ── JUCE (fetched automatically) ──────────────────────────────────────────────
 include(FetchContent)
 FetchContent_Declare(
     JUCE
@@ -65,13 +57,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
-# ── Plugin target ─────────────────────────────────────────────────────────────
-juce_add_plugin(PatternFlow
-    COMPANY_NAME            "PatternFlow"
-    PLUGIN_MANUFACTURER_CODE Ptfl
-    PLUGIN_CODE              PtFl
-    FORMATS                  VST3 Standalone
-    PRODUCT_NAME             "PatternFlow"
+# macOS: include AU so Logic and other hosts that only scan Components can load the plugin.
+if(APPLE)
+    set(_midibrowser_formats AU VST3 Standalone)
+else()
+    set(_midibrowser_formats VST3 Standalone)
+endif()
+
+juce_add_plugin(MidiBrowser
+    COMPANY_NAME            "MidiBrowser"
+    BUNDLE_ID               com.midibrowser.app
+    PLUGIN_MANUFACTURER_CODE MdbR
+    PLUGIN_CODE              MdbB
+    FORMATS                  ${_midibrowser_formats}
+    PRODUCT_NAME             "Midi Browser"
     IS_SYNTH                 TRUE
     NEEDS_MIDI_INPUT         TRUE
     NEEDS_MIDI_OUTPUT        TRUE
@@ -80,23 +79,18 @@ juce_add_plugin(PatternFlow
     COPY_PLUGIN_AFTER_BUILD  TRUE
 )
 
-target_include_directories(PatternFlow PRIVATE "${CMAKE_BINARY_DIR}/Generated")
+target_include_directories(MidiBrowser PRIVATE "${CMAKE_BINARY_DIR}/Generated")
 
-target_sources(PatternFlow PRIVATE
+target_sources(MidiBrowser PRIVATE
     Source/PflowFileTreeComponent.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/MidiFileData.cpp
-    Source/CompingModel.cpp
     Source/FileBrowserPanel.cpp
-    Source/ArrangementView.cpp
-    Source/PianoRollEditor.cpp
-    Source/ControlPanel.cpp
     Source/Theme.cpp
-    Source/UndoActions.cpp
 )
 
-target_compile_definitions(PatternFlow PUBLIC
+target_compile_definitions(MidiBrowser PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -104,7 +98,7 @@ target_compile_definitions(PatternFlow PUBLIC
     JUCE_ALSA=0
 )
 
-target_link_libraries(PatternFlow
+target_link_libraries(MidiBrowser
     PRIVATE
         juce::juce_audio_utils
         juce::juce_audio_processors
@@ -116,10 +110,9 @@ target_link_libraries(PatternFlow
         juce::juce_recommended_warning_flags
 )
 
-# ── Unit tests (Catch2) ───────────────────────────────────────────────────────
-option(PATTERNFLOW_BUILD_TESTS "Build unit tests" ON)
+option(MIDIBROWSER_BUILD_TESTS "Build unit tests" ON)
 
-if(PATTERNFLOW_BUILD_TESTS)
+if(MIDIBROWSER_BUILD_TESTS)
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
@@ -127,17 +120,17 @@ if(PATTERNFLOW_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(Catch2)
 
-    add_executable(PatternFlowTests Tests/main.cpp)
-    target_link_libraries(PatternFlowTests PRIVATE
-        PatternFlow
+    add_executable(MidiBrowserTests Tests/main.cpp)
+    target_link_libraries(MidiBrowserTests PRIVATE
+        MidiBrowser
         Catch2::Catch2WithMain
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_gui_extra
         juce::juce_data_structures
     )
-    target_include_directories(PatternFlowTests PRIVATE ${CMAKE_SOURCE_DIR}/Source "${CMAKE_BINARY_DIR}/Generated")
+    target_include_directories(MidiBrowserTests PRIVATE ${CMAKE_SOURCE_DIR}/Source "${CMAKE_BINARY_DIR}/Generated")
     include(CTest)
     enable_testing()
-    add_test(NAME PatternFlowTests COMMAND PatternFlowTests)
+    add_test(NAME MidiBrowserTests COMMAND MidiBrowserTests)
 endif()
