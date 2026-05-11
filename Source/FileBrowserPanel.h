@@ -32,11 +32,18 @@ public:
     std::function<void(const juce::File&)> onFileDragStarted;
     std::function<void(const juce::String&)> onDirectoryChanged;
 
-    /** Preview sync: (sessionBeat, loopStartPpq, loopEndPpq, loopActive) */
+    /** Session transport: (ppqBeat, loopStart, loopEnd, hostLoopEnabled) */
     std::function<std::tuple<double, double, double, bool>()> onGetPlayheadState;
     std::function<double()> onGetSessionLengthBeats;
+    std::function<bool()> onGetHostPlaying;
 
     void setRootDirectory(const juce::File& dir);
+
+    /** Same vertical size as the "Select a folder" row (shared with editor title bar). */
+    static int folderBarHeightPx();
+
+    /** Toggle "truncate" preview: when on, empty 4/4 measures are removed in RAM (disk unchanged). */
+    void toggleTruncateEmptyMeasuresMode();
 
     const MidiClip& getPreviewClip() const { return previewClip; }
     bool getHasPreviewClip() const { return hasPreviewClip; }
@@ -53,14 +60,16 @@ private:
 
     MidiClip previewClip;
     bool hasPreviewClip = false;
-    bool previewMuted = true;
-    double previewPlayheadBeat = 0.0;
-    double previewLastTime = 0.0;
+    bool previewMuted = false;
 
     juce::Point<float> dragStartPos;
     bool externalDragStarted = false;
 
+    juce::File currentPreviewMidiFile_;
+    bool truncateEmptyMeasuresMode_ = false;
+
     void updatePreviewForSelection();
+    void rebuildPreviewClipFromDisk();
     void timerCallback() override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FileBrowserPanel)

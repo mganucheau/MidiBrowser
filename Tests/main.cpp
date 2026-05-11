@@ -77,3 +77,17 @@ TEST_CASE("quantiseToScale maps to nearest scale degree", "[MidiFileData]")
     REQUIRE(quantiseToScale(64, 0, ScaleType::Major) == 64);
     REQUIRE(quantiseToScale(65, 0, ScaleType::Major) == 65);
 }
+
+TEST_CASE("trimEmptyMeasuresInClip removes bar with no notes", "[MidiFileData]")
+{
+    MidiClip clip;
+    clip.lengthBeats = 16.0;
+    clip.notes.push_back({ 60, 100, 0.0, 1.0, 1 });
+    clip.notes.push_back({ 62, 90, 8.0, 1.0, 1 });
+
+    trimEmptyMeasuresInClip(clip, 4.0);
+
+    REQUIRE(clip.notes.size() == 2);
+    REQUIRE(std::abs(clip.notes[0].startBeat - 0.0) < 1e-9);
+    REQUIRE(std::abs(clip.notes[1].startBeat - 4.0) < 1e-9);
+}

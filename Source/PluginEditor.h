@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "PluginProcessor.h"
@@ -8,8 +9,7 @@
 namespace pflow {
 
 class MidiBrowserEditor : public juce::AudioProcessorEditor,
-                          public juce::Timer,
-                          public juce::ComboBox::Listener
+                          public juce::Timer
 {
 public:
     explicit MidiBrowserEditor(MidiBrowserProcessor&);
@@ -17,18 +17,20 @@ public:
 
     void resized() override;
     void timerCallback() override;
-    void comboBoxChanged(juce::ComboBox*) override;
 
 private:
     MidiBrowserProcessor& processorRef;
     PatternFlowLookAndFeel lnf;
 
     juce::Label lblTitle;
-    juce::Label lblBpm { {}, "120 BPM" };
-    juce::Label lblSession { {}, "Wrap" };
-    juce::ComboBox cmbSessionBars;
 
     FileBrowserPanel fileBrowser;
+
+    struct TruncateModeKeyListener;
+    std::unique_ptr<TruncateModeKeyListener> truncateModeKeys_;
+
+    static void addTruncateKeyListenerRecursive(juce::Component* c, juce::KeyListener* l);
+    static void removeTruncateKeyListenerRecursive(juce::Component* c, juce::KeyListener* l);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiBrowserEditor)
 };

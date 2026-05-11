@@ -74,7 +74,7 @@ private:
     juce::CriticalSection previewLock_;
     MidiClip previewClip_;
     bool previewHasClip_ = false;
-    bool previewMuted_ = true;
+    bool previewMuted_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiBrowserProcessor)
 };

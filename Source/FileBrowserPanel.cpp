@@ -1,6 +1,36 @@
 #include "FileBrowserPanel.h"
+#include <cmath>
 
 namespace pflow {
+
+namespace {
+
+/** Same wrap as MidiBrowserProcessor::processBlock preview phase (loop / session length). */
+double phaseBeatForSession(double sessionBeat, bool loopEnabled,
+                           double loopStart, double loopEnd, double sessionLenBeats)
+{
+    if (loopEnabled)
+    {
+        const double loopLen = loopEnd - loopStart;
+        if (loopLen > 1.0e-6 && sessionBeat + 1.0e-9 >= loopStart)
+            return loopStart + std::fmod(sessionBeat - loopStart, loopLen);
+    }
+    if (sessionLenBeats > 1.0e-9)
+    {
+        double phase = std::fmod(sessionBeat, sessionLenBeats);
+        if (phase < 0.0) phase += sessionLenBeats;
+        return phase;
+    }
+    return sessionBeat;
+}
+
+} // namespace
+
+int FileBrowserPanel::folderBarHeightPx()
+{
+    return juce::jlimit(22, 28, juce::jmax(28, metrics::titleBarH - 8));
+}
+
 namespace {
 
 juce::File getOrCreateEmptyBrowserStubDir()
@@ -88,7 +118,7 @@ void FileBrowserPanel::resized()
     const int previewH = 150;
     auto abovePreview = b;
     abovePreview.removeFromBottom(previewH);
-    const int btnH = juce::jlimit(22, 28, juce::jmax(28, metrics::titleBarH - 8));
+    const int btnH = folderBarHeightPx();
     btnSetRoot.setBounds(0, abovePreview.getY(), getWidth(), btnH);
     abovePreview.removeFromTop(btnH);
     fileTree->setBounds(abovePreview);
@@ -146,8 +176,8 @@ void FileBrowserPanel::mouseDrag(const juce::MouseEvent& e)
     if (dist > 4.0f)
     {
         externalDragStarted = true;
-        // Use internal JUCE drag so clips can be added while the host is playing
-        startDragging(f.getFullPathName(), fileTree.get());
+        juce::DragAndDropContainer::performExternalDragDropOfFiles(
+            juce::StringArray(f.getFullPathName()), false, fileTree.get());
     }
 }
 
@@ -161,32 +191,49 @@ void FileBrowserPanel::updatePreviewForSelection()
     if (fileTree->getNumSelectedFiles() <= 0)
     {
         hasPreviewClip = false;
+        currentPreviewMidiFile_ = juce::File();
     }
     else
     {
-        juce::File f = fileTree->getSelectedFile(0);
+        const juce::File f = fileTree->getSelectedFile(0);
         if (f.hasFileExtension("mid;midi") && f.existsAsFile())
         {
-            previewClip = parseMidiFile(f);
-            hasPreviewClip = !previewClip.notes.empty();
-            previewPlayheadBeat = 0.0;  // Reset when selection changes
+            currentPreviewMidiFile_ = f;
+            rebuildPreviewClipFromDisk();
         }
         else
+        {
             hasPreviewClip = false;
+            currentPreviewMidiFile_ = juce::File();
+        }
     }
+    repaint();
+}
+
+void FileBrowserPanel::rebuildPreviewClipFromDisk()
+{
+    if (!currentPreviewMidiFile_.existsAsFile())
+    {
+        hasPreviewClip = false;
+        return;
+    }
+
+    previewClip = parseMidiFile(currentPreviewMidiFile_);
+    hasPreviewClip = !previewClip.notes.empty();
+    if (truncateEmptyMeasuresMode_ && hasPreviewClip)
+        trimEmptyMeasuresInClip(previewClip, 4.0);
+}
+
+void FileBrowserPanel::toggleTruncateEmptyMeasuresMode()
+{
+    truncateEmptyMeasuresMode_ = !truncateEmptyMeasuresMode_;
+    if (currentPreviewMidiFile_.existsAsFile())
+        rebuildPreviewClipFromDisk();
     repaint();
 }
 
 void FileBrowserPanel::timerCallback()
 {
-    if (!hasPreviewClip || previewClip.lengthBeats <= 0) return;
-    double now = juce::Time::getMillisecondCounterHiRes() / 1000.0;
-    if (previewLastTime <= 0) previewLastTime = now;
-    double delta = now - previewLastTime;
-    previewLastTime = now;
-    previewPlayheadBeat += delta * 2.0;  // ~120bpm
-    if (previewPlayheadBeat >= previewClip.lengthBeats)
-        previewPlayheadBeat = std::fmod(previewPlayheadBeat, previewClip.lengthBeats);
     repaint();
 }
 
@@ -210,10 +257,22 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     const int frameMargin = (int)std::round(bottomPad);
 
     float stripY = (float)(getHeight() - previewH);
-    g.setColour(!previewMuted ? colours::accentDim().withAlpha(0.18f) : colours::bgLighter());
+    g.setColour(colours::accentDim().withAlpha(0.18f));
     g.fillRect(0.0f, stripY, (float)getWidth(), (float)previewH);
     g.setColour(colours::panelBorder());
     g.drawHorizontalLine(getHeight() - previewH - 1, 0.0f, (float)getWidth());
+
+    if (truncateEmptyMeasuresMode_)
+    {
+        const auto badge = juce::Rectangle<float>(8.0f, stripY + 6.0f, 52.0f, 18.0f);
+        g.setColour(colours::accent().withAlpha(0.35f));
+        g.fillRoundedRectangle(badge, 4.0f);
+        g.setColour(colours::accent());
+        g.drawRoundedRectangle(badge, 4.0f, 1.0f);
+        g.setColour(colours::text());
+        g.setFont(juce::Font(juce::FontOptions(10.0f).withStyle("SemiBold")));
+        g.drawText("Trim", badge, juce::Justification::centred);
+    }
 
     // Piano roll content area (above M/S row)
     int contentTop = (int)stripY + frameMargin;
@@ -221,30 +280,18 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     int gridLeft = frameMargin + pianoKeyWidth;
     int gridW = getWidth() - frameMargin * 2 - pianoKeyWidth;
 
-    auto contentRect = juce::Rectangle<int>(gridLeft, contentTop, gridW, contentH);
-
+    bool drawPlayhead = false;
     double displayPlayheadBeat = 0.0;
-    if (hasPreviewClip && previewClip.lengthBeats > 0)
+    if (hasPreviewClip && previewClip.lengthBeats > 1.0e-9
+        && onGetHostPlaying && onGetHostPlaying()
+        && onGetPlayheadState && onGetSessionLengthBeats)
     {
-        if (onGetPlayheadState && onGetSessionLengthBeats)
-        {
-            auto [sessionBeat, loopStart, loopEnd, loopEnabled] = onGetPlayheadState();
-            const double sessionLen = onGetSessionLengthBeats();
-            double phaseBeat = sessionBeat;
-            if (loopEnabled && loopEnd > loopStart + 1.0e-6)
-                phaseBeat = loopStart + std::fmod(sessionBeat - loopStart, loopEnd - loopStart);
-            else if (sessionLen > 1.0e-9)
-            {
-                phaseBeat = std::fmod(sessionBeat, sessionLen);
-                if (phaseBeat < 0.0) phaseBeat += sessionLen;
-            }
-            displayPlayheadBeat = std::fmod(phaseBeat, previewClip.lengthBeats);
-            if (displayPlayheadBeat < 0.0) displayPlayheadBeat += previewClip.lengthBeats;
-        }
-        else
-        {
-            displayPlayheadBeat = previewPlayheadBeat;
-        }
+        const auto [sessionBeat, loopStart, loopEnd, loopEnabled] = onGetPlayheadState();
+        const double sessionLen = onGetSessionLengthBeats();
+        const double phase = phaseBeatForSession(sessionBeat, loopEnabled, loopStart, loopEnd, sessionLen);
+        displayPlayheadBeat = std::fmod(phase, previewClip.lengthBeats);
+        if (displayPlayheadBeat < 0.0) displayPlayheadBeat += previewClip.lengthBeats;
+        drawPlayhead = true;
     }
 
     if (hasPreviewClip && previewClip.lengthBeats > 0)
@@ -305,19 +352,12 @@ void FileBrowserPanel::paint(juce::Graphics& g)
             g.fillRoundedRectangle((float)gridLeft + x, y + 1.0f, w, noteH - 2.0f, 2.0f);
         }
 
-        // Playhead (hidden when muted)
-        if (!previewMuted)
+        if (drawPlayhead)
         {
             float playheadX = (float)gridLeft + (float)displayPlayheadBeat * beatsToPx;
             g.setColour(colours::playhead());
             g.fillRect(playheadX - 1.0f, (float)contentTop, 2.0f, (float)contentH);
         }
-    }
-    else
-    {
-        g.setColour(colours::text());
-        g.setFont(juce::Font(juce::FontOptions(12.0f)));
-        g.drawText("no midi no cry", contentRect.expanded(frameMargin), juce::Justification::centred);
     }
 
     // Mute: preview to instrument track is silent when engaged
