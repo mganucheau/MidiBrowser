@@ -31,6 +31,10 @@ public:
 
     std::function<void(const juce::File&)> onFileDragStarted;
     std::function<void(const juce::String&)> onDirectoryChanged;
+    std::function<juce::StringArray()> onGetSavedFolders;
+    std::function<void(const juce::String&)> onSaveFolder;
+    std::function<void(const juce::String&)> onRemoveSavedFolder;
+    std::function<void(bool)> onTrimModeChanged;
 
     /** Session transport: (ppqBeat, loopStart, loopEnd, hostLoopEnabled) */
     std::function<std::tuple<double, double, double, bool>()> onGetPlayheadState;
@@ -38,12 +42,14 @@ public:
     std::function<bool()> onGetHostPlaying;
 
     void setRootDirectory(const juce::File& dir);
+    juce::File getRootDirectory() const;
 
     /** Same vertical size as the "Select a folder" row (shared with editor title bar). */
     static int folderBarHeightPx();
 
-    /** Toggle "truncate" preview: when on, empty 4/4 measures are removed in RAM (disk unchanged). */
-    void toggleTruncateEmptyMeasuresMode();
+    void setTrimEmptyMeasuresMode(bool enabled);
+    bool getTrimEmptyMeasuresMode() const { return truncateEmptyMeasuresMode_; }
+    void toggleTrimEmptyMeasuresMode();
 
     const MidiClip& getPreviewClip() const { return previewClip; }
     bool getHasPreviewClip() const { return hasPreviewClip; }
@@ -56,6 +62,10 @@ private:
     std::unique_ptr<juce::DirectoryContentsList> dirContents;
 
     juce::TextButton btnSetRoot { "Select a folder" };
+    juce::TextButton btnBookmarks { juce::String::charToString(0x2605) };
+    juce::TextButton btnFileUp { juce::String::charToString(0x25B2) };
+    juce::TextButton btnFileDown { juce::String::charToString(0x25BC) };
+    juce::TextButton btnTrim { "Trim" };
     juce::Label browserEmptyHint_;
 
     MidiClip previewClip;
@@ -70,6 +80,8 @@ private:
 
     void updatePreviewForSelection();
     void rebuildPreviewClipFromDisk();
+    void showBookmarksMenu();
+    void selectAdjacentMidiFile(int direction);
     void timerCallback() override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FileBrowserPanel)

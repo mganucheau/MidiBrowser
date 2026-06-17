@@ -393,7 +393,51 @@ public:
         tryResolvePendingFileSelection();
     }
 
+    void selectAdjacentMidiFile (int direction)
+    {
+        Array<File> midiFiles;
+        if (auto* root = owner.getRootItem())
+            collectVisibleMidiFiles (root, midiFiles);
+
+        if (midiFiles.isEmpty())
+            return;
+
+        const File current = owner.getSelectedFile (0);
+        int idx = midiFiles.indexOf (current);
+        if (idx < 0)
+            idx = direction > 0 ? -1 : midiFiles.size();
+
+        idx = jlimit (0, midiFiles.size() - 1, idx + direction);
+        selectFile (midiFiles.getReference (idx));
+    }
+
 private:
+    static void collectVisibleMidiFiles (TreeViewItem* item, Array<File>& out)
+    {
+        if (item == nullptr)
+            return;
+
+        if (auto* fileItem = dynamic_cast<PflowFileListTreeItem*> (item))
+        {
+            if (fileItem->file.isDirectory())
+            {
+                if (fileItem->isOpen())
+                {
+                    for (int i = 0; i < fileItem->getNumSubItems(); ++i)
+                        collectVisibleMidiFiles (fileItem->getSubItem (i), out);
+                }
+            }
+            else if (fileItem->file.hasFileExtension ("mid;midi"))
+            {
+                out.add (fileItem->file);
+            }
+            return;
+        }
+
+        for (int i = 0; i < item->getNumSubItems(); ++i)
+            collectVisibleMidiFiles (item->getSubItem (i), out);
+    }
+
     template <typename ItemCallback>
     static void forEachItemRecursive (TreeViewItem* item, ItemCallback&& cb)
     {
@@ -543,6 +587,7 @@ private:
         if (auto item = treeItemForFile.find (*pendingFileSelection); item != treeItemForFile.end())
         {
             item->second->setSelected (true, true);
+            owner.scrollToKeepItemVisible (item->second);
             pendingFileSelection.reset();
             return;
         }
@@ -617,6 +662,12 @@ void PflowFileTreeComponent::setItemHeight (int newHeight)
         if (auto* root = getRootItem())
             root->treeHasChanged();
     }
+}
+
+void PflowFileTreeComponent::selectAdjacentMidiFile (int direction)
+{
+    if (controller != nullptr)
+        controller->selectAdjacentMidiFile (direction);
 }
 
 

@@ -11,7 +11,7 @@ struct MidiBrowserEditor::TruncateModeKeyListener : juce::KeyListener
         if (key.getModifiers().isAnyModifierKeyDown()) return false;
         const int code = key.getKeyCode();
         if (code != 't' && code != 'T') return false;
-        browser->toggleTruncateEmptyMeasuresMode();
+        browser->toggleTrimEmptyMeasuresMode();
         return true;
     }
 };
@@ -50,14 +50,43 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     lblTitle.setColour(juce::Label::textColourId, colours::text());
     addAndMakeVisible(lblTitle);
 
+    {
+        juce::PluginHostType host;
+        showAbletonHint_ = host.isAbletonLive();
+    }
+    if (showAbletonHint_)
+    {
+        lblAbletonHint.setText(
+            "Ableton: put this on its own MIDI track, then set your instrument track's "
+            "MIDI From to this plugin (not Post FX). Monitor = In.",
+            juce::dontSendNotification);
+        lblAbletonHint.setFont(fontFor(TextStyle::LabelSmall));
+        lblAbletonHint.setJustificationType(juce::Justification::centredLeft);
+        lblAbletonHint.setColour(juce::Label::textColourId, colours::textDim());
+        addAndMakeVisible(lblAbletonHint);
+    }
+
     if (processorRef.lastBrowserDir.isNotEmpty())
     {
         const juce::File dir(processorRef.lastBrowserDir);
         if (dir.isDirectory())
             fileBrowser.setRootDirectory(dir);
     }
+    fileBrowser.setTrimEmptyMeasuresMode(processorRef.trimEmptyMeasuresPreview);
     fileBrowser.onDirectoryChanged = [this](const juce::String& path) {
         processorRef.lastBrowserDir = path;
+    };
+    fileBrowser.onTrimModeChanged = [this](bool enabled) {
+        processorRef.trimEmptyMeasuresPreview = enabled;
+    };
+    fileBrowser.onGetSavedFolders = [this] {
+        return processorRef.savedBrowserDirs;
+    };
+    fileBrowser.onSaveFolder = [this](const juce::String& path) {
+        processorRef.addSavedBrowserDir(path);
+    };
+    fileBrowser.onRemoveSavedFolder = [this](const juce::String& path) {
+        processorRef.removeSavedBrowserDir(path);
     };
     fileBrowser.onGetHostPlaying = [this] { return processorRef.hostPlaying.load(); };
     fileBrowser.onGetPlayheadState = [this] {
@@ -91,6 +120,10 @@ void MidiBrowserEditor::resized()
     auto r = getLocalBounds();
     const int headerH = FileBrowserPanel::folderBarHeightPx();
     lblTitle.setBounds(r.removeFromTop(headerH).reduced(10, 2));
+    if (showAbletonHint_)
+    {
+        lblAbletonHint.setBounds(r.removeFromTop(44).reduced(8, 2));
+    }
     fileBrowser.setBounds(r);
 }
 

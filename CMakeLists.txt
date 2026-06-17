@@ -57,13 +57,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
-# macOS: include AU so Logic and other hosts that only scan Components can load the plugin.
 if(APPLE)
     set(_midibrowser_formats AU VST3 Standalone)
 else()
     set(_midibrowser_formats VST3 Standalone)
 endif()
 
+# Single instrument-style plugin: MIDI output + silent stereo audio.
+# Loads reliably in Ableton (VST3) and Logic (AU). IS_MIDI_EFFECT breaks many hosts.
 juce_add_plugin(MidiBrowser
     COMPANY_NAME            "MidiBrowser"
     BUNDLE_ID               com.midibrowser.app
@@ -74,7 +75,7 @@ juce_add_plugin(MidiBrowser
     IS_SYNTH                 TRUE
     NEEDS_MIDI_INPUT         TRUE
     NEEDS_MIDI_OUTPUT        TRUE
-    IS_MIDI_EFFECT           TRUE
+    IS_MIDI_EFFECT           FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD  TRUE
 )
@@ -120,7 +121,12 @@ if(MIDIBROWSER_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(Catch2)
 
-    add_executable(MidiBrowserTests Tests/main.cpp)
+    add_executable(MidiBrowserTests
+        Tests/main.cpp
+        Tests/MidiFileDataTests.cpp
+        Tests/TrimTests.cpp
+        Tests/PluginProcessorTests.cpp
+    )
     target_link_libraries(MidiBrowserTests PRIVATE
         MidiBrowser
         Catch2::Catch2WithMain

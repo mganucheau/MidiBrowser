@@ -24,6 +24,9 @@ private:
 
     juce::Label lblTitle;
 
+    juce::Label lblAbletonHint;
+    bool showAbletonHint_ = false;
+
     FileBrowserPanel fileBrowser;
 
     struct TruncateModeKeyListener;

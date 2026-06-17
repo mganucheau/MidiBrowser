@@ -51,7 +51,7 @@ FileBrowserPanel::FileBrowserPanel()
     btnSetRoot.onClick = [this]
     {
         auto chooser = std::make_shared<juce::FileChooser>(
-            "Select MIDI folder", juce::File(), "");
+            "Select MIDI folder", getRootDirectory(), "");
         chooser->launchAsync(juce::FileBrowserComponent::openMode |
                              juce::FileBrowserComponent::canSelectDirectories,
             [this, chooser](const juce::FileChooser& fc)
@@ -62,6 +62,30 @@ FileBrowserPanel::FileBrowserPanel()
             });
     };
     addAndMakeVisible(btnSetRoot);
+
+    btnBookmarks.setComponentID("HeaderIcon");
+    btnBookmarks.setTooltip("Saved folders");
+    btnBookmarks.onClick = [this] { showBookmarksMenu(); };
+    addAndMakeVisible(btnBookmarks);
+
+    btnFileUp.setComponentID("HeaderIcon");
+    btnFileUp.setTooltip("Previous MIDI file");
+    btnFileUp.onClick = [this] { selectAdjacentMidiFile(-1); };
+    addAndMakeVisible(btnFileUp);
+
+    btnFileDown.setComponentID("HeaderIcon");
+    btnFileDown.setTooltip("Next MIDI file");
+    btnFileDown.onClick = [this] { selectAdjacentMidiFile(1); };
+    addAndMakeVisible(btnFileDown);
+
+    btnTrim.setComponentID("HeaderGhost");
+    btnTrim.setClickingTogglesState(true);
+    btnTrim.setTooltip("Trim empty measures from preview (disk unchanged)");
+    btnTrim.onClick = [this]
+    {
+        setTrimEmptyMeasuresMode(btnTrim.getToggleState());
+    };
+    addAndMakeVisible(btnTrim);
 
     dirThread = std::make_unique<juce::TimeSliceThread>("BrowserDir");
     dirThread->startThread(juce::Thread::Priority::background);
@@ -112,6 +136,11 @@ void FileBrowserPanel::setRootDirectory(const juce::File& dir)
         onDirectoryChanged(dir.getFullPathName());
 }
 
+juce::File FileBrowserPanel::getRootDirectory() const
+{
+    return dirContents != nullptr ? dirContents->getDirectory() : juce::File();
+}
+
 void FileBrowserPanel::resized()
 {
     auto b = getLocalBounds();
@@ -119,20 +148,51 @@ void FileBrowserPanel::resized()
     auto abovePreview = b;
     abovePreview.removeFromBottom(previewH);
     const int btnH = folderBarHeightPx();
-    btnSetRoot.setBounds(0, abovePreview.getY(), getWidth(), btnH);
-    abovePreview.removeFromTop(btnH);
+    const int iconBtnW = 28;
+    const int gap = 2;
+    auto topRow = abovePreview.removeFromTop(btnH);
+    btnFileDown.setBounds(topRow.removeFromRight(iconBtnW));
+    topRow.removeFromRight(gap);
+    btnFileUp.setBounds(topRow.removeFromRight(iconBtnW));
+    topRow.removeFromRight(gap);
+    btnBookmarks.setBounds(topRow.removeFromRight(iconBtnW));
+    topRow.removeFromRight(gap);
+    btnSetRoot.setBounds(topRow);
     fileTree->setBounds(abovePreview);
     browserEmptyHint_.setBounds(abovePreview);
+
+    const float bottomPad = 10.0f;
+    const float msBtnW = 30.0f;
+    const float msBtnH = 22.0f;
+    const int frameMargin = 8;
+    const float stripY = (float)(getHeight() - previewH);
+    const float msY = stripY + (float)previewH - bottomPad - msBtnH;
+    float msX = (float)(getWidth() - frameMargin) - msBtnW;
+    btnTrim.setBounds((int)(msX - msBtnW - 6.0f), (int)msY, (int)msBtnW + 18, (int)msBtnH);
 }
 
 bool FileBrowserPanel::keyPressed(const juce::KeyPress& key)
 {
-    if ((key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) && fileTree)
+    if (key == juce::KeyPress::upKey)
     {
-        fileTree->grabKeyboardFocus();
-        return fileTree->keyPressed(key);
+        selectAdjacentMidiFile(-1);
+        return true;
+    }
+    if (key == juce::KeyPress::downKey)
+    {
+        selectAdjacentMidiFile(1);
+        return true;
     }
     return false;
+}
+
+void FileBrowserPanel::selectAdjacentMidiFile(int direction)
+{
+    if (fileTree)
+    {
+        fileTree->grabKeyboardFocus();
+        fileTree->selectAdjacentMidiFile(direction);
+    }
 }
 
 void FileBrowserPanel::mouseDown(const juce::MouseEvent& e)
@@ -224,12 +284,89 @@ void FileBrowserPanel::rebuildPreviewClipFromDisk()
         trimEmptyMeasuresInClip(previewClip, 4.0);
 }
 
-void FileBrowserPanel::toggleTruncateEmptyMeasuresMode()
+void FileBrowserPanel::setTrimEmptyMeasuresMode(bool enabled)
 {
-    truncateEmptyMeasuresMode_ = !truncateEmptyMeasuresMode_;
+    if (truncateEmptyMeasuresMode_ == enabled)
+        return;
+    truncateEmptyMeasuresMode_ = enabled;
+    btnTrim.setToggleState(enabled, juce::dontSendNotification);
     if (currentPreviewMidiFile_.existsAsFile())
         rebuildPreviewClipFromDisk();
+    if (onTrimModeChanged)
+        onTrimModeChanged(enabled);
     repaint();
+}
+
+void FileBrowserPanel::toggleTrimEmptyMeasuresMode()
+{
+    setTrimEmptyMeasuresMode(!truncateEmptyMeasuresMode_);
+}
+
+void FileBrowserPanel::showBookmarksMenu()
+{
+    juce::PopupMenu menu;
+    const auto root = getRootDirectory();
+    const bool canSave = root.isDirectory() && root.getFullPathName().isNotEmpty();
+
+    menu.addItem(1, "Save current folder", canSave);
+    menu.addSeparator();
+
+    juce::StringArray saved;
+    if (onGetSavedFolders)
+        saved = onGetSavedFolders();
+
+    if (saved.isEmpty())
+    {
+        menu.addItem(-1, "(No saved folders)", false);
+    }
+    else
+    {
+        for (int i = 0; i < saved.size(); ++i)
+        {
+            const juce::File dir(saved[i]);
+            const auto label = dir.getFileName().isNotEmpty() ? dir.getFileName() : saved[i];
+            menu.addItem(100 + i, label);
+        }
+
+        juce::PopupMenu removeMenu;
+        for (int i = 0; i < saved.size(); ++i)
+        {
+            const juce::File dir(saved[i]);
+            const auto label = dir.getFileName().isNotEmpty() ? dir.getFileName() : saved[i];
+            removeMenu.addItem(1000 + i, label);
+        }
+        menu.addSeparator();
+        menu.addSubMenu("Remove saved folder", removeMenu);
+    }
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(btnBookmarks),
+        [this, saved](int result)
+        {
+            if (result == 1)
+            {
+                const auto path = getRootDirectory().getFullPathName();
+                if (path.isNotEmpty() && onSaveFolder)
+                    onSaveFolder(path);
+                return;
+            }
+            if (result >= 1000)
+            {
+                const int idx = result - 1000;
+                if (onRemoveSavedFolder && juce::isPositiveAndBelow(idx, saved.size()))
+                    onRemoveSavedFolder(saved[idx]);
+                return;
+            }
+            if (result >= 100)
+            {
+                const int idx = result - 100;
+                if (juce::isPositiveAndBelow(idx, saved.size()))
+                {
+                    const juce::File dir(saved[idx]);
+                    if (dir.isDirectory())
+                        setRootDirectory(dir);
+                }
+            }
+        });
 }
 
 void FileBrowserPanel::timerCallback()
@@ -261,18 +398,6 @@ void FileBrowserPanel::paint(juce::Graphics& g)
     g.fillRect(0.0f, stripY, (float)getWidth(), (float)previewH);
     g.setColour(colours::panelBorder());
     g.drawHorizontalLine(getHeight() - previewH - 1, 0.0f, (float)getWidth());
-
-    if (truncateEmptyMeasuresMode_)
-    {
-        const auto badge = juce::Rectangle<float>(8.0f, stripY + 6.0f, 52.0f, 18.0f);
-        g.setColour(colours::accent().withAlpha(0.35f));
-        g.fillRoundedRectangle(badge, 4.0f);
-        g.setColour(colours::accent());
-        g.drawRoundedRectangle(badge, 4.0f, 1.0f);
-        g.setColour(colours::text());
-        g.setFont(juce::Font(juce::FontOptions(10.0f).withStyle("SemiBold")));
-        g.drawText("Trim", badge, juce::Justification::centred);
-    }
 
     // Piano roll content area (above M/S row)
     int contentTop = (int)stripY + frameMargin;

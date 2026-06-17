@@ -182,19 +182,46 @@ void MidiBrowserProcessor::generatePreviewMidi(const MidiClip& clip, double star
     }
 }
 
+void MidiBrowserProcessor::addSavedBrowserDir(const juce::String& path)
+{
+    const juce::File dir(path);
+    if (!dir.isDirectory()) return;
+    const auto fullPath = dir.getFullPathName();
+    savedBrowserDirs.removeString(fullPath);
+    savedBrowserDirs.insert(0, fullPath);
+    while (savedBrowserDirs.size() > 24)
+        savedBrowserDirs.remove(savedBrowserDirs.size() - 1);
+}
+
+void MidiBrowserProcessor::removeSavedBrowserDir(const juce::String& path)
+{
+    savedBrowserDirs.removeString(path);
+}
+
 void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
     juce::XmlElement xml("MidiBrowserState");
-    xml.setAttribute("version", 1);
+    xml.setAttribute("version", 2);
     xml.setAttribute("appThemeId", appThemeId.load());
     xml.setAttribute("syncSessionBars", syncSessionBars.load());
     xml.setAttribute("lastBrowserDir", lastBrowserDir);
+    xml.setAttribute("trimEmptyMeasuresPreview", trimEmptyMeasuresPreview ? 1 : 0);
+    for (const auto& folder : savedBrowserDirs)
+    {
+        if (folder.isNotEmpty())
+        {
+            auto* child = xml.createNewChildElement("SavedFolder");
+            child->setAttribute("path", folder);
+        }
+    }
     copyXmlToBinary(xml, dest);
 }
 
 void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     lastBrowserDir.clear();
+    savedBrowserDirs.clear();
+    trimEmptyMeasuresPreview = false;
     syncSessionBars.store(4);
     if (data == nullptr || sizeInBytes <= 0)
         return;
@@ -206,6 +233,17 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");
+            trimEmptyMeasuresPreview = xml->getIntAttribute("trimEmptyMeasuresPreview", 0) != 0;
+            for (auto* child : xml->getChildIterator())
+            {
+                if (child->hasTagName("SavedFolder"))
+                {
+                    const auto path = child->getStringAttribute("path");
+                    if (path.isNotEmpty() && juce::File(path).isDirectory()
+                        && !savedBrowserDirs.contains(path))
+                        savedBrowserDirs.add(path);
+                }
+            }
             applyAppTheme(appThemeId.load());
         }
     }

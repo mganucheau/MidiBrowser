@@ -34,6 +34,9 @@ public:
 
     int getItemHeight() const noexcept { return itemHeight; }
 
+    /** Select previous/next visible MIDI file in tree order (skips folders). */
+    void selectAdjacentMidiFile(int direction);
+
 private:
     juce::String dragAndDropDescription;
     int itemHeight = 22;

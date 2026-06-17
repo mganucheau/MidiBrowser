@@ -16,7 +16,6 @@ public:
     void releaseResources() override {}
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    bool isMidiEffect() const override { return true; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
 
@@ -33,8 +32,8 @@ public:
 
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override
     {
-        auto mainOut = layouts.getMainOutputChannelSet();
-        if (mainOut.isDisabled()) return true;
+        const auto mainOut = layouts.getMainOutputChannelSet();
+        if (mainOut.isDisabled()) return false;
         return mainOut == juce::AudioChannelSet::stereo()
             || mainOut == juce::AudioChannelSet::mono();
     }
@@ -60,6 +59,11 @@ public:
     std::atomic<int> appThemeId { 11 };
 
     juce::String lastBrowserDir;
+    bool trimEmptyMeasuresPreview = false;
+    juce::StringArray savedBrowserDirs;
+
+    void addSavedBrowserDir(const juce::String& path);
+    void removeSavedBrowserDir(const juce::String& path);
 
     void setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed);
 
