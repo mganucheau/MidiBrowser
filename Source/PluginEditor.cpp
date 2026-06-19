@@ -40,14 +40,15 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     applyAppTheme(processorRef.appThemeId.load());
     lnf.refreshColours();
 
-    setSize(260, 465);
+    setSize(300, 520);
     setResizable(true, true);
-    setResizeLimits(260, 465, 1200, 2000);
+    setResizeLimits(280, 480, 1200, 2000);
 
     lblTitle.setText("Midi Browser", juce::dontSendNotification);
-    lblTitle.setFont(fontFor(TextStyle::TitleMedium));
+    lblTitle.setFont(fontFor(TextStyle::LargeTitle));
     lblTitle.setJustificationType(juce::Justification::centredLeft);
     lblTitle.setColour(juce::Label::textColourId, colours::text());
+    lblTitle.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(lblTitle);
 
     {
@@ -57,12 +58,13 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     if (showAbletonHint_)
     {
         lblAbletonHint.setText(
-            "Ableton: put this on its own MIDI track, then set your instrument track's "
-            "MIDI From to this plugin (not Post FX). Monitor = In.",
+            "Ableton: use on its own MIDI track. Set your instrument track's MIDI From to this "
+            "plugin and Monitor to In.",
             juce::dontSendNotification);
-        lblAbletonHint.setFont(fontFor(TextStyle::LabelSmall));
+        lblAbletonHint.setFont(fontFor(TextStyle::Footnote));
         lblAbletonHint.setJustificationType(juce::Justification::centredLeft);
         lblAbletonHint.setColour(juce::Label::textColourId, colours::textDim());
+        lblAbletonHint.setInterceptsMouseClicks(false, false);
         addAndMakeVisible(lblAbletonHint);
     }
 
@@ -115,16 +117,26 @@ MidiBrowserEditor::~MidiBrowserEditor()
     setLookAndFeel(nullptr);
 }
 
+void MidiBrowserEditor::paint(juce::Graphics& g)
+{
+    g.fillAll(colours::bg());
+
+    g.setColour(colours::separator());
+    g.drawHorizontalLine(metrics::editorHeaderH, 0.0f, (float) getWidth());
+}
+
 void MidiBrowserEditor::resized()
 {
     auto r = getLocalBounds();
-    const int headerH = FileBrowserPanel::folderBarHeightPx();
-    lblTitle.setBounds(r.removeFromTop(headerH).reduced(10, 2));
+    const int pad = metrics::pluginPad;
+
+    auto header = r.removeFromTop(metrics::editorHeaderH).reduced(pad, 8);
+    lblTitle.setBounds(header);
+
     if (showAbletonHint_)
-    {
-        lblAbletonHint.setBounds(r.removeFromTop(44).reduced(8, 2));
-    }
-    fileBrowser.setBounds(r);
+        lblAbletonHint.setBounds(r.removeFromTop(40).reduced(pad, 4));
+
+    fileBrowser.setBounds(r.reduced(pad, 0).withTrimmedBottom(pad));
 }
 
 void MidiBrowserEditor::timerCallback()

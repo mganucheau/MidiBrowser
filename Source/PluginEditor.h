@@ -15,6 +15,7 @@ public:
     explicit MidiBrowserEditor(MidiBrowserProcessor&);
     ~MidiBrowserEditor() override;
 
+    void paint(juce::Graphics&) override;
     void resized() override;
     void timerCallback() override;
 

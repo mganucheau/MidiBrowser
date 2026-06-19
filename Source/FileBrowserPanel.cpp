@@ -5,7 +5,6 @@ namespace pflow {
 
 namespace {
 
-/** Same wrap as MidiBrowserProcessor::processBlock preview phase (loop / session length). */
 double phaseBeatForSession(double sessionBeat, bool loopEnabled,
                            double loopStart, double loopEnd, double sessionLenBeats)
 {
@@ -24,15 +23,6 @@ double phaseBeatForSession(double sessionBeat, bool loopEnabled,
     return sessionBeat;
 }
 
-} // namespace
-
-int FileBrowserPanel::folderBarHeightPx()
-{
-    return juce::jlimit(22, 28, juce::jmax(28, metrics::titleBarH - 8));
-}
-
-namespace {
-
 juce::File getOrCreateEmptyBrowserStubDir()
 {
     auto d = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
@@ -42,12 +32,29 @@ juce::File getOrCreateEmptyBrowserStubDir()
     return d;
 }
 
+bool isBlackKey(int noteNum)
+{
+    const int n = noteNum % 12;
+    return n == 1 || n == 3 || n == 6 || n == 8 || n == 10;
+}
+
+void drawGroupedInset(juce::Graphics& g, juce::Rectangle<int> bounds)
+{
+    g.setColour(colours::bgLight());
+    g.fillRoundedRectangle(bounds.toFloat(), metrics::groupedRadius);
+}
+
 } // namespace
+
+int FileBrowserPanel::folderBarHeightPx()
+{
+    return metrics::toolbarH;
+}
 
 FileBrowserPanel::FileBrowserPanel()
 {
-    btnSetRoot.setButtonText("Select a folder");
-    btnSetRoot.setComponentID("BrowserFolderButton");
+    btnSetRoot.setComponentID("HIGPrimaryButton");
+    btnSetRoot.setTooltip("Choose a folder of MIDI files");
     btnSetRoot.onClick = [this]
     {
         auto chooser = std::make_shared<juce::FileChooser>(
@@ -56,36 +63,46 @@ FileBrowserPanel::FileBrowserPanel()
                              juce::FileBrowserComponent::canSelectDirectories,
             [this, chooser](const juce::FileChooser& fc)
             {
-                auto result = fc.getResult();
+                const auto result = fc.getResult();
                 if (result.isDirectory())
                     setRootDirectory(result);
             });
     };
     addAndMakeVisible(btnSetRoot);
 
-    btnBookmarks.setComponentID("HeaderIcon");
+    btnBookmarks.setComponentID("HIGIconButton");
+    btnBookmarks.getProperties().set("hig_icon", higIcon::star);
     btnBookmarks.setTooltip("Saved folders");
     btnBookmarks.onClick = [this] { showBookmarksMenu(); };
     addAndMakeVisible(btnBookmarks);
 
-    btnFileUp.setComponentID("HeaderIcon");
+    btnFileUp.setComponentID("HIGIconButton");
+    btnFileUp.getProperties().set("hig_icon", higIcon::chevronUp);
     btnFileUp.setTooltip("Previous MIDI file");
     btnFileUp.onClick = [this] { selectAdjacentMidiFile(-1); };
     addAndMakeVisible(btnFileUp);
 
-    btnFileDown.setComponentID("HeaderIcon");
+    btnFileDown.setComponentID("HIGIconButton");
+    btnFileDown.getProperties().set("hig_icon", higIcon::chevronDown);
     btnFileDown.setTooltip("Next MIDI file");
     btnFileDown.onClick = [this] { selectAdjacentMidiFile(1); };
     addAndMakeVisible(btnFileDown);
 
-    btnTrim.setComponentID("HeaderGhost");
+    btnTrim.setComponentID("HIGChipToggle");
     btnTrim.setClickingTogglesState(true);
     btnTrim.setTooltip("Trim empty measures from preview (disk unchanged)");
-    btnTrim.onClick = [this]
-    {
-        setTrimEmptyMeasuresMode(btnTrim.getToggleState());
-    };
+    btnTrim.onClick = [this] { setTrimEmptyMeasuresMode(btnTrim.getToggleState()); };
     addAndMakeVisible(btnTrim);
+
+    btnMute.setComponentID("HIGChipToggle");
+    btnMute.setClickingTogglesState(true);
+    btnMute.setTooltip("Mute live preview to your instrument track");
+    btnMute.onClick = [this]
+    {
+        previewMuted = btnMute.getToggleState();
+        repaint();
+    };
+    addAndMakeVisible(btnMute);
 
     dirThread = std::make_unique<juce::TimeSliceThread>("BrowserDir");
     dirThread->startThread(juce::Thread::Priority::background);
@@ -97,33 +114,34 @@ FileBrowserPanel::FileBrowserPanel()
 
     fileTree = std::make_unique<PflowFileTreeComponent>(*dirContents);
     fileTree->getViewport()->setScrollBarsShown(true, true, false, false);
-    fileTree->setColour(juce::TreeView::backgroundColourId, colours::bgLight());
-    fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
-    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
-    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, juce::Colours::white);
     fileTree->setDragAndDropDescription("MidiFileDrag");
-    fileTree->setItemHeight(juce::roundToInt(18.0f * (metrics::browserFontSize / 12.0f)));
+    fileTree->setItemHeight(juce::roundToInt(22.0f * (metrics::browserFontSize / 13.0f)));
     fileTree->setWantsKeyboardFocus(true);
     fileTree->addListener(this);
     fileTree->addMouseListener(static_cast<juce::MouseListener*>(this), true);
     addAndMakeVisible(*fileTree);
     fileTree->setVisible(false);
 
-    browserEmptyHint_.setText("Select a folder to browse MIDI files", juce::dontSendNotification);
+    browserEmptyHint_.setText("Open a folder to browse MIDI files\nDrag files into your DAW", juce::dontSendNotification);
     browserEmptyHint_.setJustificationType(juce::Justification::centred);
     browserEmptyHint_.setColour(juce::Label::textColourId, colours::textDim());
-    browserEmptyHint_.setFont(juce::Font(juce::FontOptions(14.0f)));
+    browserEmptyHint_.setFont(fontFor(TextStyle::Callout));
     browserEmptyHint_.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(browserEmptyHint_);
 
+    refreshComponentColours();
+    btnMute.setToggleState(previewMuted, juce::dontSendNotification);
     setWantsKeyboardFocus(true);
-
     startTimerHz(30);
 }
 
 FileBrowserPanel::~FileBrowserPanel()
 {
-    if (fileTree) { fileTree->removeListener(this); fileTree->removeMouseListener(static_cast<juce::MouseListener*>(this)); }
+    if (fileTree)
+    {
+        fileTree->removeListener(this);
+        fileTree->removeMouseListener(static_cast<juce::MouseListener*>(this));
+    }
 }
 
 void FileBrowserPanel::setRootDirectory(const juce::File& dir)
@@ -144,31 +162,34 @@ juce::File FileBrowserPanel::getRootDirectory() const
 void FileBrowserPanel::resized()
 {
     auto b = getLocalBounds();
-    const int previewH = 150;
+    const int previewH = metrics::previewH;
+    const int gap = metrics::toolbarGap;
+    const int iconW = metrics::iconButtonSize;
+
     auto abovePreview = b;
-    abovePreview.removeFromBottom(previewH);
-    const int btnH = folderBarHeightPx();
-    const int iconBtnW = 28;
-    const int gap = 2;
-    auto topRow = abovePreview.removeFromTop(btnH);
-    btnFileDown.setBounds(topRow.removeFromRight(iconBtnW));
+    abovePreview.removeFromBottom(previewH + gap);
+
+    auto topRow = abovePreview.removeFromTop(metrics::toolbarH);
+    btnFileDown.setBounds(topRow.removeFromRight(iconW));
     topRow.removeFromRight(gap);
-    btnFileUp.setBounds(topRow.removeFromRight(iconBtnW));
+    btnFileUp.setBounds(topRow.removeFromRight(iconW));
     topRow.removeFromRight(gap);
-    btnBookmarks.setBounds(topRow.removeFromRight(iconBtnW));
+    btnBookmarks.setBounds(topRow.removeFromRight(iconW));
     topRow.removeFromRight(gap);
     btnSetRoot.setBounds(topRow);
-    fileTree->setBounds(abovePreview);
+
+    abovePreview.removeFromTop(gap);
+    fileTree->setBounds(abovePreview.reduced(0, 0));
     browserEmptyHint_.setBounds(abovePreview);
 
-    const float bottomPad = 10.0f;
-    const float msBtnW = 30.0f;
-    const float msBtnH = 22.0f;
-    const int frameMargin = 8;
-    const float stripY = (float)(getHeight() - previewH);
-    const float msY = stripY + (float)previewH - bottomPad - msBtnH;
-    float msX = (float)(getWidth() - frameMargin) - msBtnW;
-    btnTrim.setBounds((int)(msX - msBtnW - 6.0f), (int)msY, (int)msBtnW + 18, (int)msBtnH);
+    auto previewBlock = b.removeFromBottom(previewH);
+    auto controls = previewBlock.removeFromBottom(metrics::previewControlsH);
+    previewBlock.removeFromBottom(4);
+
+    const int chipW = 76;
+    btnMute.setBounds(controls.removeFromRight(chipW));
+    controls.removeFromRight(gap);
+    btnTrim.setBounds(controls.removeFromRight(chipW + 8));
 }
 
 bool FileBrowserPanel::keyPressed(const juce::KeyPress& key)
@@ -197,32 +218,13 @@ void FileBrowserPanel::selectAdjacentMidiFile(int direction)
 
 void FileBrowserPanel::mouseDown(const juce::MouseEvent& e)
 {
-    if (fileTree)
+    if (!fileTree) return;
+
+    fileTree->grabKeyboardFocus();
+    if (e.eventComponent == fileTree.get() || fileTree->isParentOf(e.eventComponent))
     {
-        fileTree->grabKeyboardFocus();
-        if (e.eventComponent == fileTree.get() || fileTree->isParentOf(e.eventComponent))
-        {
-            dragStartPos = e.position;
-            externalDragStarted = false;
-        }
-    }
-    const int previewH = 150;
-    const float bottomPad = 10.0f;
-    const float msBtnW = 30.0f;
-    const float msBtnH = 22.0f;
-    const int frameMargin = 8;
-    float stripY = (float)(getHeight() - previewH);
-    float msY = stripY + (float)previewH - bottomPad - msBtnH;
-    float msX = (float)(getWidth() - frameMargin) - msBtnW;
-    auto muteRect = juce::Rectangle<float>(msX, msY, msBtnW, msBtnH);
-    if (e.position.y >= (float)(getHeight() - previewH) && e.position.y < (float)getHeight())
-    {
-        if (muteRect.contains(e.position))
-        {
-            previewMuted = !previewMuted;
-            repaint();
-            return;
-        }
+        dragStartPos = e.position;
+        externalDragStarted = false;
     }
 }
 
@@ -230,10 +232,11 @@ void FileBrowserPanel::mouseDrag(const juce::MouseEvent& e)
 {
     if (!fileTree || externalDragStarted) return;
     if (fileTree->getNumSelectedFiles() <= 0) return;
-    juce::File f = fileTree->getSelectedFile(0);
+
+    const juce::File f = fileTree->getSelectedFile(0);
     if (!f.hasFileExtension("mid;midi") || !f.existsAsFile()) return;
-    float dist = e.position.getDistanceFrom(dragStartPos);
-    if (dist > 4.0f)
+
+    if (e.position.getDistanceFrom(dragStartPos) > 4.0f)
     {
         externalDragStarted = true;
         juce::DragAndDropContainer::performExternalDragDropOfFiles(
@@ -374,36 +377,31 @@ void FileBrowserPanel::timerCallback()
     repaint();
 }
 
-static bool isBlackKey(int noteNum)
-{
-    int n = noteNum % 12;
-    return n == 1 || n == 3 || n == 6 || n == 8 || n == 10;
-}
-
 void FileBrowserPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::bgLight());
-    g.setColour(colours::panelBorder());
-    g.drawLine((float)getWidth() - 0.5f, 0.0f, (float)getWidth() - 0.5f, (float)getHeight(), 1.0f);
-    const int previewH = 150;
+    auto bounds = getLocalBounds();
+    const int previewH = metrics::previewH;
+    const int gap = metrics::toolbarGap;
+    const int pad = metrics::grid;
+
+    auto treeArea = bounds;
+    treeArea.removeFromBottom(previewH + gap);
+    treeArea.removeFromTop(metrics::toolbarH + gap);
+    drawGroupedInset(g, treeArea.reduced(0, 0));
+
+    auto previewArea = bounds.removeFromBottom(previewH);
+    drawGroupedInset(g, previewArea);
+
     const int pianoKeyWidth = 22;
-    const float bottomPad = 10.0f;
-    const float msBtnW = 30.0f;
-    const float msBtnH = 22.0f;
-    const int msRowH = (int)std::ceil((double)bottomPad + (double)msBtnH + 10.0);
-    const int frameMargin = (int)std::round(bottomPad);
+    const int frameMargin = pad;
+    const int controlsH = metrics::previewControlsH;
+    auto rollArea = previewArea.reduced(frameMargin);
+    rollArea.removeFromBottom(controlsH + 4);
 
-    float stripY = (float)(getHeight() - previewH);
-    g.setColour(colours::accentDim().withAlpha(0.18f));
-    g.fillRect(0.0f, stripY, (float)getWidth(), (float)previewH);
-    g.setColour(colours::panelBorder());
-    g.drawHorizontalLine(getHeight() - previewH - 1, 0.0f, (float)getWidth());
-
-    // Piano roll content area (above M/S row)
-    int contentTop = (int)stripY + frameMargin;
-    int contentH = previewH - frameMargin - msRowH - frameMargin;
-    int gridLeft = frameMargin + pianoKeyWidth;
-    int gridW = getWidth() - frameMargin * 2 - pianoKeyWidth;
+    const int contentTop = rollArea.getY();
+    const int contentH = rollArea.getHeight();
+    const int gridLeft = rollArea.getX() + pianoKeyWidth;
+    const int gridW = rollArea.getWidth() - pianoKeyWidth;
 
     bool drawPlayhead = false;
     double displayPlayheadBeat = 0.0;
@@ -427,96 +425,83 @@ void FileBrowserPanel::paint(juce::Graphics& g)
             minN = std::min(minN, n.noteNumber);
             maxN = std::max(maxN, n.noteNumber);
         }
-        // Ensure at least 2 octaves (24 semitones) of range, centered on content
         int contentMid = (minN + maxN) / 2;
-        int minRange = 24;
-        int halfRange = minRange / 2;
-        int botNote = std::min(minN - 1, contentMid - halfRange);
-        int topNote = std::max(maxN + 1, contentMid + halfRange);
+        constexpr int minRange = 24;
+        int botNote = std::min(minN - 1, contentMid - minRange / 2);
+        int topNote = std::max(maxN + 1, contentMid + minRange / 2);
         botNote = std::max(0, botNote);
         topNote = std::min(127, topNote);
         int range = std::max(minRange, topNote - botNote + 1);
-        float noteH = (float)contentH / (float)range;
-        float beatsToPx = (float)gridW / (float)std::max(0.25, previewClip.lengthBeats);
+        float noteH = (float) contentH / (float) range;
+        float beatsToPx = (float) gridW / (float) std::max(0.25, previewClip.lengthBeats);
 
-        // Piano keys (left strip)
         for (int n = botNote; n <= topNote + 1; ++n)
         {
-            float y = (float)contentTop + contentH - (float)(n - botNote + 1) * noteH;
+            float y = (float) contentTop + contentH - (float) (n - botNote + 1) * noteH;
             bool black = isBlackKey(n);
             g.setColour(black ? colours::pianoBlackKey() : colours::pianoWhiteKey());
-            g.fillRect((float)frameMargin, y, (float)pianoKeyWidth, noteH);
-            g.setColour(colours::panelBorder().withAlpha(0.3f));
-            g.drawHorizontalLine((int)y, (float)frameMargin, (float)(frameMargin + pianoKeyWidth));
+            g.fillRect((float) rollArea.getX(), y, (float) pianoKeyWidth, noteH);
+            g.setColour(colours::separator().withAlpha(0.25f));
+            g.drawHorizontalLine((int) y, (float) rollArea.getX(), (float) (rollArea.getX() + pianoKeyWidth));
         }
-        g.setColour(colours::panelBorder());
-        g.drawVerticalLine(gridLeft, (float)contentTop, (float)(contentTop + contentH));
+        g.setColour(colours::separator());
+        g.drawVerticalLine(gridLeft, (float) contentTop, (float) (contentTop + contentH));
 
-        // Grid rows (pitch) and notes
         for (int n = botNote; n <= topNote + 1; ++n)
         {
-            float y = (float)contentTop + contentH - (float)(n - botNote + 1) * noteH;
+            float y = (float) contentTop + contentH - (float) (n - botNote + 1) * noteH;
             bool black = isBlackKey(n);
-            g.setColour(black ? colours::pianoBlackKey().withAlpha(0.5f) : juce::Colours::transparentBlack);
-            g.fillRect((float)gridLeft, y, (float)gridW, noteH);
-            g.setColour(colours::pianoGrid().withAlpha(0.55f));
-            g.drawHorizontalLine((int)y, (float)gridLeft, (float)(gridLeft + gridW));
+            g.setColour(black ? colours::pianoBlackKey().withAlpha(0.45f) : juce::Colours::transparentBlack);
+            g.fillRect((float) gridLeft, y, (float) gridW, noteH);
+            g.setColour(colours::pianoGrid());
+            g.drawHorizontalLine((int) y, (float) gridLeft, (float) (gridLeft + gridW));
         }
 
-        // Notes as horizontal bars
         for (auto& n : previewClip.notes)
         {
-            float x = (float)n.startBeat * beatsToPx;
-            float w = (float)n.lengthBeats * beatsToPx;
-            if (x + w < 0 || x > (float)gridW) continue;
+            float x = (float) n.startBeat * beatsToPx;
+            float w = (float) n.lengthBeats * beatsToPx;
+            if (x + w < 0 || x > (float) gridW) continue;
             if (x < 0) { w += x; x = 0; }
-            if (x + w > (float)gridW) w = (float)gridW - x;
+            if (x + w > (float) gridW) w = (float) gridW - x;
             w = std::max(2.0f, w);
-            float y = (float)contentTop + contentH - (float)(n.noteNumber - botNote + 1) * noteH;
-            g.setColour(colours::accent().withAlpha(0.5f + 0.5f * n.velocity / 127.0f));
-            g.fillRoundedRectangle((float)gridLeft + x, y + 1.0f, w, noteH - 2.0f, 2.0f);
+            float y = (float) contentTop + contentH - (float) (n.noteNumber - botNote + 1) * noteH;
+            g.setColour(colours::accent().withAlpha(0.45f + 0.45f * n.velocity / 127.0f));
+            g.fillRoundedRectangle((float) gridLeft + x, y + 1.0f, w, noteH - 2.0f, 3.0f);
         }
 
         if (drawPlayhead)
         {
-            float playheadX = (float)gridLeft + (float)displayPlayheadBeat * beatsToPx;
+            float playheadX = (float) gridLeft + (float) displayPlayheadBeat * beatsToPx;
             g.setColour(colours::playhead());
-            g.fillRect(playheadX - 1.0f, (float)contentTop, 2.0f, (float)contentH);
+            g.fillRect(playheadX - 1.0f, (float) contentTop, 2.0f, (float) contentH);
         }
     }
-
-    // Mute: preview to instrument track is silent when engaged
-    const float cr = metrics::cornerRadius;
-    float msY = stripY + (float)previewH - bottomPad - msBtnH;
-    float msX = (float)(getWidth() - frameMargin) - msBtnW;
-    auto muteR = juce::Rectangle<float>(msX, msY, msBtnW, msBtnH);
-
-    g.setColour(previewMuted ? colours::muteInactive() : colours::panelBorder());
-    if (previewMuted)
-        g.fillRoundedRectangle(muteR, cr);
     else
-        g.drawRoundedRectangle(muteR, cr, 1.2f);
-    g.setColour(previewMuted ? juce::Colours::white : colours::textDim());
-    g.setFont(juce::Font(juce::FontOptions(10.0f).withStyle("Bold")));
-    g.drawText("M", muteR, juce::Justification::centred);
+    {
+        g.setColour(colours::textDim());
+        g.setFont(fontFor(TextStyle::Callout));
+        g.drawText("Select a MIDI file to preview", rollArea, juce::Justification::centred, true);
+    }
 }
 
 void FileBrowserPanel::refreshComponentColours()
 {
     browserEmptyHint_.setColour(juce::Label::textColourId, colours::textDim());
-    fileTree->setColour(juce::TreeView::backgroundColourId, colours::bgLight());
-    fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
-    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::accent());
-    fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, juce::Colours::white);
+    browserEmptyHint_.setFont(fontFor(TextStyle::Callout));
+    if (fileTree)
+    {
+        fileTree->setColour(juce::TreeView::backgroundColourId, juce::Colours::transparentBlack);
+        fileTree->setColour(juce::DirectoryContentsDisplayComponent::textColourId, colours::text());
+        fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::selection());
+        fileTree->setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, colours::text());
+    }
 }
 
 void FileBrowserPanel::fileClicked(const juce::File& file, const juce::MouseEvent&)
 {
-    if (file.hasFileExtension("mid;midi"))
-    {
-        if (onFileDragStarted)
-            onFileDragStarted(file);
-    }
+    if (file.hasFileExtension("mid;midi") && onFileDragStarted)
+        onFileDragStarted(file);
 }
 
 void FileBrowserPanel::fileDoubleClicked(const juce::File& file)

@@ -61,11 +61,12 @@ private:
     std::unique_ptr<juce::TimeSliceThread> dirThread;
     std::unique_ptr<juce::DirectoryContentsList> dirContents;
 
-    juce::TextButton btnSetRoot { "Select a folder" };
-    juce::TextButton btnBookmarks { juce::String::charToString(0x2605) };
-    juce::TextButton btnFileUp { juce::String::charToString(0x25B2) };
-    juce::TextButton btnFileDown { juce::String::charToString(0x25BC) };
+    juce::TextButton btnSetRoot { "Open\u2026" };
+    juce::TextButton btnBookmarks;
+    juce::TextButton btnFileUp;
+    juce::TextButton btnFileDown;
     juce::TextButton btnTrim { "Trim" };
+    juce::TextButton btnMute;
     juce::Label browserEmptyHint_;
 
     MidiClip previewClip;
