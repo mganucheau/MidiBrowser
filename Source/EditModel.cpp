@@ -73,6 +73,15 @@ int fitToScale(int midi, int rootPc, Mode mode)
     return best;
 }
 
+void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
+{
+    target.octave = locked.octave;
+    target.fitScale = locked.fitScale;
+    target.mapToRoot = locked.mapToRoot;
+    target.root = locked.root;
+    target.mode = locked.mode;
+}
+
 bool editIsClean(const ClipEdit& e)
 {
     if (e.octave != 0 || e.fitScale || e.mapToRoot || e.trimLead != 0 || e.trimTail != 0)

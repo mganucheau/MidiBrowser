@@ -225,6 +225,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("tweakAccent", tweaks().accent.load());
     xml.setAttribute("tweakDensity", tweaks().density.load());
     xml.setAttribute("tweakGrid", tweaks().grid.load());
+    xml.setAttribute("tweakSize", tweaks().size.load());
     xml.setAttribute("syncSessionBars", syncSessionBars.load());
     xml.setAttribute("lastBrowserDir", lastBrowserDir);
     xml.setAttribute("trimEmptyMeasuresPreview", trimEmptyMeasuresPreview ? 1 : 0);
@@ -233,6 +234,12 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("editorOpen", editorOpen ? 1 : 0);
     xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
     xml.setAttribute("miniOpen", miniOpen ? 1 : 0);
+    xml.setAttribute("editLock", editLock ? 1 : 0);
+    xml.setAttribute("lockOctave", lockedEdit.octave);
+    xml.setAttribute("lockFitScale", lockedEdit.fitScale ? 1 : 0);
+    xml.setAttribute("lockMapToRoot", lockedEdit.mapToRoot ? 1 : 0);
+    xml.setAttribute("lockRoot", lockedEdit.root);
+    xml.setAttribute("lockMode", (int) lockedEdit.mode);
     for (const auto& folder : savedBrowserDirs)
     {
         if (folder.isNotEmpty())
@@ -302,6 +309,8 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 xml->getIntAttribute("tweakDensity", (int) Density::Compact)));
             tweaks().grid.store(juce::jlimit(0, kNumGridStyles - 1,
                 xml->getIntAttribute("tweakGrid", (int) GridStyle::Minimal)));
+            tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1,
+                xml->getIntAttribute("tweakSize", (int) ContentSize::Medium)));
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");
@@ -311,6 +320,14 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             editorOpen = xml->getIntAttribute("editorOpen", 1) != 0;
             sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
             miniOpen = xml->getIntAttribute("miniOpen", 1) != 0;
+            editLock = xml->getIntAttribute("editLock", 0) != 0;
+            lockedEdit = ClipEdit();
+            lockedEdit.octave = juce::jlimit(-3, 3, xml->getIntAttribute("lockOctave", 0));
+            lockedEdit.fitScale = xml->getIntAttribute("lockFitScale", 0) != 0;
+            lockedEdit.mapToRoot = xml->getIntAttribute("lockMapToRoot", 0) != 0;
+            lockedEdit.root = juce::jlimit(-1, 11, xml->getIntAttribute("lockRoot", -1));
+            lockedEdit.mode = (Mode) juce::jlimit(0, kNumModes - 1,
+                xml->getIntAttribute("lockMode", (int) Mode::Dorian));
             for (auto* child : xml->getChildIterator())
             {
                 if (child->hasTagName("SavedFolder"))

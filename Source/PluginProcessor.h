@@ -82,6 +82,11 @@ public:
     std::map<juce::String, ClipEdit> clipEdits;
     std::map<juce::String, GrooveParams> clipGrooves;
 
+    // Browse-lock: when set, the locked pitch edits (octave / fit / map /
+    // root / mode) are stamped onto every clip selected while browsing.
+    bool editLock = false;
+    ClipEdit lockedEdit;
+
     // UI layout state (persisted)
     bool editorOpen = true;
     bool sidebarCollapsed = true;

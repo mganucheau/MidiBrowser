@@ -29,15 +29,41 @@ public:
     std::function<void()> onToggleEditor;
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
+    std::function<void()> onDragToDaw;   // begin external drag of the edited clip
 
 private:
     void refreshBpm();
+
+    /** Chip that starts an external drag instead of clicking. */
+    class DragChip : public ChipBtn
+    {
+    public:
+        using ChipBtn::ChipBtn;
+        std::function<void()> onDragStart;
+        void mouseDrag(const juce::MouseEvent& e) override
+        {
+            if (!dragging && e.getDistanceFromDragStart() > 5 && onDragStart)
+            {
+                dragging = true;
+                onDragStart();
+            }
+        }
+        void mouseUp(const juce::MouseEvent& e) override
+        {
+            dragging = false;
+            ChipBtn::mouseUp(e);
+        }
+
+    private:
+        bool dragging = false;
+    };
 
     IconBtn btnPlay { icons::play, "Play / pause preview" };
     IconBtn btnStop { icons::stop, "Stop" };
     PillToggle syncToggle { "Synced to DAW", "Free-run" };
     juce::Label bpmLabel;
     juce::Label pathLabel;
+    DragChip btnDragToDaw { "Drag to DAW" };
     ChipBtn btnEditor { "Editor", icons::arrowsIn };
 
     bool playing = false;

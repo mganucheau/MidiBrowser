@@ -8,7 +8,7 @@
 
 namespace pflow {
 
-// ── Shared vertical pitch mapping for roll surfaces ─────────────────────────
+// ── Shared vertical pitch mapping for the mini roll ──────────────────────────
 struct PitchRowMap
 {
     int minPitch = 48, maxPitch = 72;   // inclusive
@@ -49,6 +49,11 @@ private:
 
 // ── PianoRollEditorD ─────────────────────────────────────────────────────────
 // instrument strip · toolbar · roll · velocity lane · Groove panel.
+//
+// Roll geometry (Live/Logic-style): the content spans the full MIDI pitch
+// range (or only note-bearing rows when folded) at a fixed, zoomable row
+// height, scrolling both axes inside a viewport. The key gutter shares the
+// exact same row mapping, offset by the viewport's vertical scroll.
 
 class PianoRollEditor : public juce::Component
 {
@@ -64,9 +69,11 @@ public:
     void setClip(const StepClip& clip, const ClipEdit& edit, const GrooveParams& groove);
     void clearClip();
     void setPlayheadStep(double step, bool playing);
+    void setLockActive(bool locked);
 
     std::function<void(const ClipEdit&)> onEditChanged;
     std::function<void(const GrooveParams&)> onGrooveChanged;
+    std::function<void(bool)> onLockToggled;   // browse-lock for pitch edits
 
 private:
     // ── inner surfaces ──
@@ -79,6 +86,7 @@ private:
         void mouseDrag(const juce::MouseEvent&) override;
         void mouseUp(const juce::MouseEvent&) override;
         void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+        void mouseMagnify(const juce::MouseEvent&, float scaleFactor) override;
         PianoRollEditor& owner;
 
         // interaction state
@@ -86,7 +94,7 @@ private:
         Drag drag = Drag::None;
         int dragNoteId = -1;
         juce::Point<float> dragStart;
-        int dragDPitch = 0, dragDStep = 0;      // live preview offsets
+        int dragDRows = 0, dragDStep = 0;       // live preview offsets
         juce::Rectangle<float> marquee;
         bool marqueeAdditive = false;
     };
@@ -111,6 +119,15 @@ private:
         static constexpr int laneH = 64;
     };
 
+    struct NotifyingViewport : juce::Viewport
+    {
+        std::function<void()> onScrolled;
+        void visibleAreaChanged(const juce::Rectangle<int>&) override
+        {
+            if (onScrolled) onScrolled();
+        }
+    };
+
     friend class RollContent;
     friend class KeyGutter;
     friend class VelocityLane;
@@ -120,16 +137,23 @@ private:
     void applyEdit(std::function<void(ClipEdit&)> mutate);
     void refreshControls();
     void updateRollSize();
-    float pxPerStep() const;
+    void scrollToContent();
+
+    // ── row geometry ──
+    float pxPerStep() const { return pxPerStepBase * zoomX; }
     int totalSteps() const { return resolved.bars * kStepsPerBar; }
+    int numRows() const { return folded ? juce::jmax(1, (int) foldPitches.size()) : 128; }
+    int rowForPitch(int pitch) const;
+    int pitchForRow(int row) const;
+    juce::Rectangle<float> noteRect(const RollNote&, int rowOffset = 0, double stepOffset = 0.0) const;
     const RollNote* noteAt(juce::Point<float> contentPos) const;
-    juce::Rectangle<float> noteRect(const RollNote&) const;
-    void zoomAround(float factor, float contentX);
+    void computePxPerStepBase();
+    void zoomXAround(float factor, float contentX);
+    void zoomRowsAround(float factor, float contentY);
     void commitNoteDrag();
     void selectPitch(int pitch, bool additive);
     void toggleTrim();
     void removeBadge(const juce::String& key);
-    juce::String divisionName(int steps) const;
 
     // ── state ──
     bool hasClip = false;
@@ -140,31 +164,33 @@ private:
     std::vector<RollNote> grooved;          // applyGroove(resolved)
     EdgeBars edges;                         // of pre-trim resolve
     std::set<int> selection;
-    float zoom = 1.0f;                      // ~1..3
+    std::vector<int> foldPitches;           // ascending note-bearing pitches
+    bool folded = false;
+    float pxPerStepBase = 6.0f;             // fit-to-width at zoomX 1
+    float zoomX = 1.0f;                     // horizontal zoom, 1..6
+    float rowH = 13.0f;                     // vertical zoom (px per semitone)
     int divisionSteps = 4;                  // grid + snap (1/4 default)
     double playheadStep = 0.0;
     bool playing = false;
+    bool lockActive = false;
+
+    static constexpr float kMinRowH = 5.0f;    // max notes on screen
+    static constexpr float kMaxRowH = 26.0f;   // min notes on screen
+    static constexpr float kMaxZoomX = 6.0f;
 
     // ── children ──
     Stepper octaveStepper;
     juce::ComboBox rootPicker, modePicker, divisionPicker;
     MiniSwitch fitSwitch { "Fit to scale" };
     MiniSwitch mapSwitch { "Map to root" };
+    IconBtn btnLock { icons::lockOpen, "Lock pitch edits while browsing" };
     IconBtn btnRevert { icons::undo, "Revert all edits" };
     ChipBtn btnTrim { "Trim", icons::scissors };
+    ChipBtn btnFold { "Fold", icons::foldRows };
     IconBtn btnZoomOut { icons::zoomOut, "Zoom out" };
     IconBtn btnZoomIn { icons::zoomIn, "Zoom in" };
     ChipBtn selBadge { "0 sel" };
     std::vector<std::unique_ptr<ChipBtn>> badgeChips;
-
-    struct NotifyingViewport : juce::Viewport
-    {
-        std::function<void()> onScrolled;
-        void visibleAreaChanged(const juce::Rectangle<int>&) override
-        {
-            if (onScrolled) onScrolled();
-        }
-    };
 
     KeyGutter gutter { *this };
     NotifyingViewport rollViewport;
@@ -172,8 +198,6 @@ private:
     VelocityLane velocityLane { *this };
     bool velocityOpen = true;
     KnobsPanel knobsPanel;
-
-    PitchRowMap rowMap;
 
     static constexpr int stripH = 46;
     static constexpr int toolbarH = 36;

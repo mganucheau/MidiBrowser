@@ -33,8 +33,11 @@ private:
     void chooseFolder();
     void selectIndex(int index);
     void refreshEntryMeta(int index);
+    MidiClip buildRenderedClip() const;   // resolved + groove + velocities
     void pushPreviewToProcessor();
+    void startDragExport();
     void applyLayoutState();
+    void layoutContent();
     void toggleEditorFold();
     void showTweaksMenu();
     void refreshSidebar();
@@ -46,6 +49,15 @@ private:
     MidiBrowserProcessor& processorRef;
     PatternFlowLookAndFeel lnf;
     juce::TooltipWindow tooltips { this, 600 };
+
+    /** All UI lives inside this holder so the content-size tweak can scale
+        the whole interface with one transform. */
+    struct ContentHolder : juce::Component
+    {
+        std::function<void()> onLayout;
+        void resized() override { if (onLayout) onLayout(); }
+    };
+    ContentHolder content;
 
     TransportBar transport;
     FavoritesSidebar sidebar;

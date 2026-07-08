@@ -36,6 +36,12 @@ TransportBar::TransportBar()
     pathLabel.setMinimumHorizontalScale(1.0f);
     addAndMakeVisible(pathLabel);
 
+    btnDragToDaw.accentText = true;
+    btnDragToDaw.setTooltip("Drag onto a DAW track to drop a MIDI file with the edits applied");
+    btnDragToDaw.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+    btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
+    addAndMakeVisible(btnDragToDaw);
+
     btnEditor.active = true;
     btnEditor.onClick = [this] { if (onToggleEditor) onToggleEditor(); };
     addAndMakeVisible(btnEditor);
@@ -125,10 +131,18 @@ void TransportBar::resized()
     r.removeFromLeft(6);
     bpmLabel.setBounds(mid(r.removeFromLeft(52), 22));
 
-    // Right: Editor button, always fully inside with normal padding.
+    // Right: Editor button, always fully inside with normal padding; the
+    // Drag-to-DAW chip sits to its left when the window is expanded.
     auto editorArea = r.removeFromRight(btnEditor.idealWidth());
     btnEditor.setBounds(mid(editorArea, 24));
-    r.removeFromRight(8);
+    r.removeFromRight(6);
+
+    btnDragToDaw.setVisible(!narrow && editorOpen);
+    if (btnDragToDaw.isVisible())
+    {
+        btnDragToDaw.setBounds(mid(r.removeFromRight(btnDragToDaw.idealWidth()), 24));
+        r.removeFromRight(8);
+    }
 
     pathLabel.setFont(monoFont(10.5f, false));
     pathLabel.setColour(juce::Label::textColourId, colours::text3());

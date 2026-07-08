@@ -175,6 +175,41 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
         g.drawRoundedRectangle(r, px, px);
         g.drawLine(cx - s * 0.3f, cy - s * 0.8f, cx - s * 0.3f, cy + s * 0.8f, px);
     }
+    else if (name == icons::lockOpen || name == icons::lockClosed)
+    {
+        const bool closed = (name == icons::lockClosed);
+        auto body = juce::Rectangle<float>(cx - s * 0.75f, cy - s * 0.15f, s * 1.5f, s * 1.05f);
+        g.drawRoundedRectangle(body, px, px);
+        juce::Path shackle;
+        const float top = closed ? cy - s * 0.95f : cy - s * 1.15f;
+        shackle.startNewSubPath(cx - s * 0.45f, body.getY());
+        shackle.lineTo(cx - s * 0.45f, top + s * 0.35f);
+        shackle.addCentredArc(cx, top + s * 0.35f, s * 0.45f, s * 0.35f, 0.0f,
+                              -juce::MathConstants<float>::halfPi,
+                              juce::MathConstants<float>::halfPi, false);
+        if (closed)
+            shackle.lineTo(cx + s * 0.45f, body.getY());
+        else
+            shackle.lineTo(cx + s * 0.45f, body.getY() - s * 0.35f);
+        g.strokePath(shackle, st);
+        g.fillEllipse(cx - px, cy + s * 0.3f, px * 2.0f, px * 2.0f);
+    }
+    else if (name == icons::foldRows)
+    {
+        // Rows collapsing together: three lines with arrows pointing inward.
+        g.drawLine(cx - s, cy - s * 0.85f, cx + s, cy - s * 0.85f, px);
+        g.drawLine(cx - s, cy + s * 0.85f, cx + s, cy + s * 0.85f, px);
+        g.drawLine(cx - s, cy, cx + s, cy, px);
+        juce::Path a1, a2;
+        a1.startNewSubPath(cx - s * 0.3f, cy - s * 0.55f);
+        a1.lineTo(cx, cy - s * 0.28f);
+        a1.lineTo(cx + s * 0.3f, cy - s * 0.55f);
+        a2.startNewSubPath(cx - s * 0.3f, cy + s * 0.55f);
+        a2.lineTo(cx, cy + s * 0.28f);
+        a2.lineTo(cx + s * 0.3f, cy + s * 0.55f);
+        g.strokePath(a1, st);
+        g.strokePath(a2, st);
+    }
     else if (name == icons::gear)
     {
         g.drawEllipse(cx - s * 0.35f, cy - s * 0.35f, s * 0.7f, s * 0.7f, px);
@@ -323,19 +358,29 @@ MiniSwitch::MiniSwitch(const juce::String& c) : juce::Button(c), caption(c)
     setWantsKeyboardFocus(false);
 }
 
+int MiniSwitch::idealWidth() const
+{
+    const float capW = juce::GlyphArrangement::getStringWidth(uiFont(11.5f, true), caption);
+    const float valW = juce::jmax(
+        juce::GlyphArrangement::getStringWidth(monoFont(10.5f, false), onText),
+        juce::GlyphArrangement::getStringWidth(monoFont(10.5f, false), offText));
+    return (int) std::ceil(capW + valW) + 26 + 18;   // track + gaps
+}
+
 void MiniSwitch::paintButton(juce::Graphics& g, bool over, bool down)
 {
     juce::ignoreUnused(down);
     const bool on = getToggleState();
-    auto area = getLocalBounds();
+    auto row = getLocalBounds();
 
-    g.setColour(colours::text3());
-    g.setFont(uiFont(9.5f, true));
-    auto capArea = area.removeFromTop(12);
-    g.drawFittedText(caption.toUpperCase(), capArea, juce::Justification::centredLeft, 1, 1.0f);
+    // Caption · track · value, all on one row.
+    g.setColour(on ? colours::text() : colours::text2());
+    g.setFont(uiFont(11.5f, true));
+    const int capW = (int) std::ceil(
+        juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), caption));
+    g.drawFittedText(caption, row.removeFromLeft(capW), juce::Justification::centredLeft, 1, 1.0f);
+    row.removeFromLeft(7);
 
-    // Track + knob
-    auto row = area;
     auto track = row.removeFromLeft(26).toFloat().withSizeKeepingCentre(24.0f, 14.0f);
     g.setColour(on ? colours::accent() : (over ? colours::elev().brighter(0.1f) : colours::elev()));
     g.fillRoundedRectangle(track, 7.0f);
@@ -345,7 +390,7 @@ void MiniSwitch::paintButton(juce::Graphics& g, bool over, bool down)
 
     row.removeFromLeft(6);
     g.setColour(on ? colours::accentBright() : colours::text3());
-    g.setFont(monoFont(10.0f, false));
+    g.setFont(monoFont(10.5f, false));
     g.drawFittedText(on ? onText : offText, row, juce::Justification::centredLeft, 1, 1.0f);
 }
 

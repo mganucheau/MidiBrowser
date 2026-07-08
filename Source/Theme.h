@@ -15,10 +15,12 @@ enum class ThemeId { Charcoal, Graphite, Ink };
 enum class AccentId { Blue, Amber, Mint };
 enum class Density { Compact, Comfortable };
 enum class GridStyle { Lanes, Minimal, Blueprint };
+enum class ContentSize { Small, Medium, Large };
 
 constexpr int kNumThemes = 3;
 constexpr int kNumAccents = 3;
 constexpr int kNumGridStyles = 3;
+constexpr int kNumContentSizes = 3;
 
 struct ThemeTokens
 {
@@ -50,6 +52,7 @@ struct Tweaks
     std::atomic<int> accent  { (int) AccentId::Amber };
     std::atomic<int> density { (int) Density::Compact };
     std::atomic<int> grid    { (int) GridStyle::Minimal };
+    std::atomic<int> size    { (int) ContentSize::Medium };
 };
 
 Tweaks& tweaks();
@@ -58,6 +61,17 @@ inline ThemeId currentTheme()     { return (ThemeId) juce::jlimit(0, kNumThemes 
 inline AccentId currentAccent()   { return (AccentId) juce::jlimit(0, kNumAccents - 1, tweaks().accent.load()); }
 inline Density currentDensity()   { return (Density) juce::jlimit(0, 1, tweaks().density.load()); }
 inline GridStyle currentGrid()    { return (GridStyle) juce::jlimit(0, kNumGridStyles - 1, tweaks().grid.load()); }
+
+/** UI scale for the Small / Medium / Large content-size tweak. */
+inline float contentScale()
+{
+    switch ((ContentSize) juce::jlimit(0, kNumContentSizes - 1, tweaks().size.load()))
+    {
+        case ContentSize::Small: return 0.85f;
+        case ContentSize::Large: return 1.2f;
+        default:                 return 1.0f;
+    }
+}
 
 // ── Fonts ────────────────────────────────────────────────────────────────────
 // Schibsted Grotesk for UI, JetBrains Mono for numbers / paths (embedded).

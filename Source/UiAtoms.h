@@ -32,6 +32,9 @@ namespace icons {
     inline constexpr const char* noteDrums     = "drum";        // drum clips
     inline constexpr const char* sidebar       = "sidebar";
     inline constexpr const char* gear          = "gear";
+    inline constexpr const char* lockOpen      = "lock-open";
+    inline constexpr const char* lockClosed    = "lock-closed";
+    inline constexpr const char* foldRows      = "fold-rows";
 }
 
 /** Stroke-drawn icon centered in bounds. `px` is the stroke width. */
@@ -80,14 +83,16 @@ public:
     juce::String onLabel, offLabel;
 };
 
-/** Labelled mini switch (Fit to scale / Map to root). */
+/** Labelled mini switch (Fit to scale / Map to root): caption · track · value
+    laid out on one row. */
 class MiniSwitch : public juce::Button
 {
 public:
     explicit MiniSwitch(const juce::String& caption);
     void paintButton(juce::Graphics&, bool over, bool down) override;
+    int idealWidth() const;
 
-    juce::String caption;          // control name above/left
+    juce::String caption;          // control name, left of the track
     juce::String onText { "on" };  // value text when on
     juce::String offText { "off" };
 };

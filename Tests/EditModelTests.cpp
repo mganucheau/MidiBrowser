@@ -218,6 +218,68 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
     }
 }
 
+TEST_CASE("applyPitchLock copies pitch fields, preserves moves and trim", "[editmodel]")
+{
+    ClipEdit locked;
+    locked.octave = 1;
+    locked.fitScale = true;
+    locked.mapToRoot = true;
+    locked.root = 0;              // C
+    locked.mode = Mode::Aeolian;
+
+    ClipEdit target;
+    target.moves[7] = { 2, -4 };
+    target.trimLead = 1;
+    target.octave = -2;
+    target.root = 9;
+
+    applyPitchLock(locked, target);
+    CHECK(target.octave == 1);
+    CHECK(target.fitScale);
+    CHECK(target.mapToRoot);
+    CHECK(target.root == 0);
+    CHECK(target.mode == Mode::Aeolian);
+    CHECK(target.moves.at(7).dPitch == 2);    // per-note moves untouched
+    CHECK(target.moves.at(7).dStep == -4);
+    CHECK(target.trimLead == 1);              // trim untouched
+}
+
+TEST_CASE("parseMidiFile honours end-of-track length for trailing empty bars", "[editmodel]")
+{
+    // One beat of notes but an end-of-track marker at 16 beats: the clip
+    // should keep its intended 4-bar length so Trim has something to do.
+    juce::MidiFile mf;
+    constexpr int tpq = 480;
+    mf.setTicksPerQuarterNote(tpq);
+    juce::MidiMessageSequence seq;
+    seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100), 0.0);
+    seq.addEvent(juce::MidiMessage::noteOff(1, 60), tpq * 1.0);
+    seq.addEvent(juce::MidiMessage::endOfTrack(), tpq * 16.0);
+    seq.updateMatchedPairs();
+    mf.addTrack(seq);
+
+    const auto file = test::tempMidiFile("eot-length.mid");
+    file.getParentDirectory().createDirectory();
+    file.deleteFile();
+    {
+        juce::FileOutputStream out(file);
+        REQUIRE(out.openedOk());
+        REQUIRE(mf.writeTo(out, 0));
+    }
+
+    const auto clip = parseMidiFile(file);
+    REQUIRE(clip.notes.size() == 1);
+    CHECK(clip.lengthBeats == Approx(16.0));
+
+    const auto step = makeStepClip(clip);
+    CHECK(step.bars == 4);
+    const auto edges = emptyEdgeBars(step.notes, step.bars);
+    CHECK(edges.lead == 0);
+    CHECK(edges.tail == 3);   // bars 2-4 are empty and trimmable
+
+    test::removeTempMidiFile(file);
+}
+
 TEST_CASE("makeStepClip converts beats to 16th steps with stable ids", "[editmodel]")
 {
     MidiClip mc = test::makeClipWithNotes({

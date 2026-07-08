@@ -25,6 +25,9 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     setLookAndFeel(&lnf);
     lnf.refreshColours();
 
+    content.onLayout = [this] { layoutContent(); };
+    addAndMakeVisible(content);
+
     // ── Transport ──
     transport.onPlayPause = [this]
     {
@@ -45,9 +48,10 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     };
     transport.onFreeBpmChanged = [this](double bpm) { processorRef.freeBpm.store(bpm); };
     transport.onToggleEditor = [this] { toggleEditorFold(); };
+    transport.onDragToDaw = [this] { startDragExport(); };
     transport.setSynced(processorRef.syncToHost.load());
     transport.setFreeBpm(processorRef.freeBpm.load());
-    addAndMakeVisible(transport);
+    content.addAndMakeVisible(transport);
 
     // ── Sidebar ──
     sidebar.setCollapsed(processorRef.sidebarCollapsed);
@@ -76,7 +80,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         refreshSidebar();
     };
     sidebar.onOpenTweaks = [this] { showTweaksMenu(); };
-    addAndMakeVisible(sidebar);
+    content.addAndMakeVisible(sidebar);
 
     // ── File list ──
     fileList.onOpenFolder = [this] { chooseFolder(); };
@@ -86,7 +90,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         selectIndex(idx);
         processorRef.previewArmed.store(true);
     };
-    addAndMakeVisible(fileList);
+    content.addAndMakeVisible(fileList);
 
     // ── Piano-roll editor ──
     rollEditor.onEditChanged = [this](const ClipEdit& e)
@@ -94,6 +98,8 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (const auto* clip = selectedClip())
         {
             processorRef.editFor(clip->filePath) = e;
+            if (processorRef.editLock)
+                applyPitchLock(e, processorRef.lockedEdit);   // keep the template current
             refreshEntryMeta(selectedIdx);
             pushPreviewToProcessor();
             miniRoll.setNotes(applyGroove(resolveClip(*clip, e).notes, selectedGroove()),
@@ -108,11 +114,19 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             pushPreviewToProcessor();
         }
     };
-    addAndMakeVisible(rollEditor);
+    rollEditor.onLockToggled = [this](bool locked)
+    {
+        processorRef.editLock = locked;
+        if (locked)
+            applyPitchLock(selectedEdit(), processorRef.lockedEdit);
+        rollEditor.setLockActive(locked);
+    };
+    rollEditor.setLockActive(processorRef.editLock);
+    content.addAndMakeVisible(rollEditor);
 
     // ── Folded mini preview ──
-    addChildComponent(miniHeader);
-    addChildComponent(miniRoll);
+    content.addChildComponent(miniHeader);
+    content.addChildComponent(miniRoll);
 
     if (processorRef.lastBrowserDir.isNotEmpty())
     {
@@ -231,6 +245,13 @@ void MidiBrowserEditor::selectIndex(int index)
     processorRef.freerunBeat.store(0.0);
 
     const auto& clip = clips[(size_t) index];
+
+    // Browse-lock: stamp the locked pitch edits onto whatever clip we land on.
+    if (processorRef.editLock)
+    {
+        applyPitchLock(processorRef.lockedEdit, processorRef.editFor(clip.filePath));
+        refreshEntryMeta(index);
+    }
     const auto edit = selectedEdit();
     const auto groove = selectedGroove();
 
@@ -252,25 +273,23 @@ void MidiBrowserEditor::refreshEntryMeta(int index)
     fileList.updateEntry(index, entryForClip(clip, juce::File(clip.filePath), edited));
 }
 
-void MidiBrowserEditor::pushPreviewToProcessor()
+MidiClip MidiBrowserEditor::buildRenderedClip() const
 {
+    // Non-destructive pipeline: resolveClip → applyGroove → velocities. The
+    // source clip and file stay untouched.
+    MidiClip out;
     const auto* clip = selectedClip();
     if (clip == nullptr)
-    {
-        processorRef.setPreviewState({}, false, false, false);
-        return;
-    }
+        return out;
 
-    // Non-destructive pipeline: resolveClip → applyGroove → velocities. The
-    // processor plays this snapshot; the source clip and file stay untouched.
     const auto edit = selectedEdit();
     const auto groove = selectedGroove();
     const auto resolved = resolveClip(*clip, edit);
     const auto notes = applyGroove(resolved.notes, groove);
 
-    MidiClip preview;
-    preview.name = clip->name;
-    preview.lengthBeats = (double) (resolved.bars * kStepsPerBar) / 4.0;
+    out.name = clip->name;
+    out.bpm = clip->bpm;
+    out.lengthBeats = (double) (resolved.bars * kStepsPerBar) / 4.0;
     for (const auto& n : notes)
     {
         NoteEvent ev;
@@ -279,9 +298,37 @@ void MidiBrowserEditor::pushPreviewToProcessor()
         ev.startBeat = n.start / 4.0;
         ev.lengthBeats = juce::jmax(0.05, n.len / 4.0);
         ev.channel = juce::jlimit(1, 16, n.channel);
-        preview.notes.push_back(ev);
+        out.notes.push_back(ev);
     }
+    return out;
+}
+
+void MidiBrowserEditor::pushPreviewToProcessor()
+{
+    const auto preview = buildRenderedClip();
     processorRef.setPreviewState(preview, !preview.notes.empty(), false, false);
+}
+
+void MidiBrowserEditor::startDragExport()
+{
+    const auto* clip = selectedClip();
+    if (clip == nullptr)
+        return;
+    const auto rendered = buildRenderedClip();
+    if (rendered.notes.empty())
+        return;
+
+    auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                   .getChildFile("MidiBrowser Drag");
+    dir.createDirectory();
+    const auto file = dir.getChildFile(
+        juce::File::createLegalFileName(clip->name + " (edited).mid"));
+    file.deleteFile();
+    if (!writeMidiFile(rendered, file, rendered.bpm))
+        return;
+
+    juce::DragAndDropContainer::performExternalDragDropOfFiles(
+        juce::StringArray(file.getFullPathName()), false, &transport);
 }
 
 // ── layout ───────────────────────────────────────────────────────────────────
@@ -295,19 +342,33 @@ void MidiBrowserEditor::toggleEditorFold()
 void MidiBrowserEditor::applyLayoutState()
 {
     const bool open = processorRef.editorOpen;
+    const float s = contentScale();
     transport.setEditorOpen(open);
     if (getHeight() > 0)
         lastWindowH = getHeight();
 
-    const int w = open ? metrics::openWindowW : metrics::foldedWindowW;
-    setResizeLimits(open ? 640 : 280, 420, 1600, 2000);
-    setSize(w, juce::jmax(460, lastWindowH));
+    const int w = juce::roundToInt((float) (open ? metrics::openWindowW
+                                                 : metrics::foldedWindowW) * s);
+    setResizeLimits(juce::roundToInt((open ? 640 : 280) * s),
+                    juce::roundToInt(420 * s), 1920, 2000);
+    setSize(w, juce::jmax(juce::roundToInt(460 * s), lastWindowH));
     resized();
 }
 
 void MidiBrowserEditor::resized()
 {
-    auto r = getLocalBounds();
+    // Content-size tweak: scale the whole UI with one transform; children lay
+    // out in logical (unscaled) coordinates inside `content`.
+    const float s = contentScale();
+    content.setTransform(juce::AffineTransform::scale(s));
+    content.setBounds(0, 0, juce::roundToInt((float) getWidth() / s),
+                      juce::roundToInt((float) getHeight() / s));
+    layoutContent();
+}
+
+void MidiBrowserEditor::layoutContent()
+{
+    auto r = content.getLocalBounds();
     const bool open = processorRef.editorOpen;
 
     transport.setBounds(r.removeFromTop(metrics::transportH()));
@@ -412,17 +473,27 @@ void MidiBrowserEditor::showTweaksMenu()
         gridMenu.addItem(400 + i, gridNames[i], true, tw.grid.load() == i);
     menu.addSubMenu("Note grid", gridMenu);
 
+    juce::PopupMenu sizeMenu;
+    const char* sizeNames[] = { "Small", "Medium", "Large" };
+    for (int i = 0; i < kNumContentSizes; ++i)
+        sizeMenu.addItem(500 + i, sizeNames[i], true, tw.size.load() == i);
+    menu.addSubMenu("Content size", sizeMenu);
+
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&sidebar),
         [this](int result)
         {
             if (result == 0) return;
             auto& t = tweaks();
-            if (result >= 400)      t.grid.store(result - 400);
+            bool sizeChanged = false;
+            if (result >= 500)      { t.size.store(result - 500); sizeChanged = true; }
+            else if (result >= 400) t.grid.store(result - 400);
             else if (result >= 300) t.density.store(result - 300);
             else if (result >= 200) t.accent.store(result - 200);
             else if (result >= 100) t.theme.store(result - 100);
             lnf.refreshColours();
             sendLookAndFeelChange();
+            if (sizeChanged)
+                applyLayoutState();   // rescale the window to match
             resized();
             repaint();
         });

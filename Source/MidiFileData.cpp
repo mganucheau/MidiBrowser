@@ -114,6 +114,10 @@ MidiClip parseMidiFile(const juce::File& file)
                 maxBeat = std::max(maxBeat, ne.startBeat + ne.lengthBeats);
             }
         }
+
+        // Honour the file's intended length (end-of-track marker), so loops
+        // exported with trailing space keep their trimmable empty bars.
+        maxBeat = std::max(maxBeat, track.getEndTime() / secPerBeat);
     }
 
     // Clip length = actual content extent only (no bar quantisation or minimum bar padding).

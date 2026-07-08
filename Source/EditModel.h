@@ -75,6 +75,11 @@ struct ClipEdit
 
 bool editIsClean(const ClipEdit& e);
 
+/** Copy only the pitch-shaping fields (octave, fit-to-scale, map-to-root,
+    root, mode) from `locked` into `target`, leaving the target's per-note
+    moves and trim untouched. Drives the browse-lock feature. */
+void applyPitchLock(const ClipEdit& locked, ClipEdit& target);
+
 // ── Transform pipeline ───────────────────────────────────────────────────────
 
 struct ResolvedClip
