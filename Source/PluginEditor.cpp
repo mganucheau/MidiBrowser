@@ -444,7 +444,7 @@ bool MidiBrowserEditor::keyPressed(const juce::KeyPress& key)
 void MidiBrowserEditor::timerCallback()
 {
     const bool sounding = processorRef.isPreviewSounding();
-    transport.setPlaying(processorRef.previewArmed.load());
+    transport.setPlaying(sounding);
     fileList.setPlaying(sounding);
 
     double step = 0.0;

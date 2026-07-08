@@ -62,8 +62,10 @@ public:
     // ── Preview transport ────────────────────────────────────────────────────
     // Synced: preview follows the host transport. Free-run: an internal clock
     // at freeBpm loops the armed clip; freerunBeat is the loop-local playhead.
+    // Armed by default so a synced plugin sounds as soon as the host plays;
+    // the plugin's play/stop buttons disarm it.
     std::atomic<bool> syncToHost { true };
-    std::atomic<bool> previewArmed { false };
+    std::atomic<bool> previewArmed { true };
     std::atomic<double> freeBpm { 124.0 };
     std::atomic<double> freerunBeat { 0.0 };
 
