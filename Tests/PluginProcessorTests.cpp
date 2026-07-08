@@ -85,16 +85,21 @@ TEST_CASE("Processor stays silent when preview is muted", "[Processor][qa]")
     REQUIRE(test::countNoteOns(midi) == 0);
 }
 
-TEST_CASE("Processor sends all-notes-off when transport is stopped", "[Processor][qa]")
+TEST_CASE("Processor sends all-notes-off once when transport stops", "[Processor][qa]")
 {
     ProcessorTestHarness harness;
     auto clip = previewClipWithNoteAt(0.0);
     harness.processor.setPreviewState(clip, true, false, false);
-    harness.processor.hostPlaying.store(false);
+    harness.runBlock(0.0);   // sounding block first
 
+    harness.processor.hostPlaying.store(false);
     const auto midi = harness.runBlock(0.0);
     REQUIRE(test::countNoteOns(midi) == 0);
     REQUIRE(test::hasAllNotesOff(midi));
+
+    // Subsequent stopped blocks stay silent (no all-notes-off spam).
+    const auto next = harness.runBlock(0.0);
+    REQUIRE(next.getNumEvents() == 0);
 }
 
 TEST_CASE("Processor loops preview across session length", "[Processor][qa]")
@@ -116,11 +121,12 @@ TEST_CASE("Processor stays silent when preview is not armed", "[Processor][qa]")
     ProcessorTestHarness harness;
     auto clip = previewClipWithNoteAt(0.0);
     harness.processor.setPreviewState(clip, true, false, false);
-    harness.processor.previewArmed.store(false);
+    harness.runBlock(0.0);   // sounding block first
 
+    harness.processor.previewArmed.store(false);
     const auto midi = harness.runBlock(0.0);
     REQUIRE(test::countNoteOns(midi) == 0);
-    REQUIRE(test::hasAllNotesOff(midi));
+    REQUIRE(test::hasAllNotesOff(midi));   // released once on disarm
 }
 
 TEST_CASE("Free-run preview plays and advances without host transport", "[Processor][qa]")

@@ -103,6 +103,7 @@ private:
 
     double sampleRate_ = 44100.0;
     double lastBeatPos_ = -1.0;
+    bool wasSounding_ = false;
 
     juce::CriticalSection previewLock_;
     MidiClip previewClip_;

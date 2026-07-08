@@ -125,6 +125,22 @@ target_link_libraries(MidiBrowser
 )
 
 option(MIDIBROWSER_BUILD_TESTS "Build unit tests" ON)
+option(MIDIBROWSER_BUILD_PROBE "Build the VST3 MIDI-out probe tool" ON)
+
+if(MIDIBROWSER_BUILD_PROBE)
+    juce_add_console_app(MidiOutProbe PRODUCT_NAME "MidiOutProbe")
+    target_sources(MidiOutProbe PRIVATE Tools/MidiOutProbe.cpp)
+    target_compile_definitions(MidiOutProbe PRIVATE
+        JUCE_PLUGINHOST_VST3=1
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+    )
+    target_link_libraries(MidiOutProbe PRIVATE
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags
+    )
+endif()
 
 if(MIDIBROWSER_BUILD_TESTS)
     FetchContent_Declare(

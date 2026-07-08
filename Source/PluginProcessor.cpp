@@ -56,11 +56,19 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     if (!sounding)
     {
-        for (int ch = 1; ch <= 16; ++ch)
-            midi.addEvent(juce::MidiMessage::allNotesOff(ch), 0);
+        // Release held notes once on the playing → stopped transition; stay
+        // silent afterwards so downstream instruments aren't spammed.
+        if (wasSounding_)
+            for (int ch = 1; ch <= 16; ++ch)
+            {
+                midi.addEvent(juce::MidiMessage::allNotesOff(ch), 0);
+                midi.addEvent(juce::MidiMessage::controllerEvent(ch, 123, 0), 0);
+            }
+        wasSounding_ = false;
         lastBeatPos_ = -1.0;
         return;
     }
+    wasSounding_ = true;
 
     double bpm = synced ? hostBpm.load() : freeBpm.load();
     double beatPos = synced ? hostBeatPos.load() : freerunBeat.load();
