@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MidiBrowser — States & Layouts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; }
+    #root { height: 100%; }
+    .ab-frame { width: 100%; height: 100%; border: 0; display: block; background: #131419; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+
+  <script type="text/babel">
+    const F = ({ src }) => <iframe className="ab-frame" src={src} title={src} />;
+
+    function App() {
+      return (
+        <DesignCanvas>
+          <DCSection id="states"
+            title="MidiBrowser redesign"
+            subtitle="The app is a resizable window. Opening the editor dock grows the whole window by the dock's width — the browser pane keeps its size. The bottom piano roll folds for more files; both panels can be open at once.">
+
+            <DCArtboard id="compact" label="A · Default window — browse + bottom roll" width={660} height={812}>
+              <F src="MidiBrowser.html?roll=1&editor=0&theme=charcoal&accent=blue&grid=lanes" />
+            </DCArtboard>
+
+            <DCArtboard id="folded" label="B · Roll folded — more files" width={660} height={812}>
+              <F src="MidiBrowser.html?roll=0&editor=0&theme=charcoal&accent=blue&grid=lanes" />
+            </DCArtboard>
+
+            <DCArtboard id="both" label="C · Editor open — window grows (recommended)" width={1268} height={812}>
+              <F src="MidiBrowser.html?editor=1&inst=1&roll=1&demo=edits&theme=charcoal&accent=blue&grid=lanes" />
+            </DCArtboard>
+
+            <DCArtboard id="editorfocus" label="D · Editor open, roll folded" width={1268} height={812}>
+              <F src="MidiBrowser.html?editor=1&inst=1&roll=0&demo=edits&theme=graphite&accent=amber&grid=minimal" />
+            </DCArtboard>
+
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
