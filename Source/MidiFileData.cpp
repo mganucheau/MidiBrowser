@@ -79,6 +79,7 @@ MidiClip parseMidiFile(const juce::File& file)
         }
     }
 
+    clip.bpm = bpm;
     double secPerBeat = 60.0 / bpm;
     double maxBeat = 0.0;
 

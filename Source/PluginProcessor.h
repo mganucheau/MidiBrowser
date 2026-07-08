@@ -1,7 +1,10 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MidiFileData.h"
+#include "EditModel.h"
+#include "GrooveEngine.h"
 #include <atomic>
+#include <map>
 
 namespace pflow {
 
@@ -56,7 +59,31 @@ public:
     /** When the host does not report a loop, wrap the playhead over this many bars. */
     std::atomic<int> syncSessionBars { 4 };
 
-    std::atomic<int> appThemeId { 11 };
+    // ── Preview transport ────────────────────────────────────────────────────
+    // Synced: preview follows the host transport. Free-run: an internal clock
+    // at freeBpm loops the armed clip; freerunBeat is the loop-local playhead.
+    std::atomic<bool> syncToHost { true };
+    std::atomic<bool> previewArmed { false };
+    std::atomic<double> freeBpm { 124.0 };
+    std::atomic<double> freerunBeat { 0.0 };
+
+    /** True when the preview is audibly playing right now. */
+    bool isPreviewSounding() const
+    {
+        if (!previewArmed.load()) return false;
+        return syncToHost.load() ? hostPlaying.load() : true;
+    }
+
+    // ── Per-clip non-destructive state (message thread; persisted) ──────────
+    ClipEdit& editFor(const juce::String& filePath) { return clipEdits[filePath]; }
+    GrooveParams& grooveFor(const juce::String& filePath) { return clipGrooves[filePath]; }
+    std::map<juce::String, ClipEdit> clipEdits;
+    std::map<juce::String, GrooveParams> clipGrooves;
+
+    // UI layout state (persisted)
+    bool editorOpen = true;
+    bool sidebarCollapsed = true;
+    bool miniOpen = true;
 
     juce::String lastBrowserDir;
     bool trimEmptyMeasuresPreview = false;

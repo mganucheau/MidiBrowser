@@ -80,14 +80,26 @@ juce_add_plugin(MidiBrowser
     COPY_PLUGIN_AFTER_BUILD  TRUE
 )
 
+juce_add_binary_data(MidiBrowserAssets
+    SOURCES
+        Resources/Fonts/SchibstedGrotesk.ttf
+        Resources/Fonts/JetBrainsMono-Regular.ttf
+        Resources/Fonts/JetBrainsMono-SemiBold.ttf
+)
+
 target_include_directories(MidiBrowser PRIVATE "${CMAKE_BINARY_DIR}/Generated")
 
 target_sources(MidiBrowser PRIVATE
-    Source/PflowFileTreeComponent.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/MidiFileData.cpp
-    Source/FileBrowserPanel.cpp
+    Source/EditModel.cpp
+    Source/GrooveEngine.cpp
+    Source/UiAtoms.cpp
+    Source/TransportBar.cpp
+    Source/BrowserPanels.cpp
+    Source/KnobPanel.cpp
+    Source/PianoRollEditor.cpp
     Source/Theme.cpp
 )
 
@@ -101,6 +113,7 @@ target_compile_definitions(MidiBrowser PUBLIC
 
 target_link_libraries(MidiBrowser
     PRIVATE
+        MidiBrowserAssets
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_gui_extra
@@ -126,6 +139,8 @@ if(MIDIBROWSER_BUILD_TESTS)
         Tests/MidiFileDataTests.cpp
         Tests/TrimTests.cpp
         Tests/PluginProcessorTests.cpp
+        Tests/EditModelTests.cpp
+        Tests/GrooveEngineTests.cpp
     )
     target_link_libraries(MidiBrowserTests PRIVATE
         MidiBrowser

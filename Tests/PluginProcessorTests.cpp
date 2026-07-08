@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include "PluginProcessor.h"
+#include "Theme.h"
 #include "TestHelpers.h"
 
 using namespace pflow;
@@ -19,6 +20,7 @@ public:
         processor.hostBpm.store(120.0);
         processor.hostBeatPos.store(0.0);
         processor.syncSessionBars.store(4);
+        processor.previewArmed.store(true);   // transport play pressed
     }
 
     juce::MidiBuffer runBlock(double beatPos = 0.0)
@@ -109,6 +111,77 @@ TEST_CASE("Processor loops preview across session length", "[Processor][qa]")
     REQUIRE(test::countNoteOns(wrapped) >= 1);
 }
 
+TEST_CASE("Processor stays silent when preview is not armed", "[Processor][qa]")
+{
+    ProcessorTestHarness harness;
+    auto clip = previewClipWithNoteAt(0.0);
+    harness.processor.setPreviewState(clip, true, false, false);
+    harness.processor.previewArmed.store(false);
+
+    const auto midi = harness.runBlock(0.0);
+    REQUIRE(test::countNoteOns(midi) == 0);
+    REQUIRE(test::hasAllNotesOff(midi));
+}
+
+TEST_CASE("Free-run preview plays and advances without host transport", "[Processor][qa]")
+{
+    ProcessorTestHarness harness;
+    auto clip = previewClipWithNoteAt(0.0);
+    harness.processor.setPreviewState(clip, true, false, false);
+    harness.processor.syncToHost.store(false);
+    harness.processor.hostPlaying.store(false);   // host stopped; we play anyway
+    harness.processor.freeBpm.store(120.0);
+    harness.processor.freerunBeat.store(0.0);
+
+    const auto midi = harness.runBlock(0.0);
+    REQUIRE(test::countNoteOns(midi) >= 1);
+    REQUIRE(harness.processor.freerunBeat.load() > 0.0);   // internal clock advanced
+
+    // The internal clock loops over the clip length.
+    harness.processor.freerunBeat.store(3.999);
+    const auto wrapped = harness.runBlock(0.0);
+    juce::ignoreUnused(wrapped);
+    REQUIRE(harness.processor.freerunBeat.load() < 3.999);
+}
+
+TEST_CASE("Per-clip edits and grooves round-trip through plugin state", "[Processor][qa]")
+{
+    MidiBrowserProcessor original;
+    ClipEdit e;
+    e.octave = 1;
+    e.fitScale = true;
+    e.root = 5;
+    e.mode = Mode::Aeolian;
+    e.moves[3] = { 7, -4 };
+    e.trimLead = 2;
+    original.clipEdits["/tmp/a.mid"] = e;
+
+    GrooveParams k;
+    k.swing = 40;
+    k.pocket = -25;
+    original.clipGrooves["/tmp/a.mid"] = k;
+
+    juce::MemoryBlock state;
+    original.getStateInformation(state);
+
+    MidiBrowserProcessor restored;
+    restored.setStateInformation(state.getData(), (int) state.getSize());
+
+    REQUIRE(restored.clipEdits.count("/tmp/a.mid") == 1);
+    const auto& re = restored.clipEdits.at("/tmp/a.mid");
+    REQUIRE(re.octave == 1);
+    REQUIRE(re.fitScale);
+    REQUIRE(re.root == 5);
+    REQUIRE(re.mode == Mode::Aeolian);
+    REQUIRE(re.trimLead == 2);
+    REQUIRE(re.moves.at(3).dPitch == 7);
+    REQUIRE(re.moves.at(3).dStep == -4);
+
+    REQUIRE(restored.clipGrooves.count("/tmp/a.mid") == 1);
+    REQUIRE(restored.clipGrooves.at("/tmp/a.mid").swing == 40);
+    REQUIRE(restored.clipGrooves.at("/tmp/a.mid").pocket == -25);
+}
+
 TEST_CASE("Saved folder helpers dedupe and cap list size", "[Processor][qa]")
 {
     MidiBrowserProcessor processor;
@@ -143,11 +216,20 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     original.lastBrowserDir = "/tmp/MidiBrowserSaved";
     original.trimEmptyMeasuresPreview = true;
     original.syncSessionBars.store(8);
-    original.appThemeId.store(11);
+    tweaks().theme.store((int) ThemeId::Ink);
+    tweaks().accent.store((int) AccentId::Mint);
+    tweaks().density.store((int) Density::Comfortable);
+    tweaks().grid.store((int) GridStyle::Blueprint);
     original.addSavedBrowserDir(juce::File::getSpecialLocation(juce::File::tempDirectory).getFullPathName());
 
     juce::MemoryBlock state;
     original.getStateInformation(state);
+
+    // Reset the shared tweaks, then confirm setState restores them.
+    tweaks().theme.store((int) ThemeId::Graphite);
+    tweaks().accent.store((int) AccentId::Amber);
+    tweaks().density.store((int) Density::Compact);
+    tweaks().grid.store((int) GridStyle::Minimal);
 
     MidiBrowserProcessor restored;
     restored.setStateInformation(state.getData(), (int) state.getSize());
@@ -155,8 +237,16 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     REQUIRE(restored.lastBrowserDir == original.lastBrowserDir);
     REQUIRE(restored.trimEmptyMeasuresPreview == original.trimEmptyMeasuresPreview);
     REQUIRE(restored.syncSessionBars.load() == 8);
-    REQUIRE(restored.appThemeId.load() == 11);
+    REQUIRE(tweaks().theme.load() == (int) ThemeId::Ink);
+    REQUIRE(tweaks().accent.load() == (int) AccentId::Mint);
+    REQUIRE(tweaks().density.load() == (int) Density::Comfortable);
+    REQUIRE(tweaks().grid.load() == (int) GridStyle::Blueprint);
     REQUIRE(restored.savedBrowserDirs.size() == original.savedBrowserDirs.size());
+
+    tweaks().theme.store((int) ThemeId::Graphite);
+    tweaks().accent.store((int) AccentId::Amber);
+    tweaks().density.store((int) Density::Compact);
+    tweaks().grid.store((int) GridStyle::Minimal);
 }
 
 TEST_CASE("Processor state ignores empty and legacy-safe payloads", "[Processor][qa]")

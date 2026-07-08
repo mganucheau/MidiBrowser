@@ -6,30 +6,64 @@
 
 namespace pflow {
 
-// ── Apple Human Interface Guidelines (macOS dark) ───────────────────────────
+// ── MidiBrowser design tokens ────────────────────────────────────────────────
+// Dark themes only: three themes × three accents, plus density and roll-grid
+// style. Default graphite / amber / compact / minimal. Values ported from
+// Prototype/mbd/app-d.jsx (THEMES_D / ACCENTS_D).
+
+enum class ThemeId { Charcoal, Graphite, Ink };
+enum class AccentId { Blue, Amber, Mint };
+enum class Density { Compact, Comfortable };
+enum class GridStyle { Lanes, Minimal, Blueprint };
+
+constexpr int kNumThemes = 3;
+constexpr int kNumAccents = 3;
+constexpr int kNumGridStyles = 3;
 
 struct ThemeTokens
 {
-    bool isDark = true;
-
-    juce::Colour primary;
-    juce::Colour onPrimary;
-    juce::Colour primaryContainer;
-    juce::Colour onPrimaryContainer;
-
-    juce::Colour surface;
-    juce::Colour surfaceContainerLow;
-    juce::Colour surfaceContainer;
-    juce::Colour surfaceContainerHigh;
-    juce::Colour onSurface;
-    juce::Colour onSurfaceVariant;
-
-    juce::Colour outline;
-    juce::Colour outlineVariant;
-
-    juce::Colour error;
-    juce::Colour onError;
+    const char* name;
+    juce::Colour bg, panel, panel2, elev;
+    juce::Colour line, lineStrong;
+    juce::Colour text, text2, text3;
+    juce::Colour rollBg, rollShade, rollRowline, rollNoteEdge, rollGhost;
+    juce::Colour kbWhite, kbBlack;
 };
+
+struct AccentTokens
+{
+    const char* name;
+    juce::Colour accent;   // main accent
+    juce::Colour ink;      // text/icon on accent
+    juce::Colour soft;     // translucent fill
+    juce::Colour line;     // translucent border
+    juce::Colour bright;   // selection rings / knob pointer
+};
+
+const ThemeTokens& themeTokens(ThemeId t);
+const AccentTokens& accentTokens(AccentId a);
+
+/** App-level runtime Tweaks (theme / accent / density / grid style). */
+struct Tweaks
+{
+    std::atomic<int> theme   { (int) ThemeId::Graphite };
+    std::atomic<int> accent  { (int) AccentId::Amber };
+    std::atomic<int> density { (int) Density::Compact };
+    std::atomic<int> grid    { (int) GridStyle::Minimal };
+};
+
+Tweaks& tweaks();
+
+inline ThemeId currentTheme()     { return (ThemeId) juce::jlimit(0, kNumThemes - 1, tweaks().theme.load()); }
+inline AccentId currentAccent()   { return (AccentId) juce::jlimit(0, kNumAccents - 1, tweaks().accent.load()); }
+inline Density currentDensity()   { return (Density) juce::jlimit(0, 1, tweaks().density.load()); }
+inline GridStyle currentGrid()    { return (GridStyle) juce::jlimit(0, kNumGridStyles - 1, tweaks().grid.load()); }
+
+// ── Fonts ────────────────────────────────────────────────────────────────────
+// Schibsted Grotesk for UI, JetBrains Mono for numbers / paths (embedded).
+
+juce::Font uiFont(float pt, bool semibold = false);
+juce::Font monoFont(float pt, bool semibold = false);
 
 enum class TextStyle
 {
@@ -43,163 +77,83 @@ enum class TextStyle
     Caption         // 10pt Regular secondary
 };
 
-inline juce::Font systemFont(float pt, bool semibold = false)
-{
-#if JUCE_MAC
-    juce::FontOptions opts(".AppleSystemUIFont", pt, semibold ? juce::Font::bold : juce::Font::plain);
-    if (semibold)
-        opts = opts.withStyle("Semibold");
-    return juce::Font(opts);
-#else
-    return juce::Font(juce::FontOptions(pt).withStyle(semibold ? "Semibold" : "Regular"));
-#endif
-}
+juce::Font fontFor(TextStyle s);
 
-inline juce::Font fontFor(TextStyle s)
-{
-    switch (s)
-    {
-        case TextStyle::LargeTitle:  return systemFont(28.0f, true);
-        case TextStyle::Title2:      return systemFont(17.0f, true);
-        case TextStyle::Headline:    return systemFont(13.0f, true);
-        case TextStyle::Body:        return systemFont(13.0f, false);
-        case TextStyle::Callout:     return systemFont(12.0f, false);
-        case TextStyle::Subheadline: return systemFont(11.0f, false);
-        case TextStyle::Footnote:    return systemFont(10.0f, false);
-        case TextStyle::Caption:     return systemFont(10.0f, false);
-    }
-    return systemFont(13.0f, false);
-}
+inline juce::Font systemFont(float pt, bool semibold = false) { return uiFont(pt, semibold); }
 
-inline std::atomic<int>& appThemeId()
-{
-    static std::atomic<int> id { 0 };
-    return id;
-}
-
-inline std::atomic<bool>& darkModeEnabled()
-{
-    static std::atomic<bool> enabled { true };
-    return enabled;
-}
-
-inline ThemeTokens makeHIGTokens(bool dark)
-{
-    ThemeTokens t;
-    t.isDark = dark;
-
-    if (dark)
-    {
-        t.primary              = juce::Colour(0xff0a84ff);
-        t.onPrimary            = juce::Colours::white;
-        t.primaryContainer     = juce::Colour(0xff0a84ff).withAlpha(0.22f);
-        t.onPrimaryContainer   = juce::Colour(0xff64b5ff);
-
-        t.surface              = juce::Colour(0xff1c1c1e);
-        t.surfaceContainerLow  = juce::Colour(0xff2c2c2e);
-        t.surfaceContainer     = juce::Colour(0xff3a3a3c);
-        t.surfaceContainerHigh = juce::Colour(0xff48484a);
-
-        t.onSurface            = juce::Colour(0xffffffff);
-        t.onSurfaceVariant     = juce::Colour(0xffebebf5).withAlpha(0.60f);
-        t.outline              = juce::Colour(0xff545458).withAlpha(0.65f);
-        t.outlineVariant       = juce::Colour(0xff38383a);
-    }
-    else
-    {
-        t.primary              = juce::Colour(0xff007aff);
-        t.onPrimary            = juce::Colours::white;
-        t.primaryContainer     = juce::Colour(0xff007aff).withAlpha(0.12f);
-        t.onPrimaryContainer   = juce::Colour(0xff007aff);
-
-        t.surface              = juce::Colour(0xfff2f2f7);
-        t.surfaceContainerLow  = juce::Colours::white;
-        t.surfaceContainer     = juce::Colour(0xffe5e5ea);
-        t.surfaceContainerHigh = juce::Colour(0xffd1d1d6);
-
-        t.onSurface            = juce::Colour(0xff000000);
-        t.onSurfaceVariant     = juce::Colour(0xff3c3c43).withAlpha(0.60f);
-        t.outline              = juce::Colour(0xff3c3c43).withAlpha(0.29f);
-        t.outlineVariant       = juce::Colour(0xffc6c6c8);
-    }
-
-    t.error    = juce::Colour(0xffff453a);
-    t.onError  = juce::Colours::white;
-    return t;
-}
-
-struct ThemePreset
-{
-    const char* name = "";
-    bool isDark = true;
-};
-
-inline const std::array<ThemePreset, 1>& themePresets()
-{
-    static const std::array<ThemePreset, 1> presets {{
-        { "macOS Dark", true },
-    }};
-    return presets;
-}
-
-inline ThemeTokens& currentThemeTokens()
-{
-    static ThemeTokens tokens = makeHIGTokens(true);
-    return tokens;
-}
-
-inline void applyAppTheme(int themeId)
-{
-    const int clamped = juce::jlimit(0, (int) themePresets().size() - 1, themeId);
-    appThemeId().store(clamped);
-    const auto& p = themePresets()[(size_t) clamped];
-    currentThemeTokens() = makeHIGTokens(p.isDark);
-    darkModeEnabled().store(p.isDark);
-}
+// ── Colour accessors (always reflect the current tweaks) ────────────────────
 
 namespace colours {
-    inline juce::Colour bg()            { return currentThemeTokens().surface; }
-    inline juce::Colour bgLight()       { return currentThemeTokens().surfaceContainerLow; }
-    inline juce::Colour bgLighter()     { return currentThemeTokens().surfaceContainer; }
-    inline juce::Colour panel()         { return currentThemeTokens().surfaceContainerLow; }
-    inline juce::Colour panelBorder()   { return currentThemeTokens().outline; }
-    inline juce::Colour borderHover()   { return currentThemeTokens().outlineVariant; }
-    inline juce::Colour separator()     { return currentThemeTokens().outline; }
+    inline const ThemeTokens& th()  { return themeTokens(currentTheme()); }
+    inline const AccentTokens& ac() { return accentTokens(currentAccent()); }
 
-    inline juce::Colour accent()        { return currentThemeTokens().primary; }
-    inline juce::Colour accentDim()     { return currentThemeTokens().primaryContainer; }
-    inline juce::Colour accentBright()  { return currentThemeTokens().onPrimaryContainer; }
-    inline juce::Colour onPrimary()     { return currentThemeTokens().onPrimary; }
+    inline juce::Colour bg()            { return th().bg; }
+    inline juce::Colour panel()         { return th().panel; }
+    inline juce::Colour panel2()        { return th().panel2; }
+    inline juce::Colour elev()          { return th().elev; }
+    inline juce::Colour line()          { return th().line; }
+    inline juce::Colour lineStrong()    { return th().lineStrong; }
 
-    inline juce::Colour text()          { return currentThemeTokens().onSurface; }
-    inline juce::Colour textDim()       { return currentThemeTokens().onSurfaceVariant; }
-    inline juce::Colour textBright()    { return currentThemeTokens().onSurface; }
-    inline juce::Colour textMuted()     { return currentThemeTokens().onSurfaceVariant.withAlpha(0.75f); }
+    inline juce::Colour text()          { return th().text; }
+    inline juce::Colour text2()         { return th().text2; }
+    inline juce::Colour text3()         { return th().text3; }
 
-    inline juce::Colour controlFill()   { return juce::Colour(0xff787880).withAlpha(0.36f); }
-    inline juce::Colour knobTrack()     { return currentThemeTokens().outlineVariant; }
+    inline juce::Colour accent()        { return ac().accent; }
+    inline juce::Colour accentInk()     { return ac().ink; }
+    inline juce::Colour accentSoft()    { return ac().soft; }
+    inline juce::Colour accentLine()    { return ac().line; }
+    inline juce::Colour accentBright()  { return ac().bright; }
 
-    inline juce::Colour compSelectionHighlight() { return accent().withAlpha(0.28f); }
+    inline juce::Colour rollBg()        { return th().rollBg; }
+    inline juce::Colour rollShade()     { return th().rollShade; }
+    inline juce::Colour rollRowline()   { return th().rollRowline; }
+    inline juce::Colour rollNoteEdge()  { return th().rollNoteEdge; }
+    inline juce::Colour rollGhost()     { return th().rollGhost; }
+    inline juce::Colour kbWhite()       { return th().kbWhite; }
+    inline juce::Colour kbBlack()       { return th().kbBlack; }
 
-    inline juce::Colour pianoWhiteKey() { return juce::Colour(0xfff2f2f7); }
-    inline juce::Colour pianoBlackKey() { return juce::Colour(0xff1c1c1e); }
-    inline juce::Colour pianoGrid()     { return separator().withAlpha(0.35f); }
+    inline juce::Colour playhead()      { return juce::Colour(0xffff5a52); }
+
+    // Blueprint grid-style fixed tokens
+    inline juce::Colour bpBg()          { return juce::Colour(0xff0c1a25); }
+    inline juce::Colour bpBar()         { return juce::Colour(0xff6ec8ff).withAlpha(0.40f); }
+    inline juce::Colour bpBeat()        { return juce::Colour(0xff6ec8ff).withAlpha(0.13f); }
+    inline juce::Colour bpRow()         { return juce::Colour(0xff6ec8ff).withAlpha(0.06f); }
+    inline juce::Colour bpNote()        { return juce::Colour(0xff46c2ff); }
+    inline juce::Colour bpEdge()        { return juce::Colour(0xffbeebff).withAlpha(0.55f); }
+
+    // Legacy aliases still used by pre-spec components.
+    inline juce::Colour bgLight()       { return panel2(); }
+    inline juce::Colour bgLighter()     { return elev(); }
+    inline juce::Colour panelBorder()   { return line(); }
+    inline juce::Colour borderHover()   { return lineStrong(); }
+    inline juce::Colour separator()     { return line(); }
+    inline juce::Colour accentDim()     { return accentSoft(); }
+    inline juce::Colour onPrimary()     { return accentInk(); }
+    inline juce::Colour textDim()       { return text2(); }
+    inline juce::Colour textBright()    { return text(); }
+    inline juce::Colour textMuted()     { return text3(); }
+    inline juce::Colour controlFill()   { return elev(); }
+    inline juce::Colour knobTrack()     { return lineStrong(); }
+    inline juce::Colour compSelectionHighlight() { return accentSoft(); }
+    inline juce::Colour pianoWhiteKey() { return kbWhite(); }
+    inline juce::Colour pianoBlackKey() { return kbBlack(); }
+    inline juce::Colour pianoGrid()     { return rollRowline(); }
     inline juce::Colour noteBlock()     { return accent(); }
-    inline juce::Colour selection()     { return accent().withAlpha(0.28f); }
-    inline juce::Colour playhead()      { return juce::Colour(0xffff453a); }
-
+    inline juce::Colour selection()     { return accentSoft(); }
     inline juce::Colour muteInactive()  { return controlFill(); }
     inline juce::Colour muteYellow()    { return juce::Colour(0xffff9f0a); }
     inline juce::Colour soloBlue()      { return accent(); }
-    inline juce::Colour recordRed()     { return juce::Colour(0xffff453a); }
+    inline juce::Colour recordRed()     { return playhead(); }
     inline juce::Colour activeGreen()   { return juce::Colour(0xff30d158); }
-
     inline juce::Colour muteRed()       { return muteYellow(); }
     inline juce::Colour soloGreen()     { return activeGreen(); }
 }
 
+// ── Metrics ──────────────────────────────────────────────────────────────────
+
 namespace metrics {
-    constexpr int browserWidth      = 230;
+    constexpr int browserWidth      = 244;   // file list width, editor open
     constexpr int browserMinWidth   = 160;
     constexpr int browserMaxWidth   = 420;
     constexpr float uiScale         = 1.0f;
@@ -219,6 +173,18 @@ namespace metrics {
     constexpr int editorHeaderH     = 52;
     constexpr int iconButtonSize    = 28;
     constexpr int comboTextPadding  = 8;
+
+    constexpr int sidebarRailW      = 48;
+    constexpr int sidebarExpandedW  = 168;
+    constexpr int foldedWindowW     = 300;
+    constexpr int openWindowW       = 980;
+
+    // Density-scaled values
+    inline int transportH()  { return currentDensity() == Density::Comfortable ? 52 : 46; }
+    inline int listRowH()    { return currentDensity() == Density::Comfortable ? 38 : 32; }
+    inline int listHeaderH() { return currentDensity() == Density::Comfortable ? 34 : 30; }
+    inline int padS()        { return currentDensity() == Density::Comfortable ? 10 : 8; }
+    inline int miniRollH()   { return currentDensity() == Density::Comfortable ? 128 : 112; }
 }
 
 inline void styleSectionLabel(juce::Label& lbl, const juce::String& text)

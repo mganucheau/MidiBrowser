@@ -9,7 +9,6 @@ MidiBrowserProcessor::MidiBrowserProcessor()
     : AudioProcessor(BusesProperties()
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
-    applyAppTheme(appThemeId.load());
 }
 
 void MidiBrowserProcessor::prepareToPlay(double sr, int)
@@ -52,7 +51,10 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     midi.clear();
 
-    if (!hostPlaying.load())
+    const bool synced = syncToHost.load();
+    const bool sounding = previewArmed.load() && (!synced || hostPlaying.load());
+
+    if (!sounding)
     {
         for (int ch = 1; ch <= 16; ++ch)
             midi.addEvent(juce::MidiMessage::allNotesOff(ch), 0);
@@ -60,8 +62,8 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    double bpm = hostBpm.load();
-    double beatPos = hostBeatPos.load();
+    double bpm = synced ? hostBpm.load() : freeBpm.load();
+    double beatPos = synced ? hostBeatPos.load() : freerunBeat.load();
     if (bpm <= 0.0) bpm = 120.0;
 
     const double secPerBeat = 60.0 / bpm;
@@ -97,7 +99,16 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         double pStart = beatPos;
         double pEnd = endBeat;
 
-        if (hostLoopActive.load())
+        if (!synced)
+        {
+            // Internal clock: loop the armed clip at freeBpm.
+            const double clipLen = juce::jmax(0.25, previewClip.lengthBeats);
+            pStart = std::fmod(beatPos, clipLen);
+            if (pStart < 0.0) pStart += clipLen;
+            pEnd = pStart + blockBeats;
+            freerunBeat.store(std::fmod(pStart + blockBeats, clipLen));
+        }
+        else if (hostLoopActive.load())
         {
             const double ls = hostLoopPpqStart.load();
             const double le = hostLoopPpqEnd.load();
@@ -201,11 +212,19 @@ void MidiBrowserProcessor::removeSavedBrowserDir(const juce::String& path)
 void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
     juce::XmlElement xml("MidiBrowserState");
-    xml.setAttribute("version", 2);
-    xml.setAttribute("appThemeId", appThemeId.load());
+    xml.setAttribute("version", 3);
+    xml.setAttribute("tweakTheme", tweaks().theme.load());
+    xml.setAttribute("tweakAccent", tweaks().accent.load());
+    xml.setAttribute("tweakDensity", tweaks().density.load());
+    xml.setAttribute("tweakGrid", tweaks().grid.load());
     xml.setAttribute("syncSessionBars", syncSessionBars.load());
     xml.setAttribute("lastBrowserDir", lastBrowserDir);
     xml.setAttribute("trimEmptyMeasuresPreview", trimEmptyMeasuresPreview ? 1 : 0);
+    xml.setAttribute("syncToHost", syncToHost.load() ? 1 : 0);
+    xml.setAttribute("freeBpm", freeBpm.load());
+    xml.setAttribute("editorOpen", editorOpen ? 1 : 0);
+    xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
+    xml.setAttribute("miniOpen", miniOpen ? 1 : 0);
     for (const auto& folder : savedBrowserDirs)
     {
         if (folder.isNotEmpty())
@@ -213,6 +232,42 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
             auto* child = xml.createNewChildElement("SavedFolder");
             child->setAttribute("path", folder);
         }
+    }
+
+    for (const auto& [path, edit] : clipEdits)
+    {
+        if (path.isEmpty() || editIsClean(edit))
+            continue;
+        auto* e = xml.createNewChildElement("ClipEdit");
+        e->setAttribute("path", path);
+        e->setAttribute("octave", edit.octave);
+        e->setAttribute("fitScale", edit.fitScale ? 1 : 0);
+        e->setAttribute("mapToRoot", edit.mapToRoot ? 1 : 0);
+        e->setAttribute("root", edit.root);
+        e->setAttribute("mode", (int) edit.mode);
+        e->setAttribute("trimLead", edit.trimLead);
+        e->setAttribute("trimTail", edit.trimTail);
+        for (const auto& [id, mv] : edit.moves)
+        {
+            if (mv.dPitch == 0 && mv.dStep == 0) continue;
+            auto* m = e->createNewChildElement("Move");
+            m->setAttribute("id", id);
+            m->setAttribute("dPitch", mv.dPitch);
+            m->setAttribute("dStep", mv.dStep);
+        }
+    }
+    for (const auto& [path, k] : clipGrooves)
+    {
+        if (path.isEmpty() || k.isDefault())
+            continue;
+        auto* e = xml.createNewChildElement("ClipGroove");
+        e->setAttribute("path", path);
+        e->setAttribute("swing", k.swing);
+        e->setAttribute("pocket", k.pocket);
+        e->setAttribute("humanize", k.humanize);
+        e->setAttribute("dynamics", k.dynamics);
+        e->setAttribute("length", k.length);
+        e->setAttribute("intensity", k.intensity);
     }
     copyXmlToBinary(xml, dest);
 }
@@ -223,17 +278,31 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
     savedBrowserDirs.clear();
     trimEmptyMeasuresPreview = false;
     syncSessionBars.store(4);
+    clipEdits.clear();
+    clipGrooves.clear();
     if (data == nullptr || sizeInBytes <= 0)
         return;
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
     {
         if (xml->hasTagName("MidiBrowserState") || xml->hasTagName("PatternFlowState"))
         {
-            appThemeId.store(xml->getIntAttribute("appThemeId", appThemeId.load()));
+            tweaks().theme.store(juce::jlimit(0, kNumThemes - 1,
+                xml->getIntAttribute("tweakTheme", (int) ThemeId::Graphite)));
+            tweaks().accent.store(juce::jlimit(0, kNumAccents - 1,
+                xml->getIntAttribute("tweakAccent", (int) AccentId::Amber)));
+            tweaks().density.store(juce::jlimit(0, 1,
+                xml->getIntAttribute("tweakDensity", (int) Density::Compact)));
+            tweaks().grid.store(juce::jlimit(0, kNumGridStyles - 1,
+                xml->getIntAttribute("tweakGrid", (int) GridStyle::Minimal)));
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");
             trimEmptyMeasuresPreview = xml->getIntAttribute("trimEmptyMeasuresPreview", 0) != 0;
+            syncToHost.store(xml->getIntAttribute("syncToHost", 1) != 0);
+            freeBpm.store(juce::jlimit(20.0, 300.0, xml->getDoubleAttribute("freeBpm", 124.0)));
+            editorOpen = xml->getIntAttribute("editorOpen", 1) != 0;
+            sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
+            miniOpen = xml->getIntAttribute("miniOpen", 1) != 0;
             for (auto* child : xml->getChildIterator())
             {
                 if (child->hasTagName("SavedFolder"))
@@ -243,8 +312,39 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                         && !savedBrowserDirs.contains(path))
                         savedBrowserDirs.add(path);
                 }
+                else if (child->hasTagName("ClipEdit"))
+                {
+                    const auto path = child->getStringAttribute("path");
+                    if (path.isEmpty()) continue;
+                    ClipEdit e;
+                    e.octave = juce::jlimit(-3, 3, child->getIntAttribute("octave", 0));
+                    e.fitScale = child->getIntAttribute("fitScale", 0) != 0;
+                    e.mapToRoot = child->getIntAttribute("mapToRoot", 0) != 0;
+                    e.root = juce::jlimit(-1, 11, child->getIntAttribute("root", -1));
+                    e.mode = (Mode) juce::jlimit(0, kNumModes - 1,
+                                                 child->getIntAttribute("mode", (int) Mode::Dorian));
+                    e.trimLead = juce::jmax(0, child->getIntAttribute("trimLead", 0));
+                    e.trimTail = juce::jmax(0, child->getIntAttribute("trimTail", 0));
+                    for (auto* m : child->getChildIterator())
+                        if (m->hasTagName("Move"))
+                            e.moves[m->getIntAttribute("id")] = {
+                                m->getIntAttribute("dPitch"), m->getIntAttribute("dStep") };
+                    clipEdits[path] = std::move(e);
+                }
+                else if (child->hasTagName("ClipGroove"))
+                {
+                    const auto path = child->getStringAttribute("path");
+                    if (path.isEmpty()) continue;
+                    GrooveParams k;
+                    k.set(0, child->getIntAttribute("swing", 0));
+                    k.set(1, child->getIntAttribute("pocket", 0));
+                    k.set(2, child->getIntAttribute("humanize", 0));
+                    k.set(3, child->getIntAttribute("dynamics", 0));
+                    k.set(4, child->getIntAttribute("length", 100));
+                    k.set(5, child->getIntAttribute("intensity", 80));
+                    clipGrooves[path] = k;
+                }
             }
-            applyAppTheme(appThemeId.load());
         }
     }
 }

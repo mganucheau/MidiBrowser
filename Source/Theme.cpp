@@ -1,7 +1,128 @@
 #include "Theme.h"
+#include "BinaryData.h"
 #include <unordered_map>
 
 namespace pflow {
+
+// ── Tokens ───────────────────────────────────────────────────────────────────
+
+Tweaks& tweaks()
+{
+    static Tweaks t;
+    return t;
+}
+
+namespace {
+
+juce::Colour rgba(juce::uint8 r, juce::uint8 g, juce::uint8 b, float a)
+{
+    return juce::Colour(r, g, b).withAlpha(a);
+}
+
+} // namespace
+
+const ThemeTokens& themeTokens(ThemeId t)
+{
+    static const std::array<ThemeTokens, kNumThemes> themes {{
+        {
+            "charcoal",
+            juce::Colour(0xff131419), juce::Colour(0xff181a20), juce::Colour(0xff1c1f26), juce::Colour(0xff24272f),
+            rgba(255, 255, 255, 0.08f), rgba(255, 255, 255, 0.15f),
+            juce::Colour(0xffe9eaee), juce::Colour(0xffa6a9b3), juce::Colour(0xff6c7079),
+            juce::Colour(0xff14161b), rgba(255, 255, 255, 0.028f), rgba(255, 255, 255, 0.045f),
+            rgba(0, 0, 0, 0.28f), rgba(255, 255, 255, 0.28f),
+            juce::Colour(0xff2b2e36), juce::Colour(0xff1a1c22),
+        },
+        {
+            "graphite",
+            juce::Colour(0xff18160f), juce::Colour(0xff1e1b15), juce::Colour(0xff221e17), juce::Colour(0xff2b261d),
+            rgba(255, 250, 235, 0.08f), rgba(255, 250, 235, 0.15f),
+            juce::Colour(0xffece8df), juce::Colour(0xffaca598), juce::Colour(0xff726c5f),
+            juce::Colour(0xff15130d), rgba(255, 248, 230, 0.03f), rgba(255, 248, 230, 0.05f),
+            rgba(0, 0, 0, 0.30f), rgba(255, 248, 230, 0.28f),
+            juce::Colour(0xff2f2a20), juce::Colour(0xff1c1810),
+        },
+        {
+            "ink",
+            juce::Colour(0xff0d0f16), juce::Colour(0xff11141d), juce::Colour(0xff141826), juce::Colour(0xff1b2030),
+            rgba(180, 200, 255, 0.09f), rgba(180, 200, 255, 0.16f),
+            juce::Colour(0xffe6e9f3), juce::Colour(0xff9ca3b8), juce::Colour(0xff636b82),
+            juce::Colour(0xff0e1119), rgba(150, 180, 255, 0.03f), rgba(150, 180, 255, 0.05f),
+            rgba(0, 0, 0, 0.32f), rgba(170, 190, 255, 0.30f),
+            juce::Colour(0xff262c3d), juce::Colour(0xff161a26),
+        },
+    }};
+    return themes[(size_t) juce::jlimit(0, kNumThemes - 1, (int) t)];
+}
+
+const AccentTokens& accentTokens(AccentId a)
+{
+    static const std::array<AccentTokens, kNumAccents> accents {{
+        { "blue",  juce::Colour(0xff4d87ff), juce::Colour(0xffffffff),
+          rgba(77, 135, 255, 0.16f), rgba(77, 135, 255, 0.42f), juce::Colour(0xff9cbcff) },
+        { "amber", juce::Colour(0xfff0a93b), juce::Colour(0xff1c1304),
+          rgba(240, 169, 59, 0.16f), rgba(240, 169, 59, 0.42f), juce::Colour(0xffffd089) },
+        { "mint",  juce::Colour(0xff2bd49f), juce::Colour(0xff042019),
+          rgba(43, 212, 159, 0.15f), rgba(43, 212, 159, 0.42f), juce::Colour(0xff79efc9) },
+    }};
+    return accents[(size_t) juce::jlimit(0, kNumAccents - 1, (int) a)];
+}
+
+// ── Fonts ────────────────────────────────────────────────────────────────────
+
+namespace {
+
+juce::Typeface::Ptr loadTypeface(const void* data, size_t size)
+{
+    return juce::Typeface::createSystemTypefaceFor(data, size);
+}
+
+juce::Font fontWithTypeface(juce::Typeface::Ptr tf, float pt, bool synthBold)
+{
+    if (tf != nullptr)
+    {
+        auto f = juce::Font(juce::FontOptions().withTypeface(tf).withHeight(pt));
+        if (synthBold)
+            f.setBold(true);
+        return f;
+    }
+    return juce::Font(juce::FontOptions(pt).withStyle(synthBold ? "Semibold" : "Regular"));
+}
+
+} // namespace
+
+juce::Font uiFont(float pt, bool semibold)
+{
+    static juce::Typeface::Ptr tf =
+        loadTypeface(BinaryData::SchibstedGrotesk_ttf, (size_t) BinaryData::SchibstedGrotesk_ttfSize);
+    return fontWithTypeface(tf, pt, semibold);
+}
+
+juce::Font monoFont(float pt, bool semibold)
+{
+    static juce::Typeface::Ptr regular =
+        loadTypeface(BinaryData::JetBrainsMonoRegular_ttf, (size_t) BinaryData::JetBrainsMonoRegular_ttfSize);
+    static juce::Typeface::Ptr semi =
+        loadTypeface(BinaryData::JetBrainsMonoSemiBold_ttf, (size_t) BinaryData::JetBrainsMonoSemiBold_ttfSize);
+    auto tf = semibold ? semi : regular;
+    return fontWithTypeface(tf != nullptr ? tf : regular, pt, false);
+}
+
+juce::Font fontFor(TextStyle s)
+{
+    switch (s)
+    {
+        case TextStyle::LargeTitle:  return uiFont(28.0f, true);
+        case TextStyle::Title2:      return uiFont(17.0f, true);
+        case TextStyle::Headline:    return uiFont(13.0f, true);
+        case TextStyle::Body:        return uiFont(13.0f, false);
+        case TextStyle::Callout:     return uiFont(12.0f, false);
+        case TextStyle::Subheadline: return uiFont(11.0f, false);
+        case TextStyle::Footnote:    return uiFont(10.0f, false);
+        case TextStyle::Caption:     return uiFont(10.0f, false);
+    }
+    return uiFont(13.0f, false);
+}
 
 namespace {
 
