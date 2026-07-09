@@ -52,7 +52,7 @@ struct Tweaks
     std::atomic<int> accent  { (int) AccentId::Amber };
     std::atomic<int> density { (int) Density::Compact };
     std::atomic<int> grid    { (int) GridStyle::Minimal };
-    std::atomic<int> size    { (int) ContentSize::Medium };
+    std::atomic<int> size    { (int) ContentSize::Large };
 };
 
 Tweaks& tweaks();

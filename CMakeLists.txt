@@ -157,6 +157,7 @@ if(MIDIBROWSER_BUILD_TESTS)
         Tests/PluginProcessorTests.cpp
         Tests/EditModelTests.cpp
         Tests/GrooveEngineTests.cpp
+        Tests/EditorUiTests.cpp
     )
     target_link_libraries(MidiBrowserTests PRIVATE
         MidiBrowser

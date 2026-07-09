@@ -148,6 +148,7 @@ PianoRollEditor::PianoRollEditor()
     };
     addAndMakeVisible(mapSwitch);
 
+    btnLock.setComponentID("btnLock");
     btnLock.onClick = [this]
     {
         if (onLockToggled)
@@ -163,9 +164,11 @@ PianoRollEditor::PianoRollEditor()
     };
     addAndMakeVisible(btnRevert);
 
+    btnTrim.setComponentID("btnTrim");
     btnTrim.onClick = [this] { toggleTrim(); };
     addAndMakeVisible(btnTrim);
 
+    btnFold.setComponentID("btnFold");
     btnFold.onClick = [this]
     {
         folded = !folded;

@@ -91,14 +91,23 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    bool previewMuted = true, previewHasClip = false;
+    bool previewMuted = true, previewHasClip = false, flushHeldNotes = false;
     MidiClip previewClip;
     {
         juce::ScopedLock pl(previewLock_);
         previewMuted = previewMuted_;
         previewHasClip = previewHasClip_;
         previewClip = previewClip_;
+        flushHeldNotes = previewFlushPending_;
+        previewFlushPending_ = false;
     }
+
+    if (flushHeldNotes)
+        for (int ch = 1; ch <= 16; ++ch)
+        {
+            generated.addEvent(juce::MidiMessage::allNotesOff(ch), 0);
+            generated.addEvent(juce::MidiMessage::controllerEvent(ch, 123, 0), 0);
+        }
 
     if (!previewMuted && previewHasClip && previewClip.lengthBeats > 0.0)
     {
@@ -149,9 +158,33 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         midi.addEvent(metadata.getMessage(), metadata.samplePosition);
 }
 
+namespace {
+
+// Cheap content fingerprint so a changed preview (new file, transposed notes,
+// new groove timing) releases anything still sounding from the old one.
+juce::uint64 previewFingerprint(const MidiClip& clip)
+{
+    juce::uint64 h = (juce::uint64) clip.notes.size() * 1099511628211ULL;
+    for (const auto& n : clip.notes)
+    {
+        h = h * 1099511628211ULL
+            ^ ((juce::uint64) n.noteNumber << 48)
+            ^ ((juce::uint64) n.velocity << 40)
+            ^ ((juce::uint64) juce::jmax<juce::int64>(0, (juce::int64) std::llround(n.startBeat * 960.0)))
+            ^ ((juce::uint64) juce::jmax<juce::int64>(0, (juce::int64) std::llround(n.lengthBeats * 960.0)) << 20);
+    }
+    return h;
+}
+
+} // namespace
+
 void MidiBrowserProcessor::setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed)
 {
+    const auto fp = previewFingerprint(clip);
     juce::ScopedLock sl(previewLock_);
+    if (fp != previewFingerprint_ && previewHasClip_)
+        previewFlushPending_ = true;
+    previewFingerprint_ = fp;
     previewClip_ = clip;
     previewHasClip_ = hasClip;
     previewMuted_ = muted;
@@ -310,7 +343,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             tweaks().grid.store(juce::jlimit(0, kNumGridStyles - 1,
                 xml->getIntAttribute("tweakGrid", (int) GridStyle::Minimal)));
             tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1,
-                xml->getIntAttribute("tweakSize", (int) ContentSize::Medium)));
+                xml->getIntAttribute("tweakSize", (int) ContentSize::Large)));
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");

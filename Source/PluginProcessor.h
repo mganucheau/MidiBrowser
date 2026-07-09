@@ -114,6 +114,8 @@ private:
     MidiClip previewClip_;
     bool previewHasClip_ = false;
     bool previewMuted_ = false;
+    bool previewFlushPending_ = false;   // release held notes before the next block
+    juce::uint64 previewFingerprint_ = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiBrowserProcessor)
 };

@@ -150,6 +150,28 @@ TEST_CASE("Free-run preview plays and advances without host transport", "[Proces
     REQUIRE(harness.processor.freerunBeat.load() < 3.999);
 }
 
+TEST_CASE("Changing the preview clip releases held notes", "[Processor][qa]")
+{
+    ProcessorTestHarness harness;
+    // Contiguous block positions so the discontinuity detector stays quiet.
+    const double blockBeats = 512.0 / 44100.0 * 2.0;   // 512 samples at 120bpm
+
+    auto clipA = previewClipWithNoteAt(0.0);
+    harness.processor.setPreviewState(clipA, true, false, false);
+    harness.runBlock(0.0);   // note-on from clip A sounding
+
+    // Browse to a different clip: the next block must flush the old notes.
+    auto clipB = test::makeClipWithNotes({ { 72, 100, 0.0, 0.5, 1 } }, 4.0);
+    harness.processor.setPreviewState(clipB, true, false, false);
+    const auto midi = harness.runBlock(blockBeats);
+    REQUIRE(test::hasAllNotesOff(midi));
+
+    // Re-pushing the same clip does not flush again.
+    harness.processor.setPreviewState(clipB, true, false, false);
+    const auto next = harness.runBlock(blockBeats * 2.0);
+    REQUIRE_FALSE(test::hasAllNotesOff(next));
+}
+
 TEST_CASE("Per-clip edits and grooves round-trip through plugin state", "[Processor][qa]")
 {
     MidiBrowserProcessor original;
