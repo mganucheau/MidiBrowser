@@ -122,7 +122,7 @@ void FavoritesSidebar::paint(juce::Graphics& g)
     if (!collapsed)
     {
         g.setColour(colours::text3());
-        g.setFont(uiFont(10.0f, true));
+        g.setFont(uiFont(12.0f, true));
         g.drawText("SAVED", metrics::sidebarRailW - 4, 0, 60, kSidebarHeaderH,
                    juce::Justification::centredLeft);
     }
@@ -166,7 +166,7 @@ void FavoritesSidebar::paint(juce::Graphics& g)
             }
 
             g.setColour(isActive ? colours::text() : colours::text2());
-            g.setFont(uiFont(11.5f, isActive));
+            g.setFont(uiFont(13.0f, isActive));
             const auto label = dir.getFileName().isNotEmpty() ? dir.getFileName() : dirs[i];
             g.drawText(label, row, juce::Justification::centredLeft, true);
         }
@@ -312,18 +312,36 @@ void FileListPanel::paint(juce::Graphics& g)
 {
     g.fillAll(colours::panel());
 
-    auto header = getLocalBounds().removeFromTop(metrics::listHeaderH());
+    auto bounds = getLocalBounds();
+    auto header = bounds.removeFromTop(metrics::listHeaderH());
     g.setColour(colours::line());
     g.fillRect(header.removeFromBottom(1));
 
-    auto h = header.reduced(10, 0).withTrimmedRight(26);
+    auto h = header.reduced(10, 0).withTrimmedRight(btnStarFilter.isVisible() ? 52 : 28);
     g.setColour(colours::text());
-    g.setFont(uiFont(12.0f, true));
-    const int countW = 34;
+    g.setFont(uiFont(14.0f, true));
+    const int countW = 40;
     g.drawText(folderName, h.withTrimmedRight(countW), juce::Justification::centredLeft, true);
     g.setColour(colours::text3());
-    g.setFont(monoFont(10.5f, false));
+    g.setFont(monoFont(13.0f, false));
     g.drawText(juce::String((int) entries.size()), h, juce::Justification::centredRight);
+
+    // Composed empty state when no MIDI files are listed.
+    if (entries.empty())
+    {
+        auto area = bounds.reduced(24, 32);
+        auto icon = area.removeFromTop(36).toFloat().withSizeKeepingCentre(28.0f, 28.0f);
+        drawIcon(g, icons::folderOpen, icon, colours::text3(), 1.6f);
+        area.removeFromTop(12);
+        g.setColour(colours::text());
+        g.setFont(uiFont(14.0f, true));
+        g.drawText("Choose a folder of MIDI files", area.removeFromTop(22),
+                   juce::Justification::centred);
+        g.setColour(colours::text3());
+        g.setFont(uiFont(13.0f, false));
+        g.drawText("Use Open to browse, then drag a clip into your DAW.",
+                   area.removeFromTop(40), juce::Justification::centredTop);
+    }
 }
 
 void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> r,
@@ -393,7 +411,7 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
     if (e.bpm > 0.0) meta << (meta.isEmpty() ? "" : " ") << juce::String((int) std::lround(e.bpm));
     if (meta.isNotEmpty())
     {
-        g.setFont(monoFont(12.5f, false));
+        g.setFont(monoFont(13.0f, false));
         g.setColour(colours::text3());
         g.drawText(meta, metaZone, juce::Justification::centredRight);
     }
@@ -403,7 +421,7 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
         auto st = starZone.toFloat().withSizeKeepingCentre(14.0f, 14.0f);
         const auto col = e.starred ? colours::accent()
                        : hoverStar ? colours::text()
-                                   : colours::text3().withAlpha(0.55f);
+                                   : colours::text3();
         drawIcon(g, icons::star, st, col, e.starred ? 1.9f : 1.25f);
     }
 
@@ -415,9 +433,9 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
         row.removeFromRight(1);
     }
 
-    // Same font for every row — selection changes colour only.
+    // Same font for every row — selection changes colour + left accent bar only.
     g.setColour(isSelected ? colours::text() : colours::text2());
-    g.setFont(uiFont(12.5f, false));
+    g.setFont(uiFont(14.0f, false));
     g.drawText(e.name, row, juce::Justification::centredLeft, true);
 }
 

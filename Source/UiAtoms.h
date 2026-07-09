@@ -41,6 +41,13 @@ namespace icons {
 void drawIcon(juce::Graphics& g, const juce::String& name,
               juce::Rectangle<float> bounds, juce::Colour colour, float px = 1.6f);
 
+/** 2px accent focus ring for keyboard-reachable controls (WCAG 2.4.7). */
+inline void drawFocusRing(juce::Graphics& g, juce::Rectangle<float> bounds, float radius)
+{
+    g.setColour(colours::accent());
+    g.drawRoundedRectangle(bounds.reduced(1.0f), radius, 2.0f);
+}
+
 // ── Small controls ───────────────────────────────────────────────────────────
 
 /** Square icon button. Optional `active` accent state. */

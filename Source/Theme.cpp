@@ -28,7 +28,7 @@ const ThemeTokens& themeTokens(ThemeId t)
             "charcoal",
             juce::Colour(0xff131419), juce::Colour(0xff181a20), juce::Colour(0xff1c1f26), juce::Colour(0xff24272f),
             rgba(255, 255, 255, 0.08f), rgba(255, 255, 255, 0.15f),
-            juce::Colour(0xffe9eaee), juce::Colour(0xffa6a9b3), juce::Colour(0xff6c7079),
+            juce::Colour(0xffe9eaee), juce::Colour(0xffa6a9b3), juce::Colour(0xff9a9488),
             juce::Colour(0xff14161b), rgba(255, 255, 255, 0.028f), rgba(255, 255, 255, 0.045f),
             rgba(0, 0, 0, 0.28f), rgba(255, 255, 255, 0.28f),
             juce::Colour(0xff2b2e36), juce::Colour(0xff1a1c22),
@@ -37,7 +37,7 @@ const ThemeTokens& themeTokens(ThemeId t)
             "graphite",
             juce::Colour(0xff18160f), juce::Colour(0xff1e1b15), juce::Colour(0xff221e17), juce::Colour(0xff2b261d),
             rgba(255, 250, 235, 0.08f), rgba(255, 250, 235, 0.15f),
-            juce::Colour(0xffece8df), juce::Colour(0xffaca598), juce::Colour(0xff726c5f),
+            juce::Colour(0xffece8df), juce::Colour(0xffaca598), juce::Colour(0xff9a9488),
             juce::Colour(0xff15130d), rgba(255, 248, 230, 0.03f), rgba(255, 248, 230, 0.05f),
             rgba(0, 0, 0, 0.30f), rgba(255, 248, 230, 0.28f),
             juce::Colour(0xff2f2a20), juce::Colour(0xff1c1810),
@@ -46,7 +46,7 @@ const ThemeTokens& themeTokens(ThemeId t)
             "ink",
             juce::Colour(0xff0d0f16), juce::Colour(0xff11141d), juce::Colour(0xff141826), juce::Colour(0xff1b2030),
             rgba(180, 200, 255, 0.09f), rgba(180, 200, 255, 0.16f),
-            juce::Colour(0xffe6e9f3), juce::Colour(0xff9ca3b8), juce::Colour(0xff636b82),
+            juce::Colour(0xffe6e9f3), juce::Colour(0xff9ca3b8), juce::Colour(0xff9a9488),
             juce::Colour(0xff0e1119), rgba(150, 180, 255, 0.03f), rgba(150, 180, 255, 0.05f),
             rgba(0, 0, 0, 0.32f), rgba(170, 190, 255, 0.30f),
             juce::Colour(0xff262c3d), juce::Colour(0xff161a26),
@@ -114,14 +114,14 @@ juce::Font fontFor(TextStyle s)
     {
         case TextStyle::LargeTitle:  return uiFont(28.0f, true);
         case TextStyle::Title2:      return uiFont(17.0f, true);
-        case TextStyle::Headline:    return uiFont(13.0f, true);
-        case TextStyle::Body:        return uiFont(13.0f, false);
-        case TextStyle::Callout:     return uiFont(12.0f, false);
-        case TextStyle::Subheadline: return uiFont(11.0f, false);
-        case TextStyle::Footnote:    return uiFont(10.0f, false);
-        case TextStyle::Caption:     return uiFont(10.0f, false);
+        case TextStyle::Headline:    return uiFont(14.0f, true);
+        case TextStyle::Body:        return uiFont(14.0f, false);
+        case TextStyle::Callout:     return uiFont(13.0f, false);
+        case TextStyle::Subheadline: return uiFont(13.0f, false);
+        case TextStyle::Footnote:    return uiFont(12.0f, false);
+        case TextStyle::Caption:     return uiFont(12.0f, false);
     }
-    return uiFont(13.0f, false);
+    return uiFont(14.0f, false);
 }
 
 namespace {

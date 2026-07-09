@@ -137,7 +137,7 @@ void TransportBar::refreshBpm()
     const double shown = synced ? hostBpm * multiplier : freeBpm;
     bpmLabel.setText(juce::String(shown, 1), juce::dontSendNotification);
     bpmLabel.setEditable(false, !synced, false);   // double-click to edit when free-run
-    bpmLabel.setFont(monoFont(13.0f, true));
+    bpmLabel.setFont(monoFont(14.0f, true));
     bpmLabel.setColour(juce::Label::textColourId,
                        synced ? (multiplier != 1.0 ? colours::accent() : colours::text())
                               : colours::accent());
@@ -198,7 +198,7 @@ void TransportBar::resized()
         r.removeFromRight(8);
     }
 
-    pathLabel.setFont(monoFont(10.5f, false));
+    pathLabel.setFont(monoFont(12.0f, false));
     pathLabel.setColour(juce::Label::textColourId, colours::text3());
     pathLabel.setVisible(!narrow && r.getWidth() > 60);
     pathLabel.setBounds(mid(r, 22));
@@ -224,7 +224,7 @@ void TransportBar::paint(juce::Graphics& g)
     if (!narrow)
     {
         g.setColour(colours::text());
-        g.setFont(uiFont(13.5f, true));
+        g.setFont(uiFont(14.0f, true));
         g.drawText("Midi Browser", 32, 0, 84, getHeight(), juce::Justification::centredLeft);
     }
 }

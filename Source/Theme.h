@@ -84,12 +84,12 @@ enum class TextStyle
 {
     LargeTitle,     // 28pt Semibold
     Title2,         // 17pt Semibold
-    Headline,       // 13pt Semibold
-    Body,           // 13pt Regular
-    Callout,        // 12pt Regular
-    Subheadline,    // 11pt Regular
-    Footnote,       // 10pt Regular
-    Caption         // 10pt Regular secondary
+    Headline,       // 14pt Semibold
+    Body,           // 14pt Regular
+    Callout,        // 13pt Regular
+    Subheadline,    // 13pt Regular
+    Footnote,       // 12pt Regular
+    Caption         // 12pt Regular secondary
 };
 
 juce::Font fontFor(TextStyle s);
@@ -168,37 +168,39 @@ namespace colours {
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 namespace metrics {
+    // Elevation ladder (dark UI — no shadows): bg < panel < panel2 < elev.
+    // Surfaces communicate depth via lightness, not box-shadow.
     constexpr int browserWidth      = 200;   // slim file list; meta sits tight to the name
-    constexpr int browserMinWidth   = 150;
-    constexpr int browserMaxWidth   = 420;
+    constexpr int browserMinWidth   = 152;
+    constexpr int browserMaxWidth   = 424;
     constexpr float uiScale         = 1.0f;
 
     constexpr float cornerRadius    = 8.0f;
-    constexpr float groupedRadius   = 10.0f;
-    constexpr float chipRadius      = 6.0f;
-    constexpr float browserFontSize = 13.0f;
+    constexpr float groupedRadius   = 8.0f;
+    constexpr float chipRadius      = 8.0f;
+    constexpr float browserFontSize = 14.0f;
 
     constexpr int grid              = 8;
     constexpr int pluginPad         = 16;
-    constexpr int sectionHeaderH    = 20;
+    constexpr int sectionHeaderH    = 24;
     constexpr int toolbarH          = 32;
     constexpr int toolbarGap        = 8;
     constexpr int previewH          = 168;
     constexpr int previewControlsH  = 32;
-    constexpr int editorHeaderH     = 52;
+    constexpr int editorHeaderH     = 48;
     constexpr int iconButtonSize    = 28;
-    constexpr int comboTextPadding  = 6;
+    constexpr int comboTextPadding  = 8;
 
     constexpr int sidebarRailW      = 48;
     constexpr int sidebarExpandedW  = 168;
-    constexpr int foldedWindowW     = 300;
+    constexpr int foldedWindowW     = 304;
     constexpr int openWindowW       = 980;
 
-    // Density-scaled values
-    inline int transportH()  { return currentDensity() == Density::Comfortable ? 52 : 46; }
-    inline int listRowH()    { return currentDensity() == Density::Comfortable ? 28 : 24; }
-    inline int listHeaderH() { return currentDensity() == Density::Comfortable ? 34 : 30; }
-    inline int padS()        { return currentDensity() == Density::Comfortable ? 10 : 8; }
+    // Density-scaled values (4/8pt grid)
+    inline int transportH()  { return currentDensity() == Density::Comfortable ? 56 : 48; }
+    inline int listRowH()    { return currentDensity() == Density::Comfortable ? 32 : 24; }
+    inline int listHeaderH() { return currentDensity() == Density::Comfortable ? 40 : 32; }
+    inline int padS()        { return currentDensity() == Density::Comfortable ? 12 : 8; }
     // Folded (editor closed) mini preview: 2× the previous lane height so notes read clearly.
     inline int miniRollH()   { return currentDensity() == Density::Comfortable ? 256 : 224; }
 }

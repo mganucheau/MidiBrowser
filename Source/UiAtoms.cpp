@@ -229,7 +229,7 @@ IconBtn::IconBtn(const juce::String& iconName, const juce::String& tip)
 {
     if (tip.isNotEmpty())
         setTooltip(tip);
-    setWantsKeyboardFocus(false);
+    setWantsKeyboardFocus(true);
 }
 
 void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
@@ -247,9 +247,17 @@ void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
     }
     const juce::Colour col = active ? colours::accentInk()
                            : isEnabled() ? (over ? colours::text() : colours::text2())
-                                         : colours::text3().withAlpha(0.6f);
+                                         : colours::text2();
     const float inset = juce::jmin(b.getWidth(), b.getHeight()) * (0.5f - 0.32f * iconScale);
     drawIcon(g, icon, b.reduced(inset), col, 1.6f);
+    if (!isEnabled())
+    {
+        // Dim via fill overlay so glyph contrast stays ≥ AA on elev.
+        g.setColour(colours::elev().withAlpha(0.35f));
+        g.fillRoundedRectangle(b, metrics::chipRadius);
+    }
+    if (hasKeyboardFocus(true))
+        drawFocusRing(g, b, metrics::chipRadius);
 }
 
 // ── ChipBtn ──────────────────────────────────────────────────────────────────
@@ -257,12 +265,12 @@ void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
 ChipBtn::ChipBtn(const juce::String& text, const juce::String& iconName)
     : juce::Button(text), label(text), icon(iconName)
 {
-    setWantsKeyboardFocus(false);
+    setWantsKeyboardFocus(true);
 }
 
 int ChipBtn::idealWidth() const
 {
-    const auto f = mono ? monoFont(11.5f, true) : uiFont(12.0f, true);
+    const auto f = mono ? monoFont(13.0f, true) : uiFont(13.0f, true);
     int w = (int) std::ceil(juce::GlyphArrangement::getStringWidth(f, label)) + 26;
     if (icon.isNotEmpty()) w += 16;
     if (trailingIcon.isNotEmpty()) w += 15;
@@ -289,7 +297,8 @@ void ChipBtn::paintButton(juce::Graphics& g, bool over, bool down)
     juce::Colour col = active ? colours::accentInk()
                      : accentText ? colours::accent()
                                   : colours::text2();
-    if (!isEnabled()) col = col.withAlpha(0.5f);
+    if (!isEnabled())
+        col = colours::text2();
 
     auto area = getLocalBounds().reduced(9, 0);
     if (icon.isNotEmpty())
@@ -301,11 +310,18 @@ void ChipBtn::paintButton(juce::Graphics& g, bool over, bool down)
     if (trailingIcon.isNotEmpty())
     {
         auto ta = area.removeFromRight(12).toFloat().withSizeKeepingCentre(10.0f, 10.0f);
-        drawIcon(g, trailingIcon, ta, col.withAlpha(over ? 1.0f : 0.7f), 1.3f);
+        drawIcon(g, trailingIcon, ta, col.withAlpha(over ? 1.0f : 0.85f), 1.3f);
     }
     g.setColour(col);
-    g.setFont(mono ? monoFont(11.5f, true) : uiFont(12.0f, true));
+    g.setFont(mono ? monoFont(13.0f, true) : uiFont(13.0f, true));
     g.drawFittedText(label, area, juce::Justification::centred, 1, 1.0f);
+    if (!isEnabled())
+    {
+        g.setColour(colours::elev().withAlpha(0.35f));
+        g.fillRoundedRectangle(b, r);
+    }
+    if (hasKeyboardFocus(true))
+        drawFocusRing(g, b, r);
 }
 
 // ── PillToggle ───────────────────────────────────────────────────────────────
@@ -314,12 +330,12 @@ PillToggle::PillToggle(const juce::String& onText, const juce::String& offText)
     : juce::Button("sync"), onLabel(onText), offLabel(offText)
 {
     setClickingTogglesState(true);
-    setWantsKeyboardFocus(false);
+    setWantsKeyboardFocus(true);
 }
 
 int PillToggle::idealWidth() const
 {
-    const auto f = uiFont(11.5f, true);
+    const auto f = uiFont(13.0f, true);
     const float w = juce::jmax(juce::GlyphArrangement::getStringWidth(f, onLabel),
                                juce::GlyphArrangement::getStringWidth(f, offLabel));
     return (int) std::ceil(w) + 34;
@@ -346,8 +362,10 @@ void PillToggle::paintButton(juce::Graphics& g, bool over, bool down)
     area.removeFromLeft(6);
 
     g.setColour(on ? colours::accentBright() : colours::text2());
-    g.setFont(uiFont(11.5f, true));
+    g.setFont(uiFont(13.0f, true));
     g.drawFittedText(on ? onLabel : offLabel, area, juce::Justification::centredLeft, 1, 1.0f);
+    if (hasKeyboardFocus(true))
+        drawFocusRing(g, b, r);
 }
 
 // ── MiniSwitch ───────────────────────────────────────────────────────────────
@@ -355,15 +373,15 @@ void PillToggle::paintButton(juce::Graphics& g, bool over, bool down)
 MiniSwitch::MiniSwitch(const juce::String& c) : juce::Button(c), caption(c)
 {
     setClickingTogglesState(true);
-    setWantsKeyboardFocus(false);
+    setWantsKeyboardFocus(true);
 }
 
 int MiniSwitch::idealWidth() const
 {
-    const float capW = juce::GlyphArrangement::getStringWidth(uiFont(13.0f, true), caption);
+    const float capW = juce::GlyphArrangement::getStringWidth(uiFont(14.0f, true), caption);
     const float valW = juce::jmax(
-        juce::GlyphArrangement::getStringWidth(monoFont(12.5f, false), onText),
-        juce::GlyphArrangement::getStringWidth(monoFont(12.5f, false), offText));
+        juce::GlyphArrangement::getStringWidth(monoFont(13.0f, false), onText),
+        juce::GlyphArrangement::getStringWidth(monoFont(13.0f, false), offText));
     return (int) std::ceil(capW + valW) + 26 + 18;   // track + gaps
 }
 
@@ -372,10 +390,11 @@ void MiniSwitch::paintButton(juce::Graphics& g, bool over, bool down)
     juce::ignoreUnused(down);
     const bool on = getToggleState();
     auto row = getLocalBounds();
+    auto bounds = getLocalBounds().toFloat();
 
     // Caption · track · value, all on one row.
     g.setColour(on ? colours::text() : colours::text2());
-    g.setFont(uiFont(13.0f, true));
+    g.setFont(uiFont(14.0f, true));
     const int capW = (int) std::ceil(
         juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), caption));
     g.drawFittedText(caption, row.removeFromLeft(capW), juce::Justification::centredLeft, 1, 1.0f);
@@ -390,8 +409,10 @@ void MiniSwitch::paintButton(juce::Graphics& g, bool over, bool down)
 
     row.removeFromLeft(6);
     g.setColour(on ? colours::accentBright() : colours::text3());
-    g.setFont(monoFont(12.5f, true));
+    g.setFont(monoFont(13.0f, true));
     g.drawFittedText(on ? onText : offText, row, juce::Justification::centredLeft, 1, 1.0f);
+    if (hasKeyboardFocus(true))
+        drawFocusRing(g, bounds, 6.0f);
 }
 
 // ── Stepper ──────────────────────────────────────────────────────────────────
@@ -429,7 +450,7 @@ void Stepper::paint(juce::Graphics& g)
     g.setColour(colours::elev());
     g.fillRoundedRectangle(mid.toFloat().reduced(1.0f, 2.0f), 4.0f);
     g.setColour(value != 0 ? colours::accent() : colours::text2());
-    g.setFont(monoFont(13.5f, true));
+    g.setFont(monoFont(14.0f, true));
     const juce::String text = format ? format(value)
                                      : (value > 0 ? "+" + juce::String(value) : juce::String(value));
     g.drawFittedText(text, mid, juce::Justification::centred, 1, 1.0f);

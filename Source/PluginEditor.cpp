@@ -527,7 +527,7 @@ void MidiBrowserEditor::MiniHeader::paint(juce::Graphics& g)
 
     const auto* clip = owner.selectedClip();
     g.setColour(colours::text2());
-    g.setFont(uiFont(11.0f, true));
+    g.setFont(uiFont(13.0f, true));
     g.drawText(clip != nullptr ? clip->name : "Preview",
                r.withTrimmedRight(52), juce::Justification::centredLeft, true);
 
@@ -535,7 +535,7 @@ void MidiBrowserEditor::MiniHeader::paint(juce::Graphics& g)
     {
         const auto resolved = resolveClip(*clip, owner.selectedEdit());
         g.setColour(colours::text3());
-        g.setFont(monoFont(10.0f, false));
+        g.setFont(monoFont(12.0f, false));
         g.drawText(juce::String(resolved.bars) + " bars", r, juce::Justification::centredRight);
     }
 }

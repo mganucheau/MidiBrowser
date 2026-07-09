@@ -59,7 +59,7 @@ void PianoRollMini::paint(juce::Graphics& g)
     if (notes.empty())
     {
         g.setColour(colours::text3());
-        g.setFont(uiFont(11.0f, false));
+        g.setFont(uiFont(13.0f, false));
         g.drawText("No notes", getLocalBounds(), juce::Justification::centred);
         return;
     }
@@ -117,8 +117,13 @@ PianoRollEditor::PianoRollEditor()
     };
     addAndMakeVisible(rootPicker);
 
-    for (int i = 0; i < kNumModes; ++i)
-        modePicker.addItem(modeName((Mode) i), i + 1);
+    // Major / Minor first for discoverability; IDs still map to Mode enum values.
+    static constexpr Mode kModeOrder[] = {
+        Mode::Ionian, Mode::Aeolian, Mode::Dorian, Mode::Phrygian,
+        Mode::Lydian, Mode::Mixolydian, Mode::Locrian
+    };
+    for (auto m : kModeOrder)
+        modePicker.addItem(modeName(m), (int) m + 1);
     modePicker.onChange = [this]
     {
         const int id = modePicker.getSelectedId();
@@ -353,9 +358,21 @@ void PianoRollEditor::refreshControls()
     const bool canTrim = edges.lead + edges.tail > edit.trimLead + edit.trimTail;
     btnTrim.setEnabled(canTrim || isTrimmed);
     btnTrim.active = isTrimmed;
-    btnTrim.setTooltip(isTrimmed ? "Restore trimmed bars"
-                      : canTrim ? "Trim empty edge bars"
-                                : "No empty edge bars to trim");
+    if (isTrimmed)
+    {
+        btnTrim.label = "Restore";
+        btnTrim.setTooltip("Restore trimmed bars");
+    }
+    else if (canTrim)
+    {
+        btnTrim.label = "Trim";
+        btnTrim.setTooltip("Trim empty edge bars");
+    }
+    else
+    {
+        btnTrim.label = "No empty bars";
+        btnTrim.setTooltip("No empty edge bars to trim");
+    }
     btnTrim.repaint();
 
     btnFold.setEnabled(hasClip && !foldPitches.empty());
@@ -612,7 +629,7 @@ void PianoRollEditor::resized()
 {
     auto r = getLocalBounds();
 
-    // Instrument strip: octave · root · mode · fit · map · … · lock
+    // Instrument strip: primary pitch tools left; Fit/Map demoted as secondary.
     auto strip = r.removeFromTop(stripH).reduced(8, 4);
     octaveStepper.setBounds(strip.removeFromLeft(80).withSizeKeepingCentre(80, 26));
     strip.removeFromLeft(6);
@@ -621,17 +638,20 @@ void PianoRollEditor::resized()
     modePicker.setBounds(strip.removeFromLeft(118).withSizeKeepingCentre(118, 26));
     strip.removeFromLeft(10);
     btnLock.setBounds(strip.removeFromRight(26).withSizeKeepingCentre(24, 24));
-    strip.removeFromRight(4);
-    fitSwitch.setBounds(strip.removeFromLeft(juce::jmin(fitSwitch.idealWidth(), strip.getWidth() / 2)));
-    strip.removeFromLeft(10);
+    strip.removeFromRight(8);
+    // Secondary density: Fit / Map share remaining space at lower visual weight.
+    const int secondaryW = juce::jmax(0, strip.getWidth());
+    const int fitW = juce::jmin(fitSwitch.idealWidth(), secondaryW / 2);
+    fitSwitch.setBounds(strip.removeFromLeft(fitW));
+    strip.removeFromLeft(8);
     mapSwitch.setBounds(strip.removeFromLeft(juce::jmin(mapSwitch.idealWidth(), strip.getWidth())));
 
     // Toolbar: Trim / Fold first so they stay reachable even with many badges.
     auto bar = r.removeFromTop(toolbarH).reduced(8, 5);
     btnRevert.setBounds(bar.removeFromLeft(26).withSizeKeepingCentre(24, 24));
     bar.removeFromLeft(6);
-    btnTrim.setBounds(bar.removeFromLeft(juce::jmin(btnTrim.idealWidth(), 78))
-                          .withSizeKeepingCentre(juce::jmin(btnTrim.idealWidth(), 78), 22));
+    btnTrim.setBounds(bar.removeFromLeft(juce::jmin(btnTrim.idealWidth(), 110))
+                          .withSizeKeepingCentre(juce::jmin(btnTrim.idealWidth(), 110), 22));
     bar.removeFromLeft(4);
     btnFold.setBounds(bar.removeFromLeft(juce::jmin(btnFold.idealWidth(), 78))
                           .withSizeKeepingCentre(juce::jmin(btnFold.idealWidth(), 78), 22));
@@ -693,7 +713,7 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
     if (!ed.hasClip)
     {
         g.setColour(colours::text3());
-        g.setFont(uiFont(12.0f, false));
+        g.setFont(uiFont(14.0f, false));
         g.drawText("Select a MIDI file to edit", getLocalBounds(), juce::Justification::centred);
         return;
     }
@@ -949,7 +969,7 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
         if ((ed.folded || pitch % 12 == 0) && ed.effRowH() >= 8.0f)
         {
             g.setColour(colours::text3());
-            g.setFont(monoFont(juce::jmin(10.5f, ed.effRowH() - 1.5f), false));
+            g.setFont(monoFont(juce::jmin(12.0f, ed.effRowH() - 1.5f), false));
             g.drawText(pitchName(pitch), 4, (int) y, getWidth() - 8, (int) ed.effRowH(),
                        juce::Justification::centredLeft);
         }
@@ -982,11 +1002,11 @@ void PianoRollEditor::VelocityLane::paint(juce::Graphics& g)
     drawIcon(g, ed.velocityOpen ? icons::caretDown : icons::caretUp, caret, colours::text3(), 1.5f);
     header.removeFromLeft(6);
     g.setColour(colours::text2());
-    g.setFont(uiFont(10.5f, true));
-    g.drawText("VELOCITY", header.removeFromLeft(64), juce::Justification::centredLeft);
+    g.setFont(uiFont(13.0f, true));
+    g.drawText("VELOCITY", header.removeFromLeft(72), juce::Justification::centredLeft);
 
     g.setColour(colours::text3());
-    g.setFont(monoFont(10.0f, false));
+    g.setFont(monoFont(12.0f, false));
     g.drawText("Intensity " + juce::String(ed.groove.intensity) + juce::String::fromUTF8("% · Dyn ")
                    + juce::String(ed.groove.dynamics) + "%",
                header, juce::Justification::centredRight);

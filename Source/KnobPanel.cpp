@@ -111,12 +111,12 @@ void GrooveKnob::paint(juce::Graphics& g)
     // Label + readout
     auto below = getLocalBounds().withTrimmedTop((int) size + 6);
     g.setColour(colours::text3());
-    g.setFont(uiFont(10.5f, true));
-    g.drawText(juce::String(def.label).toUpperCase(), below.removeFromTop(12),
+    g.setFont(uiFont(12.0f, true));
+    g.drawText(juce::String(def.label).toUpperCase(), below.removeFromTop(14),
                juce::Justification::centred);
     const bool activeVal = value != def.def;
     g.setColour(activeVal ? colours::accent() : colours::text2());
-    g.setFont(monoFont(12.5f, true));
+    g.setFont(monoFont(13.0f, true));
     g.drawText(juce::String(value) + "%", below.removeFromTop(14), juce::Justification::centred);
 }
 
@@ -226,8 +226,8 @@ void KnobsPanel::paint(juce::Graphics& g)
     header.removeFromLeft(7);
 
     g.setColour(colours::text2());
-    g.setFont(uiFont(11.0f, true));
-    g.drawText("GROOVE", header.removeFromLeft(52), juce::Justification::centredLeft);
+    g.setFont(uiFont(13.0f, true));
+    g.drawText("GROOVE", header.removeFromLeft(64), juce::Justification::centredLeft);
 
     const int active = params.activeCount();
     if (active > 0)
@@ -236,7 +236,7 @@ void KnobsPanel::paint(juce::Graphics& g)
         g.setColour(colours::accentSoft());
         g.fillRoundedRectangle(badge.toFloat(), 7.0f);
         g.setColour(colours::accentBright());
-        g.setFont(monoFont(9.5f, true));
+        g.setFont(monoFont(12.0f, true));
         g.drawText(juce::String(active), badge, juce::Justification::centred);
     }
 
@@ -245,7 +245,7 @@ void KnobsPanel::paint(juce::Graphics& g)
         if (btnReset.isVisible())
             header.removeFromRight(28);
         g.setColour(colours::text3());
-        g.setFont(monoFont(10.0f, false));
+        g.setFont(monoFont(12.0f, false));
         juce::String names;
         for (int i = 0; i < kNumKnobs; ++i)
             names << kKnobDefs[(size_t) i].label << (i < kNumKnobs - 1 ? juce::String::fromUTF8(" · ") : juce::String());
