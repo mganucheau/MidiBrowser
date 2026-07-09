@@ -234,7 +234,7 @@ void MidiBrowserProcessor::generatePreviewMidi(const MidiClip& clip, double star
 void MidiBrowserProcessor::flushActiveNotes(juce::MidiBuffer& output, int samplePosition)
 {
     // Explicit note-offs for every held note (some instruments ignore CC123),
-    // then all-notes-off as belt and braces.
+    // then all-notes-off + sustain-off as belt and braces on every channel.
     for (int ch = 0; ch < 16; ++ch)
     {
         for (int n = 0; n < 128; ++n)
@@ -243,7 +243,9 @@ void MidiBrowserProcessor::flushActiveNotes(juce::MidiBuffer& output, int sample
                 output.addEvent(juce::MidiMessage::noteOff(ch + 1, n), samplePosition);
                 activeNotes_[ch][n] = false;
             }
-        output.addEvent(juce::MidiMessage::controllerEvent(ch + 1, 123, 0), samplePosition);
+        output.addEvent(juce::MidiMessage::controllerEvent(ch + 1, 64, 0), samplePosition);  // sustain off
+        output.addEvent(juce::MidiMessage::controllerEvent(ch + 1, 123, 0), samplePosition); // all notes off
+        output.addEvent(juce::MidiMessage::allNotesOff(ch + 1), samplePosition);
     }
 }
 

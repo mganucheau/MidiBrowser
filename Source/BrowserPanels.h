@@ -108,9 +108,9 @@ private:
     };
 
     // Fixed right-side row zones (stable layout, no hover shifting)
-    static constexpr int kPlayZoneW = 22;
-    static constexpr int kMetaZoneW = 48;
-    static constexpr int kStarZoneW = 16;
+    static constexpr int kPlayZoneW = 20;
+    static constexpr int kMetaZoneW = 40;
+    static constexpr int kStarZoneW = 18;
 
     void timerCallback() override;
     void ensureRowVisible(int index);

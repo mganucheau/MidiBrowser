@@ -175,16 +175,15 @@ void TransportBar::resized()
     syncToggle.setBounds(mid(r.removeFromLeft(juce::jmin(syncToggle.idealWidth(),
                                                           narrow ? 96 : 140)), 24));
     r.removeFromLeft(6);
-    bpmLabel.setBounds(mid(r.removeFromLeft(56), 22));
+    bpmLabel.setBounds(mid(r.removeFromLeft(narrow ? 48 : 56), 22));
     r.removeFromLeft(2);
-    btnHalf.setVisible(!narrow);
-    btnDouble.setVisible(!narrow);
-    if (!narrow)
-    {
-        btnHalf.setBounds(mid(r.removeFromLeft(34), 22));
-        r.removeFromLeft(2);
-        btnDouble.setBounds(mid(r.removeFromLeft(34), 22));
-    }
+    // Always show ÷2 / ×2 — these are core synced-tempo controls, including
+    // in the folded (narrow) window where they were previously hidden.
+    btnHalf.setVisible(true);
+    btnDouble.setVisible(true);
+    btnHalf.setBounds(mid(r.removeFromLeft(narrow ? 30 : 34), 22));
+    r.removeFromLeft(2);
+    btnDouble.setBounds(mid(r.removeFromLeft(narrow ? 30 : 34), 22));
 
     // Right: Editor button, always fully inside with normal padding; the
     // Drag-to-DAW chip sits to its left when the window is expanded.

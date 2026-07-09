@@ -393,19 +393,18 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
     if (e.bpm > 0.0) meta << (meta.isEmpty() ? "" : " ") << juce::String((int) std::lround(e.bpm));
     if (meta.isNotEmpty())
     {
-        g.setFont(monoFont(11.0f, false));
+        g.setFont(monoFont(12.5f, false));
         g.setColour(colours::text3());
         g.drawText(meta, metaZone, juce::Justification::centredRight);
     }
 
-    // Star (favourite): filled when starred; hollow on hover.
-    if (e.starred || hovered)
+    // Star (favourite): always visible so the affordance is discoverable.
     {
-        auto st = starZone.toFloat().withSizeKeepingCentre(15.0f, 15.0f);
+        auto st = starZone.toFloat().withSizeKeepingCentre(14.0f, 14.0f);
         const auto col = e.starred ? colours::accent()
                        : hoverStar ? colours::text()
-                                   : colours::text3();
-        drawIcon(g, icons::star, st, col, e.starred ? 1.9f : 1.3f);
+                                   : colours::text3().withAlpha(0.55f);
+        drawIcon(g, icons::star, st, col, e.starred ? 1.9f : 1.25f);
     }
 
     if (e.edited)

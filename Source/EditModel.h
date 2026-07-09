@@ -68,7 +68,7 @@ struct ClipEdit
     bool fitScale  = false;
     bool mapToRoot = false;
     int  root      = -1;            // target root pitch-class, -1 = unset
-    Mode mode      = Mode::Dorian;
+    Mode mode      = Mode::Ionian;  // displayed as "Major"
     std::map<int, NoteMove> moves;  // per-note manual moves keyed by note id
     int  trimLead  = 0;             // leading bars trimmed
     int  trimTail  = 0;             // trailing bars trimmed

@@ -196,7 +196,7 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
     const auto badges = editBadges(clip, e);
     REQUIRE(badges.size() == 5);
     CHECK(badges[0].label == "Oct +2");
-    CHECK(badges[1].label == "D# Aeolian");
+    CHECK(badges[1].label == "D# Minor");
     CHECK(badges[2].label == juce::String::fromUTF8("→ D# root"));
     CHECK(badges[3].label == "1 note moved");
     CHECK(badges[4].label == juce::String::fromUTF8("Trim −1 bar"));

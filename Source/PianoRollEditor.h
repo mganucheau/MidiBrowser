@@ -63,6 +63,7 @@ public:
 
     void resized() override;
     void paint(juce::Graphics&) override;
+    bool keyPressed(const juce::KeyPress&) override;
 
     /** Feed the selected clip + its edit + groove. The editor never mutates
         the clip; user actions come back through the callbacks. */

@@ -409,7 +409,7 @@ void PatternFlowLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Lab
     label.setJustificationType(juce::Justification::centredLeft);
     label.setMinimumHorizontalScale(1.0f);
     auto b = box.getLocalBounds();
-    label.setBounds(b.withTrimmedLeft(metrics::comboTextPadding).withTrimmedRight(16));
+    label.setBounds(b.withTrimmedLeft(metrics::comboTextPadding).withTrimmedRight(18));
 }
 
 juce::Font PatternFlowLookAndFeel::getPopupMenuFont() { return fontFor(TextStyle::Body); }

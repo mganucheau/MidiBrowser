@@ -67,10 +67,11 @@ inline float contentScale()
 {
     switch ((ContentSize) juce::jlimit(0, kNumContentSizes - 1, tweaks().size.load()))
     {
-        case ContentSize::Small: return 0.85f;
-        case ContentSize::Large: return 1.2f;
-        default:                 return 1.0f;
+        case ContentSize::Small:  return 0.85f;
+        case ContentSize::Medium: return 1.0f;
+        case ContentSize::Large:  return 1.2f;
     }
+    return 1.0f;
 }
 
 // ── Fonts ────────────────────────────────────────────────────────────────────
@@ -167,8 +168,8 @@ namespace colours {
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 namespace metrics {
-    constexpr int browserWidth      = 216;   // file list width, editor open
-    constexpr int browserMinWidth   = 160;
+    constexpr int browserWidth      = 200;   // slim file list; meta sits tight to the name
+    constexpr int browserMinWidth   = 150;
     constexpr int browserMaxWidth   = 420;
     constexpr float uiScale         = 1.0f;
 
@@ -186,7 +187,7 @@ namespace metrics {
     constexpr int previewControlsH  = 32;
     constexpr int editorHeaderH     = 52;
     constexpr int iconButtonSize    = 28;
-    constexpr int comboTextPadding  = 8;
+    constexpr int comboTextPadding  = 6;
 
     constexpr int sidebarRailW      = 48;
     constexpr int sidebarExpandedW  = 168;
@@ -195,10 +196,11 @@ namespace metrics {
 
     // Density-scaled values
     inline int transportH()  { return currentDensity() == Density::Comfortable ? 52 : 46; }
-    inline int listRowH()    { return currentDensity() == Density::Comfortable ? 30 : 26; }
+    inline int listRowH()    { return currentDensity() == Density::Comfortable ? 28 : 24; }
     inline int listHeaderH() { return currentDensity() == Density::Comfortable ? 34 : 30; }
     inline int padS()        { return currentDensity() == Density::Comfortable ? 10 : 8; }
-    inline int miniRollH()   { return currentDensity() == Density::Comfortable ? 128 : 112; }
+    // Folded (editor closed) mini preview: 2× the previous lane height so notes read clearly.
+    inline int miniRollH()   { return currentDensity() == Density::Comfortable ? 256 : 224; }
 }
 
 inline void styleSectionLabel(juce::Label& lbl, const juce::String& text)

@@ -109,6 +109,13 @@ public:
 
     void setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed);
 
+    /** Ask the audio thread to release every held note on the next block. */
+    void requestNoteFlush()
+    {
+        juce::ScopedLock sl(previewLock_);
+        previewFlushPending_ = true;
+    }
+
 private:
     void generatePreviewMidi(const MidiClip& clip, double startBeat, double endBeat,
                              juce::MidiBuffer& output, int numSamples,

@@ -98,6 +98,8 @@ void PianoRollMini::paint(juce::Graphics& g)
 
 PianoRollEditor::PianoRollEditor()
 {
+    setWantsKeyboardFocus(true);
+
     // Instrument strip
     octaveStepper.minValue = -3;
     octaveStepper.maxValue = 3;
@@ -407,10 +409,37 @@ void PianoRollEditor::deleteSelectedNotes()
     });
 }
 
+bool PianoRollEditor::keyPressed(const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    {
+        if (!selection.empty())
+        {
+            deleteSelectedNotes();
+            return true;
+        }
+    }
+    return false;
+}
+
 void PianoRollEditor::toggleTrim()
 {
     const bool isTrimmed = edit.trimLead + edit.trimTail > 0;
-    const auto lead = edges.lead, tail = edges.tail;
+    // Prefer live edge detection; if somehow zero while trimmed, restore.
+    auto lead = edges.lead;
+    auto tail = edges.tail;
+    if (!isTrimmed && lead + tail == 0)
+    {
+        // Recompute from the current clip in case edges were stale.
+        ClipEdit noTrim = edit;
+        noTrim.trimLead = noTrim.trimTail = 0;
+        const auto preTrim = resolveClip(clip, noTrim);
+        const auto fresh = emptyEdgeBars(preTrim.notes, clip.bars);
+        lead = fresh.lead;
+        tail = fresh.tail;
+    }
+    if (!isTrimmed && lead + tail == 0)
+        return;   // nothing to trim
     applyEdit([isTrimmed, lead, tail](ClipEdit& e)
     {
         e.trimLead = isTrimmed ? 0 : lead;
@@ -587,9 +616,9 @@ void PianoRollEditor::resized()
     auto strip = r.removeFromTop(stripH).reduced(8, 4);
     octaveStepper.setBounds(strip.removeFromLeft(80).withSizeKeepingCentre(80, 26));
     strip.removeFromLeft(6);
-    rootPicker.setBounds(strip.removeFromLeft(72).withSizeKeepingCentre(72, 26));
+    rootPicker.setBounds(strip.removeFromLeft(96).withSizeKeepingCentre(96, 26));
     strip.removeFromLeft(4);
-    modePicker.setBounds(strip.removeFromLeft(110).withSizeKeepingCentre(110, 26));
+    modePicker.setBounds(strip.removeFromLeft(118).withSizeKeepingCentre(118, 26));
     strip.removeFromLeft(10);
     btnLock.setBounds(strip.removeFromRight(26).withSizeKeepingCentre(24, 24));
     strip.removeFromRight(4);
@@ -597,24 +626,24 @@ void PianoRollEditor::resized()
     strip.removeFromLeft(10);
     mapSwitch.setBounds(strip.removeFromLeft(juce::jmin(mapSwitch.idealWidth(), strip.getWidth())));
 
-    // Toolbar
+    // Toolbar: Trim / Fold first so they stay reachable even with many badges.
     auto bar = r.removeFromTop(toolbarH).reduced(8, 5);
     btnRevert.setBounds(bar.removeFromLeft(26).withSizeKeepingCentre(24, 24));
     bar.removeFromLeft(6);
-    for (auto& chip : badgeChips)
-    {
-        const int w = juce::jmin(chip->idealWidth(), 130);
-        if (bar.getWidth() < w + 220) { chip->setVisible(false); continue; }
-        chip->setVisible(true);
-        chip->setBounds(bar.removeFromLeft(w).withSizeKeepingCentre(w, 22));
-        bar.removeFromLeft(4);
-    }
     btnTrim.setBounds(bar.removeFromLeft(juce::jmin(btnTrim.idealWidth(), 78))
                           .withSizeKeepingCentre(juce::jmin(btnTrim.idealWidth(), 78), 22));
     bar.removeFromLeft(4);
     btnFold.setBounds(bar.removeFromLeft(juce::jmin(btnFold.idealWidth(), 78))
                           .withSizeKeepingCentre(juce::jmin(btnFold.idealWidth(), 78), 22));
-    bar.removeFromLeft(10);
+    bar.removeFromLeft(8);
+    for (auto& chip : badgeChips)
+    {
+        const int w = juce::jmin(chip->idealWidth(), 130);
+        if (bar.getWidth() < w + 160) { chip->setVisible(false); continue; }
+        chip->setVisible(true);
+        chip->setBounds(bar.removeFromLeft(w).withSizeKeepingCentre(w, 22));
+        bar.removeFromLeft(4);
+    }
 
     // Right side, packed from the right edge
     auto right = bar;
