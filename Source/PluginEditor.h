@@ -31,7 +31,9 @@ private:
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);
     void rescanFolder(bool keepSelection);
     void chooseFolder();
-    void selectIndex(int index);
+    void rebuildEntries();                  // display list (star filter applied)
+    int displayForClip(int clipIdx) const;
+    void selectIndex(int index);            // index into `clips`
     void refreshEntryMeta(int index);
     MidiClip buildRenderedClip() const;   // resolved + groove + velocities
     void pushPreviewToProcessor();
@@ -77,8 +79,10 @@ private:
     MiniHeader miniHeader { *this };
 
     juce::File rootDir;
-    std::vector<StepClip> clips;             // parallel to fileList entries
-    int selectedIdx = -1;
+    std::vector<StepClip> clips;             // every clip in the folder
+    std::vector<int> shown;                  // display order → index into clips
+    bool starFilterOn = false;
+    int selectedIdx = -1;                    // index into clips
     int lastWindowH = 560;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiBrowserEditor)

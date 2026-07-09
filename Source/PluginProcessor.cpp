@@ -59,19 +59,16 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         // Release held notes once on the playing → stopped transition; stay
         // silent afterwards so downstream instruments aren't spammed.
         if (wasSounding_)
-            for (int ch = 1; ch <= 16; ++ch)
-            {
-                midi.addEvent(juce::MidiMessage::allNotesOff(ch), 0);
-                midi.addEvent(juce::MidiMessage::controllerEvent(ch, 123, 0), 0);
-            }
+            flushActiveNotes(midi, 0);
         wasSounding_ = false;
         lastBeatPos_ = -1.0;
         return;
     }
     wasSounding_ = true;
 
-    double bpm = synced ? hostBpm.load() : freeBpm.load();
-    double beatPos = synced ? hostBeatPos.load() : freerunBeat.load();
+    const double mult = juce::jlimit(0.25, 4.0, bpmMultiplier.load());
+    double bpm = synced ? hostBpm.load() * mult : freeBpm.load();
+    double beatPos = synced ? hostBeatPos.load() * mult : freerunBeat.load();
     if (bpm <= 0.0) bpm = 120.0;
 
     const double secPerBeat = 60.0 / bpm;
@@ -83,13 +80,7 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     juce::MidiBuffer generated;
 
     if (lastBeatPos_ >= 0.0 && std::abs(beatPos - lastBeatPos_) > beatsPerSample * 2.0)
-    {
-        for (int ch = 1; ch <= 16; ++ch)
-        {
-            generated.addEvent(juce::MidiMessage::allNotesOff(ch), 0);
-            generated.addEvent(juce::MidiMessage::controllerEvent(ch, 123, 0), 0);
-        }
-    }
+        flushActiveNotes(generated, 0);
 
     bool previewMuted = true, previewHasClip = false, flushHeldNotes = false;
     MidiClip previewClip;
@@ -103,11 +94,7 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
     if (flushHeldNotes)
-        for (int ch = 1; ch <= 16; ++ch)
-        {
-            generated.addEvent(juce::MidiMessage::allNotesOff(ch), 0);
-            generated.addEvent(juce::MidiMessage::controllerEvent(ch, 123, 0), 0);
-        }
+        flushActiveNotes(generated, 0);
 
     if (!previewMuted && previewHasClip && previewClip.lengthBeats > 0.0)
     {
@@ -124,6 +111,14 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             if (pStart < 0.0) pStart += clipLen;
             pEnd = pStart + blockBeats;
             freerunBeat.store(std::fmod(pStart + blockBeats, clipLen));
+        }
+        else if (mult != 1.0)
+        {
+            // Speed-shifted sync: wrap the scaled position over the clip.
+            const double clipLen = juce::jmax(0.25, previewClip.lengthBeats);
+            pStart = std::fmod(beatPos, clipLen);
+            if (pStart < 0.0) pStart += clipLen;
+            pEnd = pStart + blockBeats;
         }
         else if (hostLoopActive.load())
         {
@@ -221,6 +216,7 @@ void MidiBrowserProcessor::generatePreviewMidi(const MidiClip& clip, double star
                 const int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);
                 output.addEvent(juce::MidiMessage::noteOn(note.channel, pitch, (juce::uint8) note.velocity),
                                 sampleOffset);
+                activeNotes_[juce::jlimit(1, 16, note.channel) - 1][pitch] = true;
             }
             if (globalEnd >= startBeat && globalEnd < endBeat)
             {
@@ -229,8 +225,25 @@ void MidiBrowserProcessor::generatePreviewMidi(const MidiClip& clip, double star
                     + juce::jlimit(0, numSamples - 1, (int) (fraction * (double) numSamples));
                 const int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);
                 output.addEvent(juce::MidiMessage::noteOff(note.channel, pitch), sampleOffset);
+                activeNotes_[juce::jlimit(1, 16, note.channel) - 1][pitch] = false;
             }
         }
+    }
+}
+
+void MidiBrowserProcessor::flushActiveNotes(juce::MidiBuffer& output, int samplePosition)
+{
+    // Explicit note-offs for every held note (some instruments ignore CC123),
+    // then all-notes-off as belt and braces.
+    for (int ch = 0; ch < 16; ++ch)
+    {
+        for (int n = 0; n < 128; ++n)
+            if (activeNotes_[ch][n])
+            {
+                output.addEvent(juce::MidiMessage::noteOff(ch + 1, n), samplePosition);
+                activeNotes_[ch][n] = false;
+            }
+        output.addEvent(juce::MidiMessage::controllerEvent(ch + 1, 123, 0), samplePosition);
     }
 }
 
@@ -264,6 +277,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("trimEmptyMeasuresPreview", trimEmptyMeasuresPreview ? 1 : 0);
     xml.setAttribute("syncToHost", syncToHost.load() ? 1 : 0);
     xml.setAttribute("freeBpm", freeBpm.load());
+    xml.setAttribute("bpmMultiplier", bpmMultiplier.load());
     xml.setAttribute("editorOpen", editorOpen ? 1 : 0);
     xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
     xml.setAttribute("miniOpen", miniOpen ? 1 : 0);
@@ -279,6 +293,14 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         {
             auto* child = xml.createNewChildElement("SavedFolder");
             child->setAttribute("path", folder);
+        }
+    }
+    for (const auto& star : starredFiles)
+    {
+        if (star.isNotEmpty())
+        {
+            auto* child = xml.createNewChildElement("StarredFile");
+            child->setAttribute("path", star);
         }
     }
 
@@ -302,6 +324,17 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
             m->setAttribute("id", id);
             m->setAttribute("dPitch", mv.dPitch);
             m->setAttribute("dStep", mv.dStep);
+        }
+        for (const auto& [id, vel] : edit.velocities)
+        {
+            auto* v = e->createNewChildElement("Vel");
+            v->setAttribute("id", id);
+            v->setAttribute("v", vel);
+        }
+        for (int id : edit.deleted)
+        {
+            auto* d = e->createNewChildElement("Del");
+            d->setAttribute("id", id);
         }
     }
     for (const auto& [path, k] : clipGrooves)
@@ -350,6 +383,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             trimEmptyMeasuresPreview = xml->getIntAttribute("trimEmptyMeasuresPreview", 0) != 0;
             syncToHost.store(xml->getIntAttribute("syncToHost", 1) != 0);
             freeBpm.store(juce::jlimit(20.0, 300.0, xml->getDoubleAttribute("freeBpm", 124.0)));
+            bpmMultiplier.store(juce::jlimit(0.25, 4.0, xml->getDoubleAttribute("bpmMultiplier", 1.0)));
             editorOpen = xml->getIntAttribute("editorOpen", 1) != 0;
             sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
             miniOpen = xml->getIntAttribute("miniOpen", 1) != 0;
@@ -370,6 +404,12 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                         && !savedBrowserDirs.contains(path))
                         savedBrowserDirs.add(path);
                 }
+                else if (child->hasTagName("StarredFile"))
+                {
+                    const auto path = child->getStringAttribute("path");
+                    if (path.isNotEmpty() && !starredFiles.contains(path))
+                        starredFiles.add(path);
+                }
                 else if (child->hasTagName("ClipEdit"))
                 {
                     const auto path = child->getStringAttribute("path");
@@ -384,9 +424,16 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     e.trimLead = juce::jmax(0, child->getIntAttribute("trimLead", 0));
                     e.trimTail = juce::jmax(0, child->getIntAttribute("trimTail", 0));
                     for (auto* m : child->getChildIterator())
+                    {
                         if (m->hasTagName("Move"))
                             e.moves[m->getIntAttribute("id")] = {
                                 m->getIntAttribute("dPitch"), m->getIntAttribute("dStep") };
+                        else if (m->hasTagName("Vel"))
+                            e.velocities[m->getIntAttribute("id")] =
+                                juce::jlimit(1, 127, m->getIntAttribute("v", 100));
+                        else if (m->hasTagName("Del"))
+                            e.deleted.insert(m->getIntAttribute("id"));
+                    }
                     clipEdits[path] = std::move(e);
                 }
                 else if (child->hasTagName("ClipGroove"))

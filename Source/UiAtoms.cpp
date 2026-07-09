@@ -262,7 +262,7 @@ ChipBtn::ChipBtn(const juce::String& text, const juce::String& iconName)
 
 int ChipBtn::idealWidth() const
 {
-    const auto f = mono ? monoFont(11.0f, true) : uiFont(11.5f, true);
+    const auto f = mono ? monoFont(11.5f, true) : uiFont(12.0f, true);
     int w = (int) std::ceil(juce::GlyphArrangement::getStringWidth(f, label)) + 26;
     if (icon.isNotEmpty()) w += 16;
     if (trailingIcon.isNotEmpty()) w += 15;
@@ -304,7 +304,7 @@ void ChipBtn::paintButton(juce::Graphics& g, bool over, bool down)
         drawIcon(g, trailingIcon, ta, col.withAlpha(over ? 1.0f : 0.7f), 1.3f);
     }
     g.setColour(col);
-    g.setFont(mono ? monoFont(11.0f, true) : uiFont(11.5f, true));
+    g.setFont(mono ? monoFont(11.5f, true) : uiFont(12.0f, true));
     g.drawFittedText(label, area, juce::Justification::centred, 1, 1.0f);
 }
 
@@ -360,10 +360,10 @@ MiniSwitch::MiniSwitch(const juce::String& c) : juce::Button(c), caption(c)
 
 int MiniSwitch::idealWidth() const
 {
-    const float capW = juce::GlyphArrangement::getStringWidth(uiFont(11.5f, true), caption);
+    const float capW = juce::GlyphArrangement::getStringWidth(uiFont(12.5f, true), caption);
     const float valW = juce::jmax(
-        juce::GlyphArrangement::getStringWidth(monoFont(10.5f, false), onText),
-        juce::GlyphArrangement::getStringWidth(monoFont(10.5f, false), offText));
+        juce::GlyphArrangement::getStringWidth(monoFont(11.5f, false), onText),
+        juce::GlyphArrangement::getStringWidth(monoFont(11.5f, false), offText));
     return (int) std::ceil(capW + valW) + 26 + 18;   // track + gaps
 }
 
@@ -375,7 +375,7 @@ void MiniSwitch::paintButton(juce::Graphics& g, bool over, bool down)
 
     // Caption · track · value, all on one row.
     g.setColour(on ? colours::text() : colours::text2());
-    g.setFont(uiFont(11.5f, true));
+    g.setFont(uiFont(12.5f, true));
     const int capW = (int) std::ceil(
         juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), caption));
     g.drawFittedText(caption, row.removeFromLeft(capW), juce::Justification::centredLeft, 1, 1.0f);
@@ -390,7 +390,7 @@ void MiniSwitch::paintButton(juce::Graphics& g, bool over, bool down)
 
     row.removeFromLeft(6);
     g.setColour(on ? colours::accentBright() : colours::text3());
-    g.setFont(monoFont(10.5f, false));
+    g.setFont(monoFont(11.5f, false));
     g.drawFittedText(on ? onText : offText, row, juce::Justification::centredLeft, 1, 1.0f);
 }
 
@@ -429,7 +429,7 @@ void Stepper::paint(juce::Graphics& g)
     g.setColour(colours::elev());
     g.fillRoundedRectangle(mid.toFloat().reduced(1.0f, 2.0f), 4.0f);
     g.setColour(value != 0 ? colours::accent() : colours::text2());
-    g.setFont(monoFont(11.5f, true));
+    g.setFont(monoFont(12.5f, true));
     const juce::String text = format ? format(value)
                                      : (value > 0 ? "+" + juce::String(value) : juce::String(value));
     g.drawFittedText(text, mid, juce::Justification::centred, 1, 1.0f);

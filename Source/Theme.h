@@ -167,7 +167,7 @@ namespace colours {
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 namespace metrics {
-    constexpr int browserWidth      = 244;   // file list width, editor open
+    constexpr int browserWidth      = 216;   // file list width, editor open
     constexpr int browserMinWidth   = 160;
     constexpr int browserMaxWidth   = 420;
     constexpr float uiScale         = 1.0f;
@@ -195,7 +195,7 @@ namespace metrics {
 
     // Density-scaled values
     inline int transportH()  { return currentDensity() == Density::Comfortable ? 52 : 46; }
-    inline int listRowH()    { return currentDensity() == Density::Comfortable ? 38 : 32; }
+    inline int listRowH()    { return currentDensity() == Density::Comfortable ? 30 : 26; }
     inline int listHeaderH() { return currentDensity() == Density::Comfortable ? 34 : 30; }
     inline int padS()        { return currentDensity() == Density::Comfortable ? 10 : 8; }
     inline int miniRollH()   { return currentDensity() == Density::Comfortable ? 128 : 112; }

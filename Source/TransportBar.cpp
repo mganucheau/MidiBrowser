@@ -31,6 +31,26 @@ TransportBar::TransportBar()
     };
     addAndMakeVisible(bpmLabel);
 
+    btnHalf.mono = true;
+    btnHalf.setTooltip("Play at half the DAW tempo");
+    btnHalf.onClick = [this]
+    {
+        multiplier = juce::jmax(0.25, multiplier * 0.5);
+        refreshBpm();
+        if (onMultiplierChanged) onMultiplierChanged(multiplier);
+    };
+    addAndMakeVisible(btnHalf);
+
+    btnDouble.mono = true;
+    btnDouble.setTooltip("Play at double the DAW tempo");
+    btnDouble.onClick = [this]
+    {
+        multiplier = juce::jmin(4.0, multiplier * 2.0);
+        refreshBpm();
+        if (onMultiplierChanged) onMultiplierChanged(multiplier);
+    };
+    addAndMakeVisible(btnDouble);
+
     pathLabel.setJustificationType(juce::Justification::centredRight);
     pathLabel.setInterceptsMouseClicks(false, false);
     pathLabel.setMinimumHorizontalScale(1.0f);
@@ -67,16 +87,32 @@ void TransportBar::setSynced(bool s, juce::NotificationType notify)
         onSyncChanged(synced);
 }
 
-void TransportBar::setClipBpm(double b)
+void TransportBar::setHostBpm(double b)
 {
-    clipBpm = b;
+    if (std::abs(b - hostBpm) < 0.01)
+        return;
+    hostBpm = b;
     if (synced)
         refreshBpm();
+}
+
+void TransportBar::setBpmMultiplier(double m)
+{
+    multiplier = juce::jlimit(0.25, 4.0, m);
+    refreshBpm();
 }
 
 void TransportBar::setFreeBpm(double b)
 {
     freeBpm = juce::jlimit(20.0, 300.0, b);
+    if (!synced)
+        refreshBpm();
+}
+
+void TransportBar::setClipBpm(double b)
+{
+    if (b > 1.0)
+        freeBpm = juce::jlimit(20.0, 300.0, b);
     if (!synced)
         refreshBpm();
 }
@@ -97,16 +133,26 @@ void TransportBar::setEditorOpen(bool open)
 
 void TransportBar::refreshBpm()
 {
-    const double shown = synced ? clipBpm : freeBpm;
+    // Synced: live DAW tempo × the ÷2/×2 multiplier. Free-run: editable.
+    const double shown = synced ? hostBpm * multiplier : freeBpm;
     bpmLabel.setText(juce::String(shown, 1), juce::dontSendNotification);
     bpmLabel.setEditable(false, !synced, false);   // double-click to edit when free-run
-    bpmLabel.setFont(monoFont(12.0f, true));
-    bpmLabel.setColour(juce::Label::textColourId, synced ? colours::text2() : colours::accent());
+    bpmLabel.setFont(monoFont(13.0f, true));
+    bpmLabel.setColour(juce::Label::textColourId,
+                       synced ? (multiplier != 1.0 ? colours::accent() : colours::text())
+                              : colours::accent());
     bpmLabel.setColour(juce::Label::backgroundColourId,
                        synced ? juce::Colours::transparentBlack : colours::elev());
     bpmLabel.setColour(juce::TextEditor::textColourId, colours::accent());
     bpmLabel.setColour(juce::TextEditor::highlightedTextColourId, colours::text());
-    bpmLabel.setTooltip(synced ? "Clip tempo (synced to DAW)" : "Playback tempo, 20-300");
+    bpmLabel.setTooltip(synced ? "DAW tempo x multiplier" : "Playback tempo, 20-300");
+
+    btnHalf.active = multiplier < 1.0;
+    btnDouble.active = multiplier > 1.0;
+    btnHalf.setEnabled(synced);
+    btnDouble.setEnabled(synced);
+    btnHalf.repaint();
+    btnDouble.repaint();
     bpmLabel.repaint();
 }
 
@@ -129,7 +175,16 @@ void TransportBar::resized()
     syncToggle.setBounds(mid(r.removeFromLeft(juce::jmin(syncToggle.idealWidth(),
                                                           narrow ? 96 : 140)), 24));
     r.removeFromLeft(6);
-    bpmLabel.setBounds(mid(r.removeFromLeft(52), 22));
+    bpmLabel.setBounds(mid(r.removeFromLeft(56), 22));
+    r.removeFromLeft(2);
+    btnHalf.setVisible(!narrow);
+    btnDouble.setVisible(!narrow);
+    if (!narrow)
+    {
+        btnHalf.setBounds(mid(r.removeFromLeft(34), 22));
+        r.removeFromLeft(2);
+        btnDouble.setBounds(mid(r.removeFromLeft(34), 22));
+    }
 
     // Right: Editor button, always fully inside with normal padding; the
     // Drag-to-DAW chip sits to its left when the window is expanded.

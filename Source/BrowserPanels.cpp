@@ -184,7 +184,18 @@ FileListPanel::FileListPanel()
 
     btnOpen.onClick = [this] { if (onOpenFolder) onOpenFolder(); };
     addAndMakeVisible(btnOpen);
+
+    btnStarFilter.onClick = [this] { if (onToggleStarFilter) onToggleStarFilter(); };
+    addChildComponent(btnStarFilter);
     setWantsKeyboardFocus(true);
+}
+
+void FileListPanel::setStarFilter(bool filterOn, bool anyStarred)
+{
+    btnStarFilter.setVisible(anyStarred || filterOn);
+    btnStarFilter.active = filterOn;
+    btnStarFilter.repaint();
+    resized();
 }
 
 void FileListPanel::setFolderName(const juce::String& name)
@@ -255,6 +266,11 @@ bool FileListPanel::keyPressed(const juce::KeyPress& key)
 
     if (key == juce::KeyPress::upKey)   { selectAdjacent(-1); return true; }
     if (key == juce::KeyPress::downKey) { selectAdjacent(1); return true; }
+
+    // Page up/down jump by one visible page.
+    const int pageRows = juce::jmax(1, viewport.getMaximumVisibleHeight() / metrics::listRowH());
+    if (key == juce::KeyPress::pageUpKey)   { selectAdjacent(-pageRows); return true; }
+    if (key == juce::KeyPress::pageDownKey) { selectAdjacent(pageRows); return true; }
     return false;
 }
 
@@ -286,6 +302,8 @@ void FileListPanel::resized()
     auto r = getLocalBounds();
     auto header = r.removeFromTop(metrics::listHeaderH());
     btnOpen.setBounds(header.removeFromRight(28).withSizeKeepingCentre(22, 22));
+    if (btnStarFilter.isVisible())
+        btnStarFilter.setBounds(header.removeFromRight(24).withSizeKeepingCentre(20, 20));
     viewport.setBounds(r);
     updateContentSize();
 }
@@ -309,7 +327,7 @@ void FileListPanel::paint(juce::Graphics& g)
 }
 
 void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> r,
-                             bool hovered, bool hoverPlay)
+                             bool hovered, bool hoverPlay, bool hoverStar)
 {
     const auto& e = entries[(size_t) index];
     const bool isSelected = index == selected;
@@ -328,18 +346,22 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
         g.fillRect(r);
     }
 
-    auto row = r.reduced(10, 0);
+    auto row = r.reduced(8, 0);
 
     // Kind icon
-    auto iconArea = row.removeFromLeft(18).toFloat().withSizeKeepingCentre(15.0f, 15.0f);
+    auto iconArea = row.removeFromLeft(17).toFloat().withSizeKeepingCentre(15.0f, 15.0f);
     drawIcon(g, kindIcon(e.kind), iconArea,
              isSelected ? colours::accent() : colours::text3(), 1.4f);
-    row.removeFromLeft(7);
+    row.removeFromLeft(6);
 
-    // Right cluster: play button (hover) or equalizer (playing), then meta.
+    // Fixed right zones: [ … name | star | meta | play/eq ]
+    auto playZone = row.removeFromRight(kPlayZoneW);
+    auto metaZone = row.removeFromRight(kMetaZoneW);
+    auto starZone = row.removeFromRight(kStarZoneW);
+
     if (showEq)
     {
-        auto eq = row.removeFromRight(16).toFloat().withSizeKeepingCentre(13.0f, 13.0f);
+        auto eq = playZone.toFloat().withSizeKeepingCentre(13.0f, 13.0f);
         const double t = juce::Time::getMillisecondCounterHiRes() / 1000.0;
         g.setColour(colours::accent());
         for (int i = 0; i < 3; ++i)
@@ -349,11 +371,10 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
             const float x = eq.getX() + (float) i * 5.0f;
             g.fillRoundedRectangle(x, eq.getBottom() - bh, 3.2f, bh, 1.2f);
         }
-        row.removeFromRight(4);
     }
     else if (hovered)
     {
-        auto pb = row.removeFromRight(20).toFloat().withSizeKeepingCentre(16.0f, 16.0f);
+        auto pb = playZone.toFloat().withSizeKeepingCentre(16.0f, 16.0f);
         if (hoverPlay)
         {
             g.setColour(colours::accent());
@@ -364,21 +385,27 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
         {
             drawIcon(g, icons::play, pb.reduced(2.0f), colours::text2(), 1.4f);
         }
-        row.removeFromRight(4);
     }
 
-    // Meta: root · bpm (+ edited dot)
+    // Meta: root · bpm
     juce::String meta;
     if (e.rootName.isNotEmpty()) meta << e.rootName;
     if (e.bpm > 0.0) meta << (meta.isEmpty() ? "" : " ") << juce::String((int) std::lround(e.bpm));
     if (meta.isNotEmpty())
     {
-        g.setFont(monoFont(10.0f, false));
-        const int metaW = juce::jmin(56,
-            (int) std::ceil(juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), meta)) + 4);
+        g.setFont(monoFont(11.0f, false));
         g.setColour(colours::text3());
-        g.drawText(meta, row.removeFromRight(metaW), juce::Justification::centredRight);
-        row.removeFromRight(4);
+        g.drawText(meta, metaZone, juce::Justification::centredRight);
+    }
+
+    // Star (favourite): filled when starred; hollow on hover.
+    if (e.starred || hovered)
+    {
+        auto st = starZone.toFloat().withSizeKeepingCentre(15.0f, 15.0f);
+        const auto col = e.starred ? colours::accent()
+                       : hoverStar ? colours::text()
+                                   : colours::text3();
+        drawIcon(g, icons::star, st, col, e.starred ? 1.9f : 1.3f);
     }
 
     if (e.edited)
@@ -386,11 +413,12 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
         auto dot = row.removeFromRight(8).toFloat().withSizeKeepingCentre(5.0f, 5.0f);
         g.setColour(colours::accent());
         g.fillEllipse(dot);
-        row.removeFromRight(2);
+        row.removeFromRight(1);
     }
 
+    // Same font for every row — selection changes colour only.
     g.setColour(isSelected ? colours::text() : colours::text2());
-    g.setFont(uiFont(12.0f, isSelected));
+    g.setFont(uiFont(12.5f, false));
     g.drawText(e.name, row, juce::Justification::centredLeft, true);
 }
 
@@ -403,7 +431,8 @@ void FileListPanel::ListContent::paint(juce::Graphics& g)
     const int first = juce::jmax(0, clip.getY() / rowH);
     const int last = juce::jmin((int) owner.entries.size() - 1, clip.getBottom() / rowH);
     for (int i = first; i <= last; ++i)
-        owner.paintRow(g, i, { 0, i * rowH, getWidth(), rowH }, i == hoverRow, i == hoverRow && hoverPlay);
+        owner.paintRow(g, i, { 0, i * rowH, getWidth(), rowH }, i == hoverRow,
+                       i == hoverRow && hoverPlay, i == hoverRow && hoverStar);
 }
 
 void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
@@ -412,11 +441,15 @@ void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
     const int row = e.y / rowH;
     const bool valid = juce::isPositiveAndBelow(row, (int) owner.entries.size());
     const int newHover = valid ? row : -1;
-    const bool newHoverPlay = valid && e.x > getWidth() - 34;
-    if (newHover != hoverRow || newHoverPlay != hoverPlay)
+    const int fromRight = getWidth() - 8 - e.x;   // row is reduced(8) each side
+    const bool newHoverPlay = valid && fromRight >= 0 && fromRight < kPlayZoneW;
+    const bool newHoverStar = valid && fromRight >= kPlayZoneW + kMetaZoneW
+                              && fromRight < kPlayZoneW + kMetaZoneW + kStarZoneW;
+    if (newHover != hoverRow || newHoverPlay != hoverPlay || newHoverStar != hoverStar)
     {
         hoverRow = newHover;
         hoverPlay = newHoverPlay;
+        hoverStar = newHoverStar;
         repaint();
     }
 }
@@ -425,6 +458,7 @@ void FileListPanel::ListContent::mouseExit(const juce::MouseEvent&)
 {
     hoverRow = -1;
     hoverPlay = false;
+    hoverStar = false;
     repaint();
 }
 
@@ -434,6 +468,11 @@ void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
     if (!juce::isPositiveAndBelow(row, (int) owner.entries.size()))
         return;
     owner.grabKeyboardFocus();
+    if (hoverStar && owner.onToggleStar)
+    {
+        owner.onToggleStar(row);
+        return;
+    }
     if (hoverPlay && owner.onPlayRow)
     {
         owner.setSelectedIndex(row);

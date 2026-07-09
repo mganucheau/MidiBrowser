@@ -20,8 +20,9 @@ const std::array<std::array<int, 7>, kNumModes> kModeIntervals {{
     {{ 0, 1, 3, 5, 6, 8, 10 }},  // Locrian
 }};
 
+// Friendly display names: Ionian/Aeolian read as Major/Minor.
 const std::array<const char*, kNumModes> kModeNames {
-    "Ionian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Aeolian", "Locrian"
+    "Major", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Minor", "Locrian"
 };
 
 int wrapPc(int v) { return ((v % 12) + 12) % 12; }
@@ -86,6 +87,8 @@ bool editIsClean(const ClipEdit& e)
 {
     if (e.octave != 0 || e.fitScale || e.mapToRoot || e.trimLead != 0 || e.trimTail != 0)
         return false;
+    if (!e.velocities.empty() || !e.deleted.empty())
+        return false;
     for (const auto& [id, mv] : e.moves)
         if (mv.dPitch != 0 || mv.dStep != 0)
             return false;
@@ -99,6 +102,9 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
 
     for (const auto& n : clip.notes)
     {
+        if (e.deleted.count(n.id) > 0)
+            continue;
+
         NoteMove mv;
         if (auto it = e.moves.find(n.id); it != e.moves.end())
             mv = it->second;
@@ -122,6 +128,8 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
         r.pitch = pitch;
         r.start = n.start + mv.dStep;
         r.moved = (mv.dPitch != 0 || mv.dStep != 0);
+        if (auto vit = e.velocities.find(n.id); vit != e.velocities.end())
+            r.fileVelocity = std::clamp(vit->second, 1, 127);
         out.notes.push_back(r);
     }
 
@@ -179,6 +187,12 @@ std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
     if (trimBars > 0)
         out.push_back({ "trim", juce::String::fromUTF8("Trim −") + juce::String(trimBars)
                                     + (trimBars > 1 ? " bars" : " bar") });
+
+    if (!e.velocities.empty())
+        out.push_back({ "vel", juce::String((int) e.velocities.size()) + " vel" });
+
+    if (!e.deleted.empty())
+        out.push_back({ "del", juce::String((int) e.deleted.size()) + " deleted" });
 
     juce::ignoreUnused(clip);
     return out;

@@ -19,8 +19,10 @@ public:
 
     void setPlaying(bool);
     void setSynced(bool, juce::NotificationType notify = juce::dontSendNotification);
-    void setClipBpm(double);
+    void setHostBpm(double);      // live DAW tempo (shown ×multiplier when synced)
+    void setBpmMultiplier(double);
     void setFreeBpm(double);
+    void setClipBpm(double);      // embedded tempo from the selected MIDI file
     void setFolderPath(const juce::String&);
     void setEditorOpen(bool);
 
@@ -29,6 +31,7 @@ public:
     std::function<void()> onToggleEditor;
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
+    std::function<void(double)> onMultiplierChanged;   // ÷2 / ×2 while synced
     std::function<void()> onDragToDaw;   // begin external drag of the edited clip
 
 private:
@@ -62,6 +65,8 @@ private:
     IconBtn btnStop { icons::stop, "Stop" };
     PillToggle syncToggle { "Synced to DAW", "Free-run" };
     juce::Label bpmLabel;
+    ChipBtn btnHalf { "/2" };
+    ChipBtn btnDouble { "x2" };
     juce::Label pathLabel;
     DragChip btnDragToDaw { "Drag to DAW" };
     ChipBtn btnEditor { "Editor", icons::arrowsIn };
@@ -69,8 +74,9 @@ private:
     bool playing = false;
     bool synced = true;
     bool editorOpen = true;
-    double clipBpm = 124.0;
+    double hostBpm = 124.0;
     double freeBpm = 124.0;
+    double multiplier = 1.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TransportBar)
 };

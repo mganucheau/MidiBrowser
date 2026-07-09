@@ -60,6 +60,7 @@ struct FileListEntry
     juce::String rootName;  // "C".."B" or empty
     double bpm = 0.0;
     bool edited = false;    // !editIsClean for this file
+    bool starred = false;   // favourited
 };
 
 class FileListPanel : public juce::Component, private juce::Timer
@@ -84,7 +85,12 @@ public:
 
     std::function<void(int)> onSelect;         // row chosen (click or keys)
     std::function<void(int)> onPlayRow;        // hover play button pressed
+    std::function<void(int)> onToggleStar;     // star zone clicked
     std::function<void()> onOpenFolder;        // header folder button
+    std::function<void()> onToggleStarFilter;  // header star-filter button
+
+    /** Header star-filter button: shown when the folder has starred files. */
+    void setStarFilter(bool filterOn, bool anyStarred);
 
 private:
     class ListContent : public juce::Component
@@ -98,12 +104,18 @@ private:
         FileListPanel& owner;
         int hoverRow = -1;
         bool hoverPlay = false;
+        bool hoverStar = false;
     };
+
+    // Fixed right-side row zones (stable layout, no hover shifting)
+    static constexpr int kPlayZoneW = 22;
+    static constexpr int kMetaZoneW = 48;
+    static constexpr int kStarZoneW = 16;
 
     void timerCallback() override;
     void ensureRowVisible(int index);
     void paintRow(juce::Graphics&, int index, juce::Rectangle<int> r,
-                  bool hovered, bool hoverPlay);
+                  bool hovered, bool hoverPlay, bool hoverStar);
     void updateContentSize();
 
     juce::String folderName { "Select a folder" };
@@ -114,6 +126,7 @@ private:
     juce::Viewport viewport;
     ListContent content { *this };
     IconBtn btnOpen { icons::folderOpen, "Open a folder of MIDI files" };
+    IconBtn btnStarFilter { icons::star, "Show only starred files" };
 
     friend class ListContent;
 

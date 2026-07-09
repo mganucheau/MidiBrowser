@@ -68,6 +68,7 @@ public:
     std::atomic<bool> previewArmed { true };
     std::atomic<double> freeBpm { 124.0 };
     std::atomic<double> freerunBeat { 0.0 };
+    std::atomic<double> bpmMultiplier { 1.0 };   // synced ÷2 / ×2 playback speed
 
     /** True when the preview is audibly playing right now. */
     bool isPreviewSounding() const
@@ -95,9 +96,16 @@ public:
     juce::String lastBrowserDir;
     bool trimEmptyMeasuresPreview = false;
     juce::StringArray savedBrowserDirs;
+    juce::StringArray starredFiles;   // favourited file paths (persisted)
 
     void addSavedBrowserDir(const juce::String& path);
     void removeSavedBrowserDir(const juce::String& path);
+    bool isStarred(const juce::String& path) const { return starredFiles.contains(path); }
+    void toggleStarred(const juce::String& path)
+    {
+        if (!starredFiles.contains(path)) starredFiles.add(path);
+        else starredFiles.removeString(path);
+    }
 
     void setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed);
 
@@ -106,9 +114,13 @@ private:
                              juce::MidiBuffer& output, int numSamples,
                              int sampleOffsetBase = 0);
 
+    /** Explicit note-offs for everything currently sounding (audio thread). */
+    void flushActiveNotes(juce::MidiBuffer& output, int samplePosition);
+
     double sampleRate_ = 44100.0;
     double lastBeatPos_ = -1.0;
     bool wasSounding_ = false;
+    bool activeNotes_[16][128] = {};   // audio-thread ledger of held note-ons
 
     juce::CriticalSection previewLock_;
     MidiClip previewClip_;

@@ -2,6 +2,7 @@
 #include <juce_core/juce_core.h>
 #include <array>
 #include <map>
+#include <set>
 #include <vector>
 
 #include "MidiFileData.h"
@@ -71,6 +72,8 @@ struct ClipEdit
     std::map<int, NoteMove> moves;  // per-note manual moves keyed by note id
     int  trimLead  = 0;             // leading bars trimmed
     int  trimTail  = 0;             // trailing bars trimmed
+    std::map<int, int> velocities;  // per-note velocity overrides (1-127)
+    std::set<int> deleted;          // per-note non-destructive deletions
 };
 
 bool editIsClean(const ClipEdit& e);

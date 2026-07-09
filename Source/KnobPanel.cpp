@@ -111,12 +111,12 @@ void GrooveKnob::paint(juce::Graphics& g)
     // Label + readout
     auto below = getLocalBounds().withTrimmedTop((int) size + 6);
     g.setColour(colours::text3());
-    g.setFont(uiFont(9.5f, true));
+    g.setFont(uiFont(10.5f, true));
     g.drawText(juce::String(def.label).toUpperCase(), below.removeFromTop(12),
                juce::Justification::centred);
     const bool activeVal = value != def.def;
     g.setColour(activeVal ? colours::accent() : colours::text2());
-    g.setFont(monoFont(11.5f, true));
+    g.setFont(monoFont(12.5f, true));
     g.drawText(juce::String(value) + "%", below.removeFromTop(14), juce::Justification::centred);
 }
 

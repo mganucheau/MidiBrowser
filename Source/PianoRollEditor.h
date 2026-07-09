@@ -70,6 +70,8 @@ public:
     void clearClip();
     void setPlayheadStep(double step, bool playing);
     void setLockActive(bool locked);
+    bool hasSelection() const { return !selection.empty(); }
+    void deleteSelectedNotes();   // non-destructive (edit.deleted)
 
     std::function<void(const ClipEdit&)> onEditChanged;
     std::function<void(const GrooveParams&)> onGrooveChanged;
@@ -114,9 +116,16 @@ private:
         explicit VelocityLane(PianoRollEditor& o) : owner(o) {}
         void paint(juce::Graphics&) override;
         void mouseDown(const juce::MouseEvent&) override;
+        void mouseDrag(const juce::MouseEvent&) override;
+        void mouseUp(const juce::MouseEvent&) override;
         PianoRollEditor& owner;
         static constexpr int headerH = 22;
         static constexpr int laneH = 64;
+
+    private:
+        const RollNote* noteAtX(float x) const;
+        void applyDragVelocity(const juce::MouseEvent&);
+        int dragNoteId = -1;
     };
 
     struct NotifyingViewport : juce::Viewport
@@ -141,6 +150,7 @@ private:
 
     // ── row geometry ──
     float pxPerStep() const { return pxPerStepBase * zoomX; }
+    float effRowH() const { return folded ? rowH * 2.0f : rowH; }   // folded rows are 2x tall
     int totalSteps() const { return resolved.bars * kStepsPerBar; }
     int numRows() const { return folded ? juce::jmax(1, (int) foldPitches.size()) : 128; }
     int rowForPitch(int pitch) const;
