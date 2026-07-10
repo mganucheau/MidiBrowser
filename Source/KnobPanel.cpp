@@ -30,7 +30,6 @@ void GrooveKnob::mouseDown(const juce::MouseEvent& e)
 
 void GrooveKnob::mouseDrag(const juce::MouseEvent& e)
 {
-    // Prototype feel: full range over ~170px of vertical travel.
     const float dy = dragStartY - e.position.y;
     const float range = (float) (def.max - def.min);
     setValue(dragStartValue + (int) std::round((dy / 170.0f) * range));
@@ -64,24 +63,27 @@ void GrooveKnob::paint(juce::Graphics& g)
     const float r = size * 0.5f - 5.0f;
 
     constexpr float startDeg = -135.0f, endDeg = 135.0f;
-    const float norm = juce::jlimit(0.0f, 1.0f,
-        (float) (value - def.min) / (float) juce::jmax(1, def.max - def.min));
-    const float zeroNorm = def.min < 0
-        ? (float) (0 - def.min) / (float) (def.max - def.min) : 0.0f;
+    const float span = (float) juce::jmax(1, def.max - def.min);
+    const float norm = juce::jlimit(0.0f, 1.0f, (float) (value - def.min) / span);
+
+    float originNorm = 0.0f;
+    if (def.bipolar())
+        originNorm = (float) (0 - def.min) / span;
+    else if (def.fillFromDefault())
+        originNorm = (float) (def.def - def.min) / span;
+
     auto rad = [](float deg) { return juce::degreesToRadians(deg); };
     const float angle = rad(startDeg + norm * (endDeg - startDeg));
-    const float zeroAngle = rad(startDeg + zeroNorm * (endDeg - startDeg));
+    const float originAngle = rad(startDeg + originNorm * (endDeg - startDeg));
 
     juce::PathStrokeType st(3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
 
-    // Track
     juce::Path track;
     track.addCentredArc(cx, cy, r, r, 0.0f, rad(startDeg), rad(endDeg), true);
     g.setColour(colours::lineStrong());
     g.strokePath(track, st);
 
-    // Value arc: unipolar fills from start, bipolar from center.
-    const float lo = juce::jmin(zeroAngle, angle), hi = juce::jmax(zeroAngle, angle);
+    const float lo = juce::jmin(originAngle, angle), hi = juce::jmax(originAngle, angle);
     if (hi - lo > 0.012f)
     {
         juce::Path arc;
@@ -90,7 +92,6 @@ void GrooveKnob::paint(juce::Graphics& g)
         g.strokePath(arc, st);
     }
 
-    // Body + pointer
     g.setColour(colours::elev());
     g.fillEllipse(cx - (r - 3.0f), cy - (r - 3.0f), (r - 3.0f) * 2.0f, (r - 3.0f) * 2.0f);
     g.setColour(colours::line());
@@ -108,7 +109,6 @@ void GrooveKnob::paint(juce::Graphics& g)
         g.drawEllipse(cx - r - 3.0f, cy - r - 3.0f, (r + 3.0f) * 2.0f, (r + 3.0f) * 2.0f, 1.0f);
     }
 
-    // Label + readout
     auto below = getLocalBounds().withTrimmedTop((int) size + 6);
     g.setColour(colours::text3());
     g.setFont(uiFont(12.0f, true));
@@ -117,7 +117,7 @@ void GrooveKnob::paint(juce::Graphics& g)
     const bool activeVal = value != def.def;
     g.setColour(activeVal ? colours::accent() : colours::text2());
     g.setFont(monoFont(13.0f, true));
-    g.drawText(juce::String(value) + "%", below.removeFromTop(14), juce::Justification::centred);
+    g.drawText(grooveValueText(def, value), below.removeFromTop(14), juce::Justification::centred);
 }
 
 // ── KnobsPanel ───────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ KnobsPanel::KnobsPanel()
             params.set(i, v);
             pushParams();
         };
-        addAndMakeVisible(*knobs[(size_t) i]);
+        addChildComponent(*knobs[(size_t) i]);   // hidden until expanded
     }
 
     btnReset.onClick = [this]
@@ -140,7 +140,36 @@ KnobsPanel::KnobsPanel()
         setParams({}, juce::dontSendNotification);
         pushParams();
     };
-    addAndMakeVisible(btnReset);
+    addChildComponent(btnReset);
+
+    btnSwing8.mono = true;
+    btnSwing16.mono = true;
+    btnSwing8.setTooltip("Swing base: delay offbeat 8ths (Ableton Base 1/8)");
+    btnSwing16.setTooltip("Swing base: delay offbeat 16ths (Ableton Base 1/16)");
+    btnSwing8.onClick = [this]
+    {
+        params.swingBase = SwingBase::Eighth;
+        syncOptionButtons();
+        pushParams();
+    };
+    btnSwing16.onClick = [this]
+    {
+        params.swingBase = SwingBase::Sixteenth;
+        syncOptionButtons();
+        pushParams();
+    };
+    addChildComponent(btnSwing8);
+    addChildComponent(btnSwing16);
+
+    syncOptionButtons();
+}
+
+void KnobsPanel::syncOptionButtons()
+{
+    btnSwing8.active = (params.swingBase == SwingBase::Eighth);
+    btnSwing16.active = (params.swingBase == SwingBase::Sixteenth);
+    btnSwing8.repaint();
+    btnSwing16.repaint();
 }
 
 void KnobsPanel::pushParams()
@@ -156,6 +185,7 @@ void KnobsPanel::setParams(const GrooveParams& p, juce::NotificationType notify)
     params = p;
     for (int i = 0; i < kNumKnobs; ++i)
         knobs[(size_t) i]->setValue(params.get(i), juce::dontSendNotification);
+    syncOptionButtons();
     btnReset.setVisible(open && params.activeCount() > 0);
     repaint();
     if (notify != juce::dontSendNotification && onParamsChanged)
@@ -168,6 +198,8 @@ void KnobsPanel::setOpen(bool shouldOpen)
     open = shouldOpen;
     for (auto& k : knobs)
         k->setVisible(open);
+    btnSwing8.setVisible(open);
+    btnSwing16.setVisible(open);
     btnReset.setVisible(open && params.activeCount() > 0);
     if (onOpenChanged)
         onOpenChanged();
@@ -177,8 +209,10 @@ int KnobsPanel::idealHeight() const
 {
     if (!open)
         return headerH;
-    const int perRow = juce::jmax(1, (getWidth() - 20) / GrooveKnob::totalW);
-    const int rows = (kNumKnobs + perRow - 1) / perRow;
+    // Swing block is wider than a single knob; remaining five wrap beside/below.
+    const int avail = juce::jmax(1, getWidth() - 20 - swingBlockWidth());
+    const int perRow = juce::jmax(1, avail / GrooveKnob::totalW);
+    const int rows = 1 + (5 + perRow - 1) / perRow;   // swing row + wrapped rest
     return headerH + rows * (GrooveKnob::totalH + 8) + 8;
 }
 
@@ -187,18 +221,42 @@ void KnobsPanel::resized()
     auto header = getLocalBounds().removeFromTop(headerH);
     btnReset.setBounds(header.removeFromRight(30).withSizeKeepingCentre(24, 24));
 
-    if (!open) return;
-    // Wrapping row, space-around per row.
-    auto area = getLocalBounds().withTrimmedTop(headerH + 2).reduced(10, 0);
-    const int perRow = juce::jmax(1, area.getWidth() / GrooveKnob::totalW);
-    for (int i = 0; i < kNumKnobs; ++i)
+    if (!open)
     {
-        const int row = i / perRow;
-        const int col = i % perRow;
-        const int inRow = juce::jmin(perRow, kNumKnobs - row * perRow);
-        const float slot = (float) area.getWidth() / (float) inRow;
-        const int x = area.getX() + (int) (slot * ((float) col + 0.5f)) - GrooveKnob::totalW / 2;
-        const int y = area.getY() + row * (GrooveKnob::totalH + 8);
+        for (auto& k : knobs) k->setVisible(false);
+        btnSwing8.setVisible(false);
+        btnSwing16.setVisible(false);
+        return;
+    }
+
+    for (auto& k : knobs) k->setVisible(true);
+    btnSwing8.setVisible(true);
+    btnSwing16.setVisible(true);
+
+    auto area = getLocalBounds().withTrimmedTop(headerH + 2).reduced(10, 0);
+    const int blockW = swingBlockWidth();
+    const int y0 = area.getY();
+
+    // Swing knob + stacked 1/8 · 1/16 to its right
+    knobs[0]->setBounds(area.getX(), y0, GrooveKnob::totalW, GrooveKnob::totalH);
+    const int chipX = area.getX() + GrooveKnob::totalW + swingBlockGap;
+    const int stackH = swingChipH * 2 + swingChipGap;
+    const int chipY = y0 + (GrooveKnob::knobSize - stackH) / 2 + 2;
+    btnSwing8.setBounds(chipX, chipY, swingChipW, swingChipH);
+    btnSwing16.setBounds(chipX, chipY + swingChipH + swingChipGap, swingChipW, swingChipH);
+
+    // Remaining knobs (1..5) wrap in the space to the right of the swing block
+    auto rest = area.withTrimmedLeft(blockW + 8);
+    const int perRow = juce::jmax(1, rest.getWidth() / GrooveKnob::totalW);
+    for (int i = 1; i < kNumKnobs; ++i)
+    {
+        const int idx = i - 1;
+        const int row = idx / perRow;
+        const int col = idx % perRow;
+        const int inRow = juce::jmin(perRow, (kNumKnobs - 1) - row * perRow);
+        const float slot = (float) rest.getWidth() / (float) inRow;
+        const int x = rest.getX() + (int) (slot * ((float) col + 0.5f)) - GrooveKnob::totalW / 2;
+        const int y = rest.getY() + row * (GrooveKnob::totalH + 8);
         knobs[(size_t) i]->setBounds(x, y, GrooveKnob::totalW, GrooveKnob::totalH);
     }
 }
@@ -221,9 +279,13 @@ void KnobsPanel::paint(juce::Graphics& g)
     drawIcon(g, open ? icons::caretDown : icons::caretUp, caret, colours::text3(), 1.6f);
     header.removeFromLeft(6);
 
-    auto sl = header.removeFromLeft(14).toFloat().withSizeKeepingCentre(13.0f, 13.0f);
-    drawIcon(g, icons::sliders, sl, colours::text2(), 1.4f);
-    header.removeFromLeft(7);
+    // Sliders icon only when collapsed — expanded view is title-only.
+    if (!open)
+    {
+        auto sl = header.removeFromLeft(14).toFloat().withSizeKeepingCentre(13.0f, 13.0f);
+        drawIcon(g, icons::sliders, sl, colours::text2(), 1.4f);
+        header.removeFromLeft(7);
+    }
 
     g.setColour(colours::text2());
     g.setFont(uiFont(13.0f, true));
@@ -248,7 +310,8 @@ void KnobsPanel::paint(juce::Graphics& g)
         g.setFont(monoFont(12.0f, false));
         juce::String names;
         for (int i = 0; i < kNumKnobs; ++i)
-            names << kKnobDefs[(size_t) i].label << (i < kNumKnobs - 1 ? juce::String::fromUTF8(" · ") : juce::String());
+            names << kKnobDefs[(size_t) i].label
+                  << (i < kNumKnobs - 1 ? juce::String::fromUTF8(" · ") : juce::String());
         g.drawText(names, header, juce::Justification::centredRight, true);
     }
 }

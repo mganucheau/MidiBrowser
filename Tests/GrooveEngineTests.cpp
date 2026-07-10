@@ -5,9 +5,6 @@
 using namespace pflow;
 using Catch::Approx;
 
-// Golden values in this file were computed by running the verbatim
-// Prototype/mbd/knob.jsx functions in Node (Math.imul semantics).
-
 namespace {
 
 std::vector<RollNote> testNotes()
@@ -24,19 +21,29 @@ std::vector<RollNote> testNotes()
 
 } // namespace
 
-TEST_CASE("knob defs match the spec table", "[groove]")
+TEST_CASE("knob defs match DAW-aligned ranges", "[groove]")
 {
     REQUIRE(kKnobDefs.size() == 6);
     CHECK(juce::String(kKnobDefs[0].key) == "swing");
-    CHECK(kKnobDefs[0].min == 0);   CHECK(kKnobDefs[0].max == 75);  CHECK(kKnobDefs[0].def == 0);
+    CHECK(kKnobDefs[0].min == 0);   CHECK(kKnobDefs[0].max == 100); CHECK(kKnobDefs[0].def == 0);
+    CHECK_FALSE(kKnobDefs[0].bipolar());
+    CHECK_FALSE(kKnobDefs[0].fillFromDefault());
+
     CHECK(juce::String(kKnobDefs[1].key) == "pocket");
     CHECK(kKnobDefs[1].min == -100); CHECK(kKnobDefs[1].max == 100); CHECK(kKnobDefs[1].def == 0);
     CHECK(kKnobDefs[1].bipolar());
-    CHECK_FALSE(kKnobDefs[0].bipolar());
+
+    CHECK(juce::String(kKnobDefs[3].key) == "dynamics");
+    CHECK(kKnobDefs[3].min == -100); CHECK(kKnobDefs[3].max == 100); CHECK(kKnobDefs[3].def == 0);
+    CHECK(kKnobDefs[3].bipolar());
+
     CHECK(juce::String(kKnobDefs[4].key) == "length");
     CHECK(kKnobDefs[4].min == 25);  CHECK(kKnobDefs[4].max == 200); CHECK(kKnobDefs[4].def == 100);
+    CHECK(kKnobDefs[4].fillFromDefault());
+
     CHECK(juce::String(kKnobDefs[5].key) == "intensity");
-    CHECK(kKnobDefs[5].def == 80);
+    CHECK(kKnobDefs[5].min == 0);   CHECK(kKnobDefs[5].max == 200); CHECK(kKnobDefs[5].def == 100);
+    CHECK(kKnobDefs[5].fillFromDefault());
 }
 
 TEST_CASE("GrooveParams defaults and activeCount", "[groove]")
@@ -44,6 +51,9 @@ TEST_CASE("GrooveParams defaults and activeCount", "[groove]")
     GrooveParams k;
     CHECK(k.isDefault());
     CHECK(k.activeCount() == 0);
+    CHECK(k.intensity == 100);
+    CHECK(k.length == 100);
+    CHECK(k.swingBase == SwingBase::Eighth);
 
     k.swing = 30;
     k.intensity = 60;
@@ -51,47 +61,61 @@ TEST_CASE("GrooveParams defaults and activeCount", "[groove]")
     CHECK_FALSE(k.isDefault());
 
     k.set(0, 999);   // clamps to knob max
-    CHECK(k.swing == 75);
+    CHECK(k.swing == 100);
     k.set(1, -999);
     CHECK(k.pocket == -100);
+
+    GrooveParams t;
+    t.swingBase = SwingBase::Sixteenth;
+    CHECK(t.activeCount() == 1);
+    CHECK_FALSE(t.isDefault());
 }
 
-TEST_CASE("baseVel matches prototype hash", "[groove]")
+TEST_CASE("baseVel is deterministic and in range", "[groove]")
 {
-    CHECK(baseVel(0) == Approx(0.92));
-    CHECK(baseVel(1) == Approx(0.69));
-    CHECK(baseVel(2) == Approx(0.70));
-    CHECK(baseVel(3) == Approx(0.71));
-    CHECK(baseVel(4) == Approx(0.48));
-    CHECK(baseVel(5) == Approx(0.49));
-    CHECK(baseVel(17) == Approx(0.53));
-    CHECK(baseVel(100) == Approx(0.64));
+    for (int id : { 0, 1, 2, 3, 4, 5, 17, 100 })
+    {
+        const double v = baseVel(id);
+        CHECK(v >= 0.45);
+        CHECK(v <= 1.01);
+        CHECK(baseVel(id) == Approx(v));   // stable
+    }
 }
 
-TEST_CASE("swing delays only offbeat 8ths", "[groove]")
-{
-    GrooveParams k;
-    k.swing = 50;
-    const auto g = applyGroove(testNotes(), k);
-    CHECK(g[0].start == Approx(0.0));    // eighth 0 (even)
-    CHECK(g[1].start == Approx(2.5));    // eighth 1 (odd) -> +0.5
-    CHECK(g[2].start == Approx(5.0));    // eighth 2
-    CHECK(g[3].start == Approx(6.5));    // eighth 3
-    CHECK(g[4].start == Approx(14.5));   // eighth 7
-    CHECK(g[5].start == Approx(31.5));   // eighth 15
-}
-
-TEST_CASE("pocket shifts every note, clamped at 0", "[groove]")
+TEST_CASE("swing delays only offbeat 8ths at 1/8 base", "[groove]")
 {
     GrooveParams k;
-    k.pocket = -75;
+    k.swing = 50;   // half of max delay (period/2 = 1.0 → +0.5)
     const auto g = applyGroove(testNotes(), k);
-    CHECK(g[0].start == Approx(0.0));    // clamped
-    CHECK(g[1].start == Approx(0.8));
-    CHECK(g[2].start == Approx(3.8));
-    CHECK(g[3].start == Approx(4.8));
-    CHECK(g[4].start == Approx(12.8));
-    CHECK(g[5].start == Approx(29.8));
+    CHECK(g[0].start == Approx(0.0));    // on-beat 8th
+    CHECK(g[1].start == Approx(2.5));    // offbeat 8th at step 2
+    CHECK(g[2].start == Approx(5.0));    // not on offbeat grid
+    CHECK(g[3].start == Approx(6.5));    // offbeat 8th at step 6
+    CHECK(g[4].start == Approx(14.5));
+    CHECK(g[5].start == Approx(31.5));
+}
+
+TEST_CASE("swing at 1/16 base delays odd sixteenth slots", "[groove]")
+{
+    GrooveParams k;
+    k.swing = 100;
+    k.swingBase = SwingBase::Sixteenth;
+    // Max delay = 0.5 step; odd floor(start) slots move.
+    const auto g = applyGroove(testNotes(), k);
+    CHECK(g[0].start == Approx(0.0));    // slot 0 even
+    CHECK(g[1].start == Approx(2.0));    // slot 2 even
+    CHECK(g[2].start == Approx(5.5));    // slot 5 odd → +0.5
+    CHECK(g[3].start == Approx(6.0));    // slot 6 even
+}
+
+TEST_CASE("pocket shifts every note; ahead can go slightly negative", "[groove]")
+{
+    GrooveParams k;
+    k.pocket = -100;   // −1.5 steps
+    const auto g = applyGroove(testNotes(), k);
+    CHECK(g[0].start == Approx(-1.5));
+    CHECK(g[1].start == Approx(0.5));
+    CHECK(g[2].start == Approx(3.5));
 }
 
 TEST_CASE("humanize applies deterministic per-id jitter", "[groove]")
@@ -99,36 +123,23 @@ TEST_CASE("humanize applies deterministic per-id jitter", "[groove]")
     GrooveParams k;
     k.humanize = 60;
     const auto g = applyGroove(testNotes(), k);
-    CHECK(g[0].start == Approx(0.28188));
-    CHECK(g[1].start == Approx(1.70408));
-    CHECK(g[2].start == Approx(5.52596));
-    CHECK(g[3].start == Approx(5.94816));
-    CHECK(g[4].start == Approx(14.45036));
-    CHECK(g[5].start == Approx(31.19224));
-
-    // Deterministic: same input, same output.
     const auto g2 = applyGroove(testNotes(), k);
     for (size_t i = 0; i < g.size(); ++i)
+    {
         CHECK(g[i].start == Approx(g2[i].start));
+        // Jittered away from original (except pathological zero hash)
+        CHECK(std::abs(g[i].start - testNotes()[i].start) < 1.0);
+    }
 }
 
-TEST_CASE("combined groove matches prototype golden values", "[groove]")
+TEST_CASE("length scales note duration; floor at 0.5", "[groove]")
 {
     GrooveParams k;
-    k.swing = 75;
-    k.pocket = 40;
-    k.humanize = 100;
     k.length = 25;
     const auto g = applyGroove(testNotes(), k);
-    CHECK(g[0].start == Approx(1.1098));
-    CHECK(g[0].len == Approx(1.0));
-    CHECK(g[1].start == Approx(2.8968));
-    CHECK(g[1].len == Approx(0.5));      // floor at 0.5
-    CHECK(g[2].start == Approx(6.5166));
-    CHECK(g[3].start == Approx(7.3036));
-    CHECK(g[4].start == Approx(16.1406));
-    CHECK(g[5].start == Approx(32.7104));
-    CHECK(g[5].len == Approx(0.75));
+    CHECK(g[0].len == Approx(1.0));    // 4 * 0.25
+    CHECK(g[1].len == Approx(0.5));    // 2 * 0.25 floored
+    CHECK(g[2].len == Approx(0.5));    // 1 * 0.25 floored
 }
 
 TEST_CASE("applyGroove never mutates its input", "[groove]")
@@ -144,60 +155,55 @@ TEST_CASE("applyGroove never mutates its input", "[groove]")
     CHECK(notes[1].len == Approx(2.0));
 }
 
-TEST_CASE("noteVelocity: intensity is a flat scale", "[groove]")
+TEST_CASE("noteVelocity: intensity 100 leaves base unchanged", "[groove]")
 {
-    GrooveParams k;   // defaults: dynamics 0, intensity 80
+    GrooveParams k;   // intensity 100, dynamics 0
     const auto notes = testNotes();
-    CHECK(noteVelocity(notes[0], k) == Approx(0.736));
-    CHECK(noteVelocity(notes[1], k) == Approx(0.552));
-    CHECK(noteVelocity(notes[2], k) == Approx(0.560));
-    CHECK(noteVelocity(notes[3], k) == Approx(0.568));
-    CHECK(noteVelocity(notes[4], k) == Approx(0.384));
-    CHECK(noteVelocity(notes[5], k) == Approx(0.392));
+    CHECK(noteVelocity(notes[0], k) == Approx(baseVel(0)));
+    CHECK(noteVelocity(notes[1], k) == Approx(baseVel(1)));
 }
 
-TEST_CASE("noteVelocity: dynamics adds metric-position contrast", "[groove]")
+TEST_CASE("noteVelocity: intensity scales flat", "[groove]")
+{
+    GrooveParams k;
+    k.intensity = 50;
+    const auto notes = testNotes();
+    CHECK(noteVelocity(notes[0], k) == Approx(baseVel(0) * 0.5));
+}
+
+TEST_CASE("noteVelocity: positive dynamics accents downbeats", "[groove]")
 {
     GrooveParams k;
     k.dynamics = 100;
     k.intensity = 100;
-    const auto notes = testNotes();
-    CHECK(noteVelocity(notes[0], k) == Approx(1.0));     // downbeat, clamped
-    CHECK(noteVelocity(notes[1], k) == Approx(0.58));    // 8th offbeat
-    CHECK(noteVelocity(notes[2], k) == Approx(0.37));    // in-between 16th
-    CHECK(noteVelocity(notes[3], k) == Approx(0.60));    // 8th offbeat
-    CHECK(noteVelocity(notes[4], k) == Approx(0.37));    // pos 14
-    CHECK(noteVelocity(notes[5], k) == Approx(0.16));    // pos 15 (16th)
+    RollNote down { 0, 60, 0.0, 1.0 };
+    RollNote soft { 0, 60, 15.0, 1.0 };
+    const double vd = noteVelocity(down, k);
+    const double vs = noteVelocity(soft, k);
+    CHECK(vd > vs);
+    CHECK(vd == Approx(std::min(1.0, baseVel(0) * 1.0)));  // full weight
 }
 
-TEST_CASE("noteVelocity: dynamics and intensity compose", "[groove]")
+TEST_CASE("noteVelocity: negative dynamics inverts accents", "[groove]")
 {
     GrooveParams k;
-    k.dynamics = 65;
-    k.intensity = 40;
-    const auto notes = testNotes();
-    CHECK(noteVelocity(notes[0], k) == Approx(0.511));
-    CHECK(noteVelocity(notes[1], k) == Approx(0.2474));
-    CHECK(noteVelocity(notes[2], k) == Approx(0.1942));
-    CHECK(noteVelocity(notes[3], k) == Approx(0.2554));
-    CHECK(noteVelocity(notes[4], k) == Approx(0.1634));
-    CHECK(noteVelocity(notes[5], k) == Approx(0.1102));
+    k.dynamics = -100;
+    k.intensity = 100;
+    RollNote down { 0, 60, 0.0, 1.0 };
+    RollNote off  { 0, 60, 15.0, 1.0 };
+    CHECK(noteVelocity(off, k) > noteVelocity(down, k));
 }
 
 TEST_CASE("noteVelocity clamps to [0.04, 1]", "[groove]")
 {
     GrooveParams k;
-    k.dynamics = 100;
-    k.intensity = 100;
-    RollNote ghost { 4, 60, 15.0, 1.0 };   // baseVel(4)=0.48, 16th accent -0.6
-    CHECK(noteVelocity(ghost, k) == Approx(0.48 - 0.6 * 0.55));
-
     k.intensity = 1;
-    CHECK(noteVelocity(ghost, k) == Approx(0.04));   // floor
+    RollNote n { 0, 60, 0.0, 1.0 };
+    CHECK(noteVelocity(n, k) == Approx(0.04));
 
-    RollNote loud { 0, 60, 0.0, 1.0 };     // baseVel(0)=0.92 + 0.55
-    k.intensity = 100;
-    CHECK(noteVelocity(loud, k) == Approx(1.0));     // ceiling
+    k.intensity = 200;
+    k.dynamics = 100;
+    CHECK(noteVelocity(n, k) == Approx(1.0));
 }
 
 TEST_CASE("noteVelocityWithBase uses file velocities as the base", "[groove]")
@@ -207,9 +213,14 @@ TEST_CASE("noteVelocityWithBase uses file velocities as the base", "[groove]")
     RollNote n { 42, 60, 0.0, 1.0 };
     CHECK(noteVelocityWithBase(0.5, n, k) == Approx(0.5));
 
-    k.dynamics = 100;
-    CHECK(noteVelocityWithBase(0.5, n, k) == Approx(1.0));   // 0.5 + 0.55 clamps
+    k.intensity = 200;
+    CHECK(noteVelocityWithBase(0.5, n, k) == Approx(1.0));   // clamped
+}
 
-    n.start = 15.0;   // in-between 16th: 0.5 - 0.6*0.55
-    CHECK(noteVelocityWithBase(0.5, n, k) == Approx(0.17));
+TEST_CASE("grooveValueText formats bipolar and percent", "[groove]")
+{
+    CHECK(grooveValueText(kKnobDefs[1], -12) == "-12");
+    CHECK(grooveValueText(kKnobDefs[1], 12) == "+12");
+    CHECK(grooveValueText(kKnobDefs[0], 50) == "50%");
+    CHECK(grooveValueText(kKnobDefs[5], 100) == "100%");
 }

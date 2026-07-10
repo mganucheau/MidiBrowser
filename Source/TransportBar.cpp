@@ -9,6 +9,7 @@ TransportBar::TransportBar()
     addAndMakeVisible(btnPlay);
     addAndMakeVisible(btnStop);
 
+    syncToggle.setClickingTogglesState(true);
     syncToggle.setToggleState(true, juce::dontSendNotification);
     syncToggle.onClick = [this]
     {
@@ -62,7 +63,9 @@ TransportBar::TransportBar()
     btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
     addAndMakeVisible(btnDragToDaw);
 
-    btnEditor.active = true;
+    btnEditor.active = false;
+    btnEditor.accentText = true;
+    btnEditor.icon = icons::arrowsOut;
     btnEditor.onClick = [this] { if (onToggleEditor) onToggleEditor(); };
     addAndMakeVisible(btnEditor);
 
@@ -127,16 +130,21 @@ void TransportBar::setEditorOpen(bool open)
     editorOpen = open;
     btnEditor.icon = open ? icons::arrowsIn : icons::arrowsOut;
     btnEditor.active = open;
+    btnEditor.accentText = !open;
     btnEditor.repaint();
     resized();
 }
 
 void TransportBar::refreshBpm()
 {
-    // Synced: live DAW tempo × the ÷2/×2 multiplier. Free-run: editable.
+    // Keep the pill label locked to the real mode (avoids on/off text drift).
+    syncToggle.onLabel = synced ? "Synced" : "Free";
+    syncToggle.offLabel = syncToggle.onLabel;
+
+    // Synced: live DAW tempo × the ÷2/×2 multiplier. Free: editable.
     const double shown = synced ? hostBpm * multiplier : freeBpm;
     bpmLabel.setText(juce::String(shown, 1), juce::dontSendNotification);
-    bpmLabel.setEditable(false, !synced, false);   // double-click to edit when free-run
+    bpmLabel.setEditable(false, !synced, false);   // double-click to edit when free
     bpmLabel.setFont(monoFont(14.0f, true));
     bpmLabel.setColour(juce::Label::textColourId,
                        synced ? (multiplier != 1.0 ? colours::accent() : colours::text())
@@ -154,6 +162,7 @@ void TransportBar::refreshBpm()
     btnHalf.repaint();
     btnDouble.repaint();
     bpmLabel.repaint();
+    syncToggle.repaint();
 }
 
 void TransportBar::resized()
@@ -173,23 +182,31 @@ void TransportBar::resized()
     r.removeFromLeft(8);
 
     syncToggle.setBounds(mid(r.removeFromLeft(juce::jmin(syncToggle.idealWidth(),
-                                                          narrow ? 96 : 140)), 24));
+                                                          narrow ? 72 : 96)), 24));
     r.removeFromLeft(6);
     bpmLabel.setBounds(mid(r.removeFromLeft(narrow ? 48 : 56), 22));
     r.removeFromLeft(2);
-    // Always show ÷2 / ×2 — these are core synced-tempo controls, including
-    // in the folded (narrow) window where they were previously hidden.
-    btnHalf.setVisible(true);
-    btnDouble.setVisible(true);
-    btnHalf.setBounds(mid(r.removeFromLeft(narrow ? 30 : 34), 22));
-    r.removeFromLeft(2);
-    btnDouble.setBounds(mid(r.removeFromLeft(narrow ? 30 : 34), 22));
 
-    // Right: Editor button, always fully inside with normal padding; the
-    // Drag-to-DAW chip sits to its left when the window is expanded.
-    auto editorArea = r.removeFromRight(btnEditor.idealWidth());
-    btnEditor.setBounds(mid(editorArea, 24));
-    r.removeFromRight(6);
+    if (editorOpen)
+    {
+        btnHalf.setVisible(true);
+        btnDouble.setVisible(true);
+        btnHalf.setBounds(mid(r.removeFromLeft(narrow ? 30 : 34), 22));
+        r.removeFromLeft(2);
+        btnDouble.setBounds(mid(r.removeFromLeft(narrow ? 30 : 34), 22));
+
+        auto editorArea = r.removeFromRight(btnEditor.idealWidth());
+        btnEditor.setBounds(mid(editorArea, 24));
+        r.removeFromRight(6);
+    }
+    else
+    {
+        btnHalf.setVisible(false);
+        btnDouble.setVisible(false);
+        r.removeFromLeft(4);
+        btnEditor.setBounds(mid(r.removeFromLeft(btnEditor.idealWidth()), 24));
+        r.removeFromLeft(6);
+    }
 
     btnDragToDaw.setVisible(!narrow && editorOpen);
     if (btnDragToDaw.isVisible())

@@ -334,9 +334,6 @@ void MidiBrowserEditor::selectIndex(int index)
     // Always release held notes before the new clip starts sounding.
     processorRef.requestNoteFlush();
 
-    // Reset playhead to 0 on selection change (spec).
-    processorRef.freerunBeat.store(0.0);
-
     const auto& clip = clips[(size_t) index];
 
     // Browse-lock: stamp the locked pitch edits onto whatever clip we land on.
@@ -347,11 +344,21 @@ void MidiBrowserEditor::selectIndex(int index)
     }
     const auto edit = selectedEdit();
     const auto groove = selectedGroove();
+    const auto resolved = resolveClip(clip, edit);
+
+    // Keep freerun phase continuous across clip changes so browsing mid-playback
+    // feels seamless. Wrap into the new clip length; synced mode already follows
+    // the host and does not restart.
+    {
+        const double newLen = juce::jmax(0.25, (double) (resolved.bars * kStepsPerBar) / 4.0);
+        double beat = processorRef.freerunBeat.load();
+        beat = std::fmod(beat, newLen);
+        if (beat < 0.0) beat += newLen;
+        processorRef.freerunBeat.store(beat);
+    }
 
     transport.setClipBpm(clip.bpm);
     rollEditor.setClip(clip, edit, groove);
-
-    const auto resolved = resolveClip(clip, edit);
     miniRoll.setNotes(applyGroove(resolved.notes, groove), resolved.bars, groove);
 
     if (const int d = displayForClip(index); d >= 0)

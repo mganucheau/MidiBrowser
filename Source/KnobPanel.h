@@ -7,7 +7,7 @@ namespace pflow {
 
 // ── Rotary groove knob ───────────────────────────────────────────────────────
 // ~270° sweep. Drag vertically (or arrow keys) to change; double-click resets
-// to default. Bipolar knobs (min < 0) fill their arc from the center.
+// to default. Bipolar knobs fill from center; Length/Intensity fill from 100%.
 
 class GrooveKnob : public juce::Component
 {
@@ -41,7 +41,7 @@ private:
 };
 
 // ── Folding "Groove" footer panel ────────────────────────────────────────────
-// Collapsed: single 32px row naming the six knobs. Expanded: wrapping knob row.
+// Collapsed by default. Expanded: knobs with 1/8·1/16 stacked beside Swing.
 
 class KnobsPanel : public juce::Component
 {
@@ -62,14 +62,24 @@ public:
     std::function<void()> onOpenChanged;
 
     static constexpr int headerH = 32;
+    static constexpr int swingChipW = 44;
+    static constexpr int swingChipH = 22;
+    static constexpr int swingChipGap = 4;   // match transport chip gaps
+    static constexpr int swingBlockGap = 6;  // knob → chip column
 
 private:
     void pushParams();
+    void syncOptionButtons();
+    int swingBlockWidth() const { return GrooveKnob::totalW + swingBlockGap + swingChipW; }
 
     GrooveParams params;
-    bool open = true;
+    bool open = false;
     std::array<std::unique_ptr<GrooveKnob>, kNumKnobs> knobs;
     IconBtn btnReset { icons::undo, "Reset groove" };
+
+    // Ableton Base: stacked beside the Swing knob.
+    ChipBtn btnSwing8  { "1/8",  {} };
+    ChipBtn btnSwing16 { "1/16", {} };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(KnobsPanel)
 };

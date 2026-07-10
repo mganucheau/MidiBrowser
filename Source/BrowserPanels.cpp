@@ -335,12 +335,8 @@ void FileListPanel::paint(juce::Graphics& g)
         area.removeFromTop(12);
         g.setColour(colours::text());
         g.setFont(uiFont(14.0f, true));
-        g.drawText("Choose a folder of MIDI files", area.removeFromTop(22),
+        g.drawText("Open a Folder", area.removeFromTop(22),
                    juce::Justification::centred);
-        g.setColour(colours::text3());
-        g.setFont(uiFont(13.0f, false));
-        g.drawText("Use Open to browse, then drag a clip into your DAW.",
-                   area.removeFromTop(40), juce::Justification::centredTop);
     }
 }
 

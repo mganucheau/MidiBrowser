@@ -89,7 +89,7 @@ public:
     ClipEdit lockedEdit;
 
     // UI layout state (persisted)
-    bool editorOpen = true;
+    bool editorOpen = false;
     bool sidebarCollapsed = true;
     bool miniOpen = true;
 

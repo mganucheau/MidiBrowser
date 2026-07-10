@@ -207,7 +207,7 @@ private:
     NotifyingViewport rollViewport;
     RollContent rollContent { *this };
     VelocityLane velocityLane { *this };
-    bool velocityOpen = true;
+    bool velocityOpen = false;
     KnobsPanel knobsPanel;
 
     static constexpr int stripH = 46;

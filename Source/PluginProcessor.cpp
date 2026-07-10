@@ -351,6 +351,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         e->setAttribute("dynamics", k.dynamics);
         e->setAttribute("length", k.length);
         e->setAttribute("intensity", k.intensity);
+        e->setAttribute("swingBase", (int) k.swingBase);
     }
     copyXmlToBinary(xml, dest);
 }
@@ -378,7 +379,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             tweaks().grid.store(juce::jlimit(0, kNumGridStyles - 1,
                 xml->getIntAttribute("tweakGrid", (int) GridStyle::Minimal)));
             tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1,
-                xml->getIntAttribute("tweakSize", (int) ContentSize::Large)));
+                xml->getIntAttribute("tweakSize", (int) ContentSize::Medium)));
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");
@@ -386,7 +387,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             syncToHost.store(xml->getIntAttribute("syncToHost", 1) != 0);
             freeBpm.store(juce::jlimit(20.0, 300.0, xml->getDoubleAttribute("freeBpm", 124.0)));
             bpmMultiplier.store(juce::jlimit(0.25, 4.0, xml->getDoubleAttribute("bpmMultiplier", 1.0)));
-            editorOpen = xml->getIntAttribute("editorOpen", 1) != 0;
+            editorOpen = xml->getIntAttribute("editorOpen", 0) != 0;
             sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
             miniOpen = xml->getIntAttribute("miniOpen", 1) != 0;
             editLock = xml->getIntAttribute("editLock", 0) != 0;
@@ -448,7 +449,10 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     k.set(2, child->getIntAttribute("humanize", 0));
                     k.set(3, child->getIntAttribute("dynamics", 0));
                     k.set(4, child->getIntAttribute("length", 100));
-                    k.set(5, child->getIntAttribute("intensity", 80));
+                    // Legacy sessions stored Intensity default as 80; treat missing as 100 (neutral).
+                    k.set(5, child->getIntAttribute("intensity", 100));
+                    k.swingBase = child->getIntAttribute("swingBase", 0) != 0
+                                      ? SwingBase::Sixteenth : SwingBase::Eighth;
                     clipGrooves[path] = k;
                 }
             }

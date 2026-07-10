@@ -40,6 +40,7 @@ TEST_CASE("Trim button trims and restores through the real editor UI", "[editoru
 
     MidiBrowserProcessor proc;
     proc.lastBrowserDir = dir.getFullPathName();
+    proc.editorOpen = true;
 
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     REQUIRE(ed != nullptr);
@@ -92,6 +93,7 @@ TEST_CASE("Fold and lock buttons are reachable and lock persists a template", "[
 
     MidiBrowserProcessor proc;
     proc.lastBrowserDir = dir.getFullPathName();
+    proc.editorOpen = true;
 
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     ed->setVisible(true);

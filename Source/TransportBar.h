@@ -5,9 +5,9 @@
 namespace pflow {
 
 // ── Transport bar ────────────────────────────────────────────────────────────
-// app glyph + wordmark · play/stop · DAW-sync pill · BPM · (spacer) ·
+// app glyph + wordmark · play/stop · Synced/Free pill · BPM · (spacer) ·
 // folder path · Editor fold button. BPM is a static readout when synced and
-// an editable number input (20–300) driving playback tempo when free-run.
+// an editable number input (20–300) driving playback tempo when free.
 
 class TransportBar : public juce::Component
 {
@@ -63,7 +63,7 @@ private:
 
     IconBtn btnPlay { icons::play, "Play / pause preview" };
     IconBtn btnStop { icons::stop, "Stop" };
-    PillToggle syncToggle { "Synced to DAW", "Free-run" };
+    PillToggle syncToggle { "Synced", "Free" };
     juce::Label bpmLabel;
     ChipBtn btnHalf { "/2" };
     ChipBtn btnDouble { "x2" };
@@ -73,7 +73,7 @@ private:
 
     bool playing = false;
     bool synced = true;
-    bool editorOpen = true;
+    bool editorOpen = false;
     double hostBpm = 124.0;
     double freeBpm = 124.0;
     double multiplier = 1.0;

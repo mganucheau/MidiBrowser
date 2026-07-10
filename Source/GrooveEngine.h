@@ -7,33 +7,47 @@
 namespace pflow {
 
 // ── Groove engine ────────────────────────────────────────────────────────────
-// Port of Prototype/mbd/knob.jsx. Non-destructive: applied as a render /
-// playback transform over resolveClip()'s output, never written back.
+// Non-destructive timing/velocity transform over resolveClip() output.
+// Modelled on Ableton Groove Pool + Logic Q-Swing / Humanize conventions:
+//
+//   Swing     — delay offbeats at a chosen base (1/8 or 1/16); 0 = straight
+//   Pocket    — global push/pull (− ahead / + laid-back); bipolar, 0 = on grid
+//   Humanize  — deterministic per-note timing jitter (Ableton Random)
+//   Dynamics  — metric accent contrast; bipolar (− inverts, like Ableton Velocity)
+//   Length    — note duration scale; 100 = unchanged (center default)
+//   Intensity — velocity scale; 100 = file velocities unchanged (center default)
 
 struct KnobDef
 {
     const char* key;
     const char* label;
     int min, max, def;
-    bool bipolar() const { return min < 0; }   // bipolar knobs fill the arc from center
+    /** Arc fills from 0 (bipolar knobs). */
+    bool bipolar() const { return min < 0; }
+    /** Arc fills from def when def sits mid-range (Length, Intensity). */
+    bool fillFromDefault() const { return !bipolar() && def > min && def < max; }
 };
+
+enum class SwingBase { Eighth = 0, Sixteenth = 1 };
 
 constexpr int kNumKnobs = 6;
 extern const std::array<KnobDef, kNumKnobs> kKnobDefs;
 
 struct GrooveParams
 {
-    int swing     = 0;     // 0..75      delays offbeat 8ths
-    int pocket    = 0;     // -100..100  − ahead of grid (tight), + behind (loose)
-    int humanize  = 0;     // 0..100     deterministic per-note timing jitter
-    int dynamics  = 0;     // 0..100     accent contrast by metric position
-    int length    = 100;   // 25..200    note length scale
-    int intensity = 80;    // 0..100     flat velocity scale
+    int swing     = 0;      // 0..100     offbeat delay amount
+    int pocket    = 0;      // -100..100  − push / + lay back
+    int humanize  = 0;      // 0..100     timing jitter
+    int dynamics  = 0;      // -100..100  metric accent (− inverts)
+    int length    = 100;    // 25..200    duration % (100 = original)
+    int intensity = 100;    // 0..200     velocity % (100 = original)
+
+    SwingBase swingBase = SwingBase::Eighth;
 
     int  get(int knobIndex) const;
     void set(int knobIndex, int value);
     bool isDefault() const;
-    int  activeCount() const;   // knobs off their default (drives the Groove badge)
+    int  activeCount() const;   // knobs/toggles off default (badge count)
 };
 
 /** Timing + length transform. Returns new notes; never mutates. */
@@ -43,12 +57,14 @@ std::vector<RollNote> applyGroove(const std::vector<RollNote>& notes, const Groo
 double baseVel(int id);
 
 /** Effective velocity 0.04–1.0. Intensity scales the whole performance;
-    Dynamics widens contrast by metric position (downbeats punch, in-between
-    16ths duck). */
+    Dynamics widens (or inverts) contrast by metric position. */
 double noteVelocity(const RollNote& n, const GrooveParams& k);
 
 /** noteVelocity with an explicit base — used for real MIDI files so the
     file's own velocities survive as the base performance. */
 double noteVelocityWithBase(double base, const RollNote& n, const GrooveParams& k);
+
+/** Formatted knob readout (e.g. "50%", "+12", "100%"). */
+juce::String grooveValueText(const KnobDef& def, int value);
 
 } // namespace pflow

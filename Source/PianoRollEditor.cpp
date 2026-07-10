@@ -1007,9 +1007,13 @@ void PianoRollEditor::VelocityLane::paint(juce::Graphics& g)
 
     g.setColour(colours::text3());
     g.setFont(monoFont(12.0f, false));
-    g.drawText("Intensity " + juce::String(ed.groove.intensity) + juce::String::fromUTF8("% · Dyn ")
-                   + juce::String(ed.groove.dynamics) + "%",
-               header, juce::Justification::centredRight);
+    {
+        juce::String dyn = juce::String(ed.groove.dynamics);
+        if (ed.groove.dynamics > 0) dyn = "+" + dyn;
+        g.drawText("Intensity " + juce::String(ed.groove.intensity) + juce::String::fromUTF8("% · Dyn ")
+                       + dyn,
+                   header, juce::Justification::centredRight);
+    }
 
     if (!ed.velocityOpen || !ed.hasClip) return;
 

@@ -52,7 +52,7 @@ struct Tweaks
     std::atomic<int> accent  { (int) AccentId::Amber };
     std::atomic<int> density { (int) Density::Compact };
     std::atomic<int> grid    { (int) GridStyle::Minimal };
-    std::atomic<int> size    { (int) ContentSize::Large };
+    std::atomic<int> size    { (int) ContentSize::Medium };
 };
 
 Tweaks& tweaks();
@@ -201,8 +201,8 @@ namespace metrics {
     inline int listRowH()    { return currentDensity() == Density::Comfortable ? 32 : 24; }
     inline int listHeaderH() { return currentDensity() == Density::Comfortable ? 40 : 32; }
     inline int padS()        { return currentDensity() == Density::Comfortable ? 12 : 8; }
-    // Folded (editor closed) mini preview: 2× the previous lane height so notes read clearly.
-    inline int miniRollH()   { return currentDensity() == Density::Comfortable ? 256 : 224; }
+    // Folded (editor closed) mini preview below the browser list.
+    inline int miniRollH()   { return currentDensity() == Density::Comfortable ? 128 : 112; }
 }
 
 inline void styleSectionLabel(juce::Label& lbl, const juce::String& text)
