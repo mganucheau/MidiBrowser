@@ -7,13 +7,12 @@
 #include "TransportBar.h"
 #include "BrowserPanels.h"
 #include "PianoRollEditor.h"
+#include "EffectsInspector.h"
 #include "Theme.h"
 
 namespace pflow {
 
-// ── MidiBrowser root ─────────────────────────────────────────────────────────
-// Editor open (~980px): transport / [sidebar | file list | editor].
-// Folded (~300px): transport / [sidebar | file list] / full-width mini preview.
+// Cupertino shell: toolbar / [sidebar | file table | editor? | effects?]
 
 class MidiBrowserEditor : public juce::AudioProcessorEditor,
                           public juce::Timer
@@ -31,21 +30,23 @@ private:
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);
     void rescanFolder(bool keepSelection);
     void chooseFolder();
-    void rebuildEntries();                  // display list (folders + star filter)
+    void rebuildEntries();
     int displayForClip(int clipIdx) const;
-    void selectIndex(int index);            // index into `clips`
+    void selectIndex(int index);
     void enterFolderAtDisplay(int displayIdx);
     void enterParentFolder();
     void applyTimeStretchFromMultiplier();
     void refreshEntryMeta(int index);
-    MidiClip buildRenderedClip() const;   // resolved + groove + velocities
+    MidiClip buildRenderedClip() const;
     void pushPreviewToProcessor();
     void startDragExport();
     void applyLayoutState();
     void layoutContent();
     void toggleEditorFold();
+    void toggleEffectsFold();
     void showTweaksMenu();
     void refreshSidebar();
+    void syncEffectsInspector();
 
     const StepClip* selectedClip() const;
     ClipEdit selectedEdit() const;
@@ -55,8 +56,6 @@ private:
     PatternFlowLookAndFeel lnf;
     juce::TooltipWindow tooltips { this, 600 };
 
-    /** All UI lives inside this holder so the content-size tweak can scale
-        the whole interface with one transform. */
     struct ContentHolder : juce::Component
     {
         std::function<void()> onLayout;
@@ -68,22 +67,10 @@ private:
     FavoritesSidebar sidebar;
     FileListPanel fileList;
     PianoRollEditor rollEditor;
-    PianoRollMini miniRoll;
-
-    // Folded-layout mini preview header (fold toggle + clip name + bars)
-    class MiniHeader : public juce::Component
-    {
-    public:
-        explicit MiniHeader(MidiBrowserEditor& o) : owner(o) {}
-        void paint(juce::Graphics&) override;
-        void mouseDown(const juce::MouseEvent&) override;
-        MidiBrowserEditor& owner;
-    };
-    MiniHeader miniHeader { *this };
+    EffectsInspector effectsInspector;
 
     juce::File rootDir;
-    std::vector<StepClip> clips;             // every MIDI clip in the folder
-    /** Parallel to file-list rows: directory rows have clipIndex < 0. */
+    std::vector<StepClip> clips;
     struct DisplayRow
     {
         bool isDirectory = false;
@@ -92,11 +79,13 @@ private:
     };
     std::vector<DisplayRow> displayRows;
     bool starFilterOn = false;
-    int selectedIdx = -1;                    // index into clips
+    int selectedIdx = -1;
     int lastWindowH = 560;
-    /** File-list column width. Flexes when the editor is folded; kept stable
-        when the editor opens so the roll starts exactly at the browser edge. */
-    int browserColW = metrics::browserWidth;
+    int browserColW = metrics::fileTableW;
+    int layoutTargetW = 0;
+    int layoutAnimFromW = 0;
+    double layoutAnimStartMs = 0.0;
+    static constexpr double kLayoutAnimMs = 220.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiBrowserEditor)
 };

@@ -1,6 +1,6 @@
 #include "Theme.h"
-#include "BinaryData.h"
 #include <unordered_map>
+#include <cmath>
 
 namespace pflow {
 
@@ -21,91 +21,67 @@ juce::Colour rgba(juce::uint8 r, juce::uint8 g, juce::uint8 b, float a)
 
 } // namespace
 
-const ThemeTokens& themeTokens(ThemeId t)
+const ThemeTokens& themeTokens()
 {
-    static const std::array<ThemeTokens, kNumThemes> themes {{
-        {
-            "charcoal",
-            juce::Colour(0xff131419), juce::Colour(0xff181a20), juce::Colour(0xff1c1f26), juce::Colour(0xff24272f),
-            rgba(255, 255, 255, 0.08f), rgba(255, 255, 255, 0.15f),
-            juce::Colour(0xffe9eaee), juce::Colour(0xffa6a9b3), juce::Colour(0xff9a9488),
-            juce::Colour(0xff14161b), rgba(255, 255, 255, 0.028f), rgba(255, 255, 255, 0.045f),
-            rgba(0, 0, 0, 0.28f), rgba(255, 255, 255, 0.28f),
-            juce::Colour(0xff2b2e36), juce::Colour(0xff1a1c22),
-        },
-        {
-            "graphite",
-            juce::Colour(0xff18160f), juce::Colour(0xff1e1b15), juce::Colour(0xff221e17), juce::Colour(0xff2b261d),
-            rgba(255, 250, 235, 0.08f), rgba(255, 250, 235, 0.15f),
-            juce::Colour(0xffece8df), juce::Colour(0xffaca598), juce::Colour(0xff9a9488),
-            juce::Colour(0xff15130d), rgba(255, 248, 230, 0.03f), rgba(255, 248, 230, 0.05f),
-            rgba(0, 0, 0, 0.30f), rgba(255, 248, 230, 0.28f),
-            juce::Colour(0xff2f2a20), juce::Colour(0xff1c1810),
-        },
-        {
-            "ink",
-            juce::Colour(0xff0d0f16), juce::Colour(0xff11141d), juce::Colour(0xff141826), juce::Colour(0xff1b2030),
-            rgba(180, 200, 255, 0.09f), rgba(180, 200, 255, 0.16f),
-            juce::Colour(0xffe6e9f3), juce::Colour(0xff9ca3b8), juce::Colour(0xff9a9488),
-            juce::Colour(0xff0e1119), rgba(150, 180, 255, 0.03f), rgba(150, 180, 255, 0.05f),
-            rgba(0, 0, 0, 0.32f), rgba(170, 190, 255, 0.30f),
-            juce::Colour(0xff262c3d), juce::Colour(0xff161a26),
-        },
-    }};
-    return themes[(size_t) juce::jlimit(0, kNumThemes - 1, (int) t)];
+    // Cupertino light palette (handoff §2).
+    static const ThemeTokens cupertino {
+        juce::Colour(0xfff5f4f2),   // bg (window)
+        juce::Colour(0xffffffff),   // panel (content)
+        juce::Colour(0xfffbfaf9),   // panel2
+        juce::Colour(0xffece9e5),   // elev
+        juce::Colour(0xffd8d5d0),   // line
+        juce::Colour(0xffcfccc6),   // lineStrong
+        juce::Colour(0xffe5e2dd),   // lineSoft
+        juce::Colour(0xff1d1d1f),   // text
+        juce::Colour(0xff58585c),   // text2
+        juce::Colour(0xff8e8e93),   // text3
+        juce::Colour(0xfffbfaf9),   // rollBg
+        juce::Colour(0xfff4f2ef),   // rollShade (horizontal)
+        juce::Colour(0xffefedea),   // rollRowline (vertical grid)
+        rgba(0, 0, 0, 0.12f),       // rollNoteEdge
+        rgba(0, 0, 0, 0.18f),       // rollGhost
+        juce::Colour(0xffffffff),   // kbWhite
+        juce::Colour(0xffece9e4),   // kbBlack
+        juce::Colour(0xffece9e5),   // toolbarTop
+        juce::Colour(0xffe3e0db),   // toolbarBot
+        rgba(236, 233, 229, 0.92f), // sidebarTop
+        rgba(226, 223, 218, 0.92f), // sidebarBot
+        juce::Colour(0xfff7f6f4),   // tableAlt
+        juce::Colour(0xffc9cfd8),   // desktopTop
+        juce::Colour(0xffaeb6c2),   // desktopBot
+        rgba(0, 0, 0, 0.22f),       // windowBorder
+    };
+    return cupertino;
 }
 
-const AccentTokens& accentTokens(AccentId a)
+const AccentTokens& accentTokens()
 {
-    static const std::array<AccentTokens, kNumAccents> accents {{
-        { "blue",  juce::Colour(0xff4d87ff), juce::Colour(0xffffffff),
-          rgba(77, 135, 255, 0.16f), rgba(77, 135, 255, 0.42f), juce::Colour(0xff9cbcff) },
-        { "amber", juce::Colour(0xfff0a93b), juce::Colour(0xff1c1304),
-          rgba(240, 169, 59, 0.16f), rgba(240, 169, 59, 0.42f), juce::Colour(0xffffd089) },
-        { "mint",  juce::Colour(0xff2bd49f), juce::Colour(0xff042019),
-          rgba(43, 212, 159, 0.15f), rgba(43, 212, 159, 0.42f), juce::Colour(0xff79efc9) },
-    }};
-    return accents[(size_t) juce::jlimit(0, kNumAccents - 1, (int) a)];
+    static const AccentTokens blue {
+        juce::Colour(0xff0a63d8),           // accent
+        juce::Colour(0xffffffff),           // ink
+        rgba(10, 99, 216, 0.14f),           // soft
+        rgba(10, 99, 216, 0.42f),           // line
+        juce::Colour(0xff4d8fff),           // bright
+    };
+    return blue;
 }
 
-// ── Fonts ────────────────────────────────────────────────────────────────────
-
-namespace {
-
-juce::Typeface::Ptr loadTypeface(const void* data, size_t size)
-{
-    return juce::Typeface::createSystemTypefaceFor(data, size);
-}
-
-juce::Font fontWithTypeface(juce::Typeface::Ptr tf, float pt, bool synthBold)
-{
-    if (tf != nullptr)
-    {
-        auto f = juce::Font(juce::FontOptions().withTypeface(tf).withHeight(pt));
-        if (synthBold)
-            f.setBold(true);
-        return f;
-    }
-    return juce::Font(juce::FontOptions(pt).withStyle(synthBold ? "Semibold" : "Regular"));
-}
-
-} // namespace
+// ── Fonts (system stack) ─────────────────────────────────────────────────────
 
 juce::Font uiFont(float pt, bool semibold)
 {
-    static juce::Typeface::Ptr tf =
-        loadTypeface(BinaryData::SchibstedGrotesk_ttf, (size_t) BinaryData::SchibstedGrotesk_ttfSize);
-    return fontWithTypeface(tf, pt, semibold);
+    auto opts = juce::FontOptions(pt)
+                    .withStyle(semibold ? "Semibold" : "Regular")
+                    .withName("-apple-system");
+    return juce::Font(opts);
 }
 
 juce::Font monoFont(float pt, bool semibold)
 {
-    static juce::Typeface::Ptr regular =
-        loadTypeface(BinaryData::JetBrainsMonoRegular_ttf, (size_t) BinaryData::JetBrainsMonoRegular_ttfSize);
-    static juce::Typeface::Ptr semi =
-        loadTypeface(BinaryData::JetBrainsMonoSemiBold_ttf, (size_t) BinaryData::JetBrainsMonoSemiBold_ttfSize);
-    auto tf = semibold ? semi : regular;
-    return fontWithTypeface(tf != nullptr ? tf : regular, pt, false);
+    // Tabular numerals via system font (no JetBrains Mono).
+    auto f = uiFont(pt, semibold);
+    f.setExtraKerningFactor(0.0f);
+    return f;
 }
 
 juce::Font fontFor(TextStyle s)
@@ -114,14 +90,14 @@ juce::Font fontFor(TextStyle s)
     {
         case TextStyle::LargeTitle:  return uiFont(28.0f, true);
         case TextStyle::Title2:      return uiFont(17.0f, true);
-        case TextStyle::Headline:    return uiFont(14.0f, true);
-        case TextStyle::Body:        return uiFont(14.0f, false);
+        case TextStyle::Headline:    return uiFont(14.5f, true);
+        case TextStyle::Body:        return uiFont(12.0f, false);
         case TextStyle::Callout:     return uiFont(13.0f, false);
-        case TextStyle::Subheadline: return uiFont(13.0f, false);
-        case TextStyle::Footnote:    return uiFont(12.0f, false);
-        case TextStyle::Caption:     return uiFont(12.0f, false);
+        case TextStyle::Subheadline: return uiFont(12.5f, false);
+        case TextStyle::Footnote:    return uiFont(11.0f, false);
+        case TextStyle::Caption:     return uiFont(10.5f, false);
     }
-    return uiFont(14.0f, false);
+    return uiFont(12.0f, false);
 }
 
 namespace {
@@ -282,17 +258,17 @@ void PatternFlowLookAndFeel::refreshColours()
     setColour(juce::ComboBox::arrowColourId, colours::textDim());
     setColour(juce::PopupMenu::backgroundColourId, colours::bgLight());
     setColour(juce::PopupMenu::textColourId, colours::text());
-    setColour(juce::PopupMenu::highlightedBackgroundColourId, colours::accent());
-    setColour(juce::PopupMenu::highlightedTextColourId, colours::onPrimary());
-    setColour(juce::ScrollBar::thumbColourId, colours::controlFill());
-    setColour(juce::ListBox::backgroundColourId, colours::bgLight());
+    setColour(juce::PopupMenu::highlightedBackgroundColourId, colours::accentSoft());
+    setColour(juce::PopupMenu::highlightedTextColourId, colours::accent());
+    setColour(juce::ScrollBar::thumbColourId, colours::lineStrong().withAlpha(0.55f));
+    setColour(juce::ListBox::backgroundColourId, colours::panel());
     setColour(juce::ListBox::textColourId, colours::text());
     setColour(juce::Label::textColourId, colours::text());
     setColour(juce::ToggleButton::textColourId, colours::text());
     setColour(juce::ToggleButton::tickColourId, colours::accent());
-    setColour(juce::TextButton::buttonColourId, colours::controlFill());
+    setColour(juce::TextButton::buttonColourId, colours::elev());
     setColour(juce::TextButton::textColourOffId, colours::text());
-    setColour(juce::TextButton::textColourOnId, colours::onPrimary());
+    setColour(juce::TextButton::textColourOnId, colours::accentInk());
 
     setColour(juce::TreeView::backgroundColourId, juce::Colours::transparentBlack);
     setColour(juce::TreeView::linesColourId, colours::separator().withAlpha(0.4f));
@@ -303,9 +279,9 @@ void PatternFlowLookAndFeel::refreshColours()
     setColour(juce::DirectoryContentsDisplayComponent::highlightColourId, colours::selection());
     setColour(juce::DirectoryContentsDisplayComponent::highlightedTextColourId, colours::text());
 
-    setColour(juce::TooltipWindow::backgroundColourId, colours::bgLighter());
+    setColour(juce::TooltipWindow::backgroundColourId, colours::panel());
     setColour(juce::TooltipWindow::textColourId, colours::text());
-    setColour(juce::TooltipWindow::outlineColourId, colours::separator());
+    setColour(juce::TooltipWindow::outlineColourId, colours::line());
 }
 
 void PatternFlowLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y,

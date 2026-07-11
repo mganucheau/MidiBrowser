@@ -1,4 +1,5 @@
 #include "BrowserPanels.h"
+#include <algorithm>
 
 namespace pflow {
 
@@ -14,7 +15,9 @@ const char* kindIcon(ClipKind k)
     }
 }
 
-constexpr int kSidebarHeaderH = 34;
+constexpr int kSidebarPad = 10;
+constexpr int kSectionH = 22;
+constexpr int kRowH = 26;
 
 } // namespace
 
@@ -22,9 +25,6 @@ constexpr int kSidebarHeaderH = 34;
 
 FavoritesSidebar::FavoritesSidebar()
 {
-    btnToggle.onClick = [this] { setCollapsed(!collapsed); };
-    addAndMakeVisible(btnToggle);
-
     btnAdd.onClick = [this] { if (onAddCurrent) onAddCurrent(); };
     addAndMakeVisible(btnAdd);
 
@@ -39,52 +39,32 @@ void FavoritesSidebar::setSavedDirs(const juce::StringArray& paths, const juce::
     repaint();
 }
 
-void FavoritesSidebar::setCollapsed(bool shouldCollapse)
-{
-    if (collapsed == shouldCollapse) return;
-    collapsed = shouldCollapse;
-    btnToggle.setTooltip(collapsed ? "Show saved folders" : "Hide saved folders");
-    if (onCollapsedChanged)
-        onCollapsedChanged();
-    resized();
-    repaint();
-}
-
 juce::Rectangle<int> FavoritesSidebar::rowBounds(int index) const
 {
-    const int rowH = collapsed ? 40 : 30;
-    const int y = kSidebarHeaderH + 4 + index * rowH;
-    if (collapsed)
-        return { 4, y, getWidth() - 8, rowH - 6 };
-    return { 6, y, getWidth() - 12, rowH - 4 };
+    const int y = kSectionH + 4 + index * kRowH;
+    return { kSidebarPad, y, getWidth() - kSidebarPad * 2, kRowH - 2 };
 }
 
-FavoritesSidebar::RowHit FavoritesSidebar::hitTest(juce::Point<int> pos) const
+FavoritesSidebar::RowHit FavoritesSidebar::rowHitAt(juce::Point<int> pos) const
 {
     for (int i = 0; i < dirs.size(); ++i)
     {
         const auto r = rowBounds(i);
         if (r.contains(pos))
-            return { i, !collapsed && pos.x > r.getRight() - 22 };
+            return { i, pos.x > r.getRight() - 22 };
     }
     return {};
 }
 
 void FavoritesSidebar::resized()
 {
-    auto top = juce::Rectangle<int>(0, 0, getWidth(), kSidebarHeaderH);
-    btnToggle.setBounds(top.removeFromLeft(metrics::sidebarRailW).withSizeKeepingCentre(26, 26));
-    btnAdd.setVisible(!collapsed);
-    if (!collapsed)
-        btnAdd.setBounds(top.removeFromRight(30).withSizeKeepingCentre(22, 22));
-
-    btnTweaks.setBounds(juce::Rectangle<int>(0, getHeight() - 34, metrics::sidebarRailW, 30)
-                            .withSizeKeepingCentre(24, 24));
+    btnAdd.setBounds(getWidth() - 34, 2, 24, 22);
+    btnTweaks.setBounds(kSidebarPad, getHeight() - 34, 24, 24);
 }
 
 void FavoritesSidebar::mouseMove(const juce::MouseEvent& e)
 {
-    const auto hit = hitTest(e.getPosition());
+    const auto hit = rowHitAt(e.getPosition());
     if (hit.index != hoverRow || hit.removeZone != hoverRemove)
     {
         hoverRow = hit.index;
@@ -102,7 +82,7 @@ void FavoritesSidebar::mouseExit(const juce::MouseEvent&)
 
 void FavoritesSidebar::mouseDown(const juce::MouseEvent& e)
 {
-    const auto hit = hitTest(e.getPosition());
+    const auto hit = rowHitAt(e.getPosition());
     if (hit.index < 0 || hit.index >= dirs.size())
         return;
     if (hit.removeZone)
@@ -115,62 +95,52 @@ void FavoritesSidebar::mouseDown(const juce::MouseEvent& e)
 
 void FavoritesSidebar::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::panel());
+    auto b = getLocalBounds().toFloat();
+    g.setGradientFill(juce::ColourGradient(colours::sidebarTop(), 0, 0,
+                                           colours::sidebarBot(), 0, b.getHeight(), false));
+    g.fillRect(b);
     g.setColour(colours::line());
     g.fillRect(getLocalBounds().removeFromRight(1));
 
-    if (!collapsed)
-    {
-        g.setColour(colours::text3());
-        g.setFont(uiFont(12.0f, true));
-        g.drawText("SAVED", metrics::sidebarRailW - 4, 0, 60, kSidebarHeaderH,
-                   juce::Justification::centredLeft);
-    }
+    g.setColour(colours::text3());
+    g.setFont(uiFont(10.0f, true));
+    g.drawText("FAVORITES", kSidebarPad, 4, getWidth() - 50, 16,
+               juce::Justification::centredLeft);
 
     for (int i = 0; i < dirs.size(); ++i)
     {
-        const juce::File dir(dirs[i]);
+        const auto r = rowBounds(i).toFloat();
         const bool isActive = dirs[i] == active;
         const bool hovered = i == hoverRow;
-        auto r = rowBounds(i);
 
         if (isActive || hovered)
         {
             g.setColour(isActive ? colours::accentSoft()
                                  : colours::elev().withAlpha(0.7f));
-            g.fillRoundedRectangle(r.toFloat(), metrics::chipRadius);
-            if (isActive)
-            {
-                g.setColour(colours::accentLine());
-                g.drawRoundedRectangle(r.toFloat().reduced(0.5f), metrics::chipRadius, 1.0f);
-            }
+            g.fillRoundedRectangle(r, 6.0f);
         }
 
-        const auto iconCol = isActive ? colours::accent() : colours::text2();
-        if (collapsed)
-        {
-            drawIcon(g, icons::folder, r.toFloat().reduced(10.0f), iconCol, 1.5f);
-        }
-        else
-        {
-            auto row = r.reduced(7, 0);
-            drawIcon(g, icons::folder, row.removeFromLeft(16).toFloat()
-                        .withSizeKeepingCentre(14.0f, 14.0f), iconCol, 1.4f);
-            row.removeFromLeft(6);
+        auto icon = juce::Rectangle<float>(r.getX() + 6.0f, r.getY() + 5.0f, 14.0f, 14.0f);
+        drawIcon(g, icons::folder, icon, isActive ? colours::accent() : colours::text2(), 1.4f);
 
-            if (hovered)
-            {
-                auto xArea = row.removeFromRight(18).toFloat().withSizeKeepingCentre(10.0f, 10.0f);
-                drawIcon(g, icons::x, xArea,
-                         hoverRemove ? colours::text() : colours::text3(), 1.4f);
-            }
+        g.setColour(isActive ? colours::text() : colours::text2());
+        g.setFont(uiFont(12.5f, isActive));
+        const auto name = juce::File(dirs[i]).getFileName();
+        g.drawText(name, r.withTrimmedLeft(26.0f).withTrimmedRight(22.0f).toNearestInt(),
+                   juce::Justification::centredLeft, true);
 
-            g.setColour(isActive ? colours::text() : colours::text2());
-            g.setFont(uiFont(13.0f, isActive));
-            const auto label = dir.getFileName().isNotEmpty() ? dir.getFileName() : dirs[i];
-            g.drawText(label, row, juce::Justification::centredLeft, true);
-        }
+        if (hovered)
+            drawIcon(g, icons::x,
+                     juce::Rectangle<float>(r.getRight() - 18.0f, r.getY() + 5.0f, 12.0f, 12.0f),
+                     hoverRemove ? colours::text() : colours::text3(), 1.4f);
     }
+
+    // LOCATIONS header under favorites
+    const int locY = kSectionH + 4 + dirs.size() * kRowH + 10;
+    g.setColour(colours::text3());
+    g.setFont(uiFont(10.0f, true));
+    g.drawText("LOCATIONS", kSidebarPad, locY, getWidth() - 20, 16,
+               juce::Justification::centredLeft);
 }
 
 // ── FileListPanel ────────────────────────────────────────────────────────────
@@ -178,7 +148,7 @@ void FavoritesSidebar::paint(juce::Graphics& g)
 FileListPanel::FileListPanel()
 {
     viewport.setViewedComponent(&content, false);
-    viewport.setScrollBarsShown(true, false, false, false);
+    viewport.setScrollBarsShown(true, false);
     viewport.setScrollBarThickness(8);
     addAndMakeVisible(viewport);
 
@@ -187,15 +157,8 @@ FileListPanel::FileListPanel()
 
     btnStarFilter.onClick = [this] { if (onToggleStarFilter) onToggleStarFilter(); };
     addChildComponent(btnStarFilter);
-    setWantsKeyboardFocus(true);
-}
 
-void FileListPanel::setStarFilter(bool filterOn, bool anyStarred)
-{
-    btnStarFilter.setVisible(anyStarred || filterOn);
-    btnStarFilter.active = filterOn;
-    btnStarFilter.repaint();
-    resized();
+    startTimerHz(20);
 }
 
 void FileListPanel::setFolderName(const juce::String& name)
@@ -204,69 +167,125 @@ void FileListPanel::setFolderName(const juce::String& name)
     repaint();
 }
 
-void FileListPanel::setEntries(std::vector<FileListEntry> newEntries)
+void FileListPanel::setEntries(std::vector<FileListEntry> e)
 {
-    entries = std::move(newEntries);
+    entries = std::move(e);
     selected = juce::jlimit(-1, (int) entries.size() - 1, selected);
+    rebuildSortOrder();
     updateContentSize();
+    content.repaint();
     repaint();
 }
 
 void FileListPanel::updateEntry(int index, const FileListEntry& entry)
 {
-    if (juce::isPositiveAndBelow(index, (int) entries.size()))
-    {
-        entries[(size_t) index] = entry;
-        content.repaint();
-    }
+    if (!juce::isPositiveAndBelow(index, (int) entries.size()))
+        return;
+    entries[(size_t) index] = entry;
+    rebuildSortOrder();
+    content.repaint();
 }
 
 void FileListPanel::setSelectedIndex(int index, juce::NotificationType notify)
 {
-    index = juce::jlimit(-1, (int) entries.size() - 1, index);
-    if (index == selected) return;
-    selected = index;
-    ensureRowVisible(selected);
+    selected = juce::jlimit(-1, (int) entries.size() - 1, index);
+    ensureRowVisible(entryToDisplay(selected));
     content.repaint();
-    repaint();
     if (notify != juce::dontSendNotification && onSelect && selected >= 0)
         onSelect(selected);
 }
 
 void FileListPanel::setPlaying(bool isPlaying)
 {
-    if (playing == isPlaying) return;
     playing = isPlaying;
-    if (playing) startTimerHz(20);   // equalizer animation
-    else stopTimer();
     content.repaint();
 }
 
-void FileListPanel::timerCallback()
+void FileListPanel::setStarFilter(bool filterOn, bool anyStarred)
 {
-    // Only the active row animates; repaint just its bounds.
-    if (selected >= 0)
-        content.repaint(0, selected * metrics::listRowH(), content.getWidth(), metrics::listRowH());
+    btnStarFilter.setVisible(anyStarred);
+    btnStarFilter.active = filterOn;
+    btnStarFilter.repaint();
+    resized();
+}
+
+void FileListPanel::setSort(SortColumn column, bool ascending)
+{
+    sortColumn = column;
+    sortAscending = ascending;
+    rebuildSortOrder();
+    content.repaint();
+    repaint();
+}
+
+void FileListPanel::rebuildSortOrder()
+{
+    sortOrder.resize(entries.size());
+    for (int i = 0; i < (int) entries.size(); ++i)
+        sortOrder[(size_t) i] = i;
+
+    std::stable_sort(sortOrder.begin(), sortOrder.end(), [this](int a, int b)
+    {
+        const auto& ea = entries[(size_t) a];
+        const auto& eb = entries[(size_t) b];
+        // Folders always first.
+        if (ea.isDirectory != eb.isDirectory)
+            return ea.isDirectory && !eb.isDirectory;
+
+        int cmp = 0;
+        switch (sortColumn)
+        {
+            case SortColumn::Name:
+                cmp = ea.name.compareNatural(eb.name);
+                break;
+            case SortColumn::Key:
+                cmp = ea.rootName.compareNatural(eb.rootName);
+                break;
+            case SortColumn::Tempo:
+                cmp = (ea.bpm < eb.bpm) ? -1 : (ea.bpm > eb.bpm ? 1 : 0);
+                break;
+            case SortColumn::Bars:
+                cmp = ea.bars - eb.bars;
+                break;
+        }
+        if (cmp == 0)
+            cmp = ea.name.compareNatural(eb.name);
+        return sortAscending ? cmp < 0 : cmp > 0;
+    });
+}
+
+int FileListPanel::displayToEntry(int displayIdx) const
+{
+    if (!juce::isPositiveAndBelow(displayIdx, (int) sortOrder.size()))
+        return -1;
+    return sortOrder[(size_t) displayIdx];
+}
+
+int FileListPanel::entryToDisplay(int entryIdx) const
+{
+    for (int i = 0; i < (int) sortOrder.size(); ++i)
+        if (sortOrder[(size_t) i] == entryIdx)
+            return i;
+    return -1;
 }
 
 void FileListPanel::selectAdjacent(int direction)
 {
-    if (entries.empty()) return;
-    setSelectedIndex(juce::jlimit(0, (int) entries.size() - 1,
-                                  (selected < 0 ? 0 : selected + direction)));
+    if (sortOrder.empty()) return;
+    int disp = entryToDisplay(selected);
+    if (disp < 0) disp = direction > 0 ? -1 : (int) sortOrder.size();
+    disp = juce::jlimit(0, (int) sortOrder.size() - 1, disp + direction);
+    setSelectedIndex(displayToEntry(disp));
 }
 
 bool FileListPanel::keyPressed(const juce::KeyPress& key)
 {
-    // Mirrors the prototype: ignore arrows while an editable control has focus.
-    if (auto* focus = getCurrentlyFocusedComponent())
-        if (dynamic_cast<juce::TextEditor*>(focus) != nullptr
-            || dynamic_cast<juce::ComboBox*>(focus) != nullptr)
-            return false;
+    if (dynamic_cast<juce::TextEditor*>(juce::Component::getCurrentlyFocusedComponent()) != nullptr
+        || dynamic_cast<juce::ComboBox*>(juce::Component::getCurrentlyFocusedComponent()) != nullptr)
+        return false;
 
-    if (key == juce::KeyPress::upKey)   { selectAdjacent(-1); return true; }
-    if (key == juce::KeyPress::downKey) { selectAdjacent(1); return true; }
-
+    if (key == juce::KeyPress::upKey)    { selectAdjacent(-1); return true; }
+    if (key == juce::KeyPress::downKey)  { selectAdjacent(1); return true; }
     if (key == juce::KeyPress::leftKey)
     {
         if (onEnterParent) onEnterParent();
@@ -274,28 +293,25 @@ bool FileListPanel::keyPressed(const juce::KeyPress& key)
     }
     if (key == juce::KeyPress::rightKey || key == juce::KeyPress::returnKey)
     {
-        if (selected >= 0 && onEnterFolder) onEnterFolder(selected);
+        if (selected >= 0 && entries[(size_t) selected].isDirectory && onEnterFolder)
+            onEnterFolder(selected);
         return true;
     }
 
-    // Page up/down jump by one visible page.
     const int pageRows = juce::jmax(1, viewport.getMaximumVisibleHeight() / metrics::listRowH());
     if (key == juce::KeyPress::pageUpKey)   { selectAdjacent(-pageRows); return true; }
     if (key == juce::KeyPress::pageDownKey) { selectAdjacent(pageRows); return true; }
     return false;
 }
 
-void FileListPanel::ensureRowVisible(int index)
+void FileListPanel::ensureRowVisible(int displayIdx)
 {
-    if (index < 0) return;
-    // Manual scroll math against the viewport (spec: no scrollIntoView):
-    // rowTop/rowBottom measured in content coordinates vs the current scrollTop.
+    if (displayIdx < 0) return;
     const int rowH = metrics::listRowH();
-    const int rowTop = index * rowH;
+    const int rowTop = displayIdx * rowH;
     const int rowBottom = rowTop + rowH;
     const int viewTop = viewport.getViewPositionY();
     const int viewH = viewport.getMaximumVisibleHeight();
-
     if (rowTop < viewTop)
         viewport.setViewPosition(0, rowTop);
     else if (rowBottom > viewTop + viewH)
@@ -309,6 +325,30 @@ void FileListPanel::updateContentSize()
         content.setSize(w, juce::jmax(1, viewport.getMaximumVisibleHeight()));
     else
         content.setSize(w, juce::jmax(1, (int) entries.size() * metrics::listRowH()));
+}
+
+void FileListPanel::timerCallback()
+{
+    if (playing && selected >= 0)
+        content.repaint(0, entryToDisplay(selected) * metrics::listRowH(),
+                        content.getWidth(), metrics::listRowH());
+}
+
+juce::Rectangle<int> FileListPanel::headerColumnBounds(SortColumn col) const
+{
+    auto h = getLocalBounds().removeFromTop(metrics::listHeaderH()).reduced(8, 0);
+    h.removeFromRight(btnStarFilter.isVisible() ? 52 : 28);
+    auto bars = h.removeFromRight(kBarsW);
+    auto tempo = h.removeFromRight(kTempoW);
+    auto key = h.removeFromRight(kKeyW);
+    switch (col)
+    {
+        case SortColumn::Name:  return h;
+        case SortColumn::Key:   return key;
+        case SortColumn::Tempo: return tempo;
+        case SortColumn::Bars:  return bars;
+    }
+    return {};
 }
 
 void FileListPanel::resized()
@@ -325,87 +365,131 @@ void FileListPanel::resized()
 void FileListPanel::paint(juce::Graphics& g)
 {
     g.fillAll(colours::panel());
+    paintColumnHeader(g);
 
-    auto bounds = getLocalBounds();
-    auto header = bounds.removeFromTop(metrics::listHeaderH());
-    g.setColour(colours::line());
-    g.fillRect(header.removeFromBottom(1));
-
-    auto h = header.reduced(10, 0).withTrimmedRight(btnStarFilter.isVisible() ? 52 : 28);
-    g.setColour(colours::text());
-    g.setFont(uiFont(14.0f, true));
-    const int countW = 40;
-    g.drawText(folderName, h.withTrimmedRight(countW), juce::Justification::centredLeft, true);
-    g.setColour(colours::text3());
-    g.setFont(monoFont(13.0f, false));
-    g.drawText(juce::String((int) entries.size()), h, juce::Justification::centredRight);
-
-    // Composed empty state when no MIDI files are listed.
     if (entries.empty())
     {
-        auto area = bounds.reduced(24, 32);
+        auto area = getLocalBounds().withTrimmedTop(metrics::listHeaderH()).reduced(24, 32);
         auto icon = area.removeFromTop(36).toFloat().withSizeKeepingCentre(28.0f, 28.0f);
         drawIcon(g, icons::folderOpen, icon, colours::text3(), 1.6f);
         area.removeFromTop(12);
         g.setColour(colours::text());
         g.setFont(uiFont(14.0f, true));
-        g.drawText("Open a Folder", area.removeFromTop(22),
-                   juce::Justification::centred);
+        g.drawText("Open a Folder", area.removeFromTop(22), juce::Justification::centred);
     }
 }
 
-void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> r,
+void FileListPanel::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.y >= metrics::listHeaderH())
+    {
+        // Empty-state open folder.
+        if (entries.empty() && onOpenFolder)
+            onOpenFolder();
+        return;
+    }
+
+    for (auto col : { SortColumn::Name, SortColumn::Key, SortColumn::Tempo, SortColumn::Bars })
+    {
+        if (headerColumnBounds(col).contains(e.getPosition()))
+        {
+            if (sortColumn == col)
+                sortAscending = !sortAscending;
+            else
+            {
+                sortColumn = col;
+                sortAscending = true;
+            }
+            rebuildSortOrder();
+            content.repaint();
+            repaint();
+            return;
+        }
+    }
+}
+
+void FileListPanel::paintColumnHeader(juce::Graphics& g)
+{
+    auto header = getLocalBounds().removeFromTop(metrics::listHeaderH());
+    g.setColour(colours::line());
+    g.fillRect(header.removeFromBottom(1));
+
+    auto drawCol = [&](SortColumn col, const juce::String& label, juce::Justification just)
+    {
+        auto r = headerColumnBounds(col);
+        const bool active = sortColumn == col;
+        g.setColour(active ? colours::text() : colours::text3());
+        g.setFont(uiFont(10.5f, true));
+        juce::String text = label;
+        if (active)
+            text += sortAscending ? " ▲" : " ▼";
+        g.drawText(text, r, just, true);
+    };
+
+    drawCol(SortColumn::Name, "Name", juce::Justification::centredLeft);
+    drawCol(SortColumn::Key, "Key", juce::Justification::centredRight);
+    drawCol(SortColumn::Tempo, "Tempo", juce::Justification::centredRight);
+    drawCol(SortColumn::Bars, "Bars", juce::Justification::centredRight);
+}
+
+void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<int> r,
                              bool hovered, bool hoverPlay, bool hoverStar)
 {
-    const auto& e = entries[(size_t) index];
-    const bool isSelected = index == selected;
+    const int entryIdx = displayToEntry(displayIdx);
+    if (entryIdx < 0) return;
+    const auto& e = entries[(size_t) entryIdx];
+    const bool isSelected = entryIdx == selected;
     const bool showEq = isSelected && playing && !e.isDirectory;
 
     if (isSelected)
     {
-        g.setColour(colours::accentSoft());
-        g.fillRect(r);
         g.setColour(colours::accent());
-        g.fillRect(r.withWidth(2));
+        g.fillRect(r);
     }
     else if (hovered)
     {
         g.setColour(colours::elev().withAlpha(0.55f));
         g.fillRect(r);
     }
+    else if ((displayIdx % 2) == 1)
+    {
+        g.setColour(colours::tableAlt());
+        g.fillRect(r);
+    }
+
+    const auto textCol = isSelected ? juce::Colours::white : colours::text2();
+    const auto metaCol = isSelected ? juce::Colours::white.withAlpha(0.8f) : colours::text3();
+    const auto iconCol = isSelected ? juce::Colours::white : colours::text3();
 
     auto row = r.reduced(8, 0);
+    auto playZone = row.removeFromRight(kPlayZoneW);
+    auto barsZone = row.removeFromRight(kBarsW);
+    auto tempoZone = row.removeFromRight(kTempoW);
+    auto keyZone = row.removeFromRight(kKeyW);
+    auto starZone = row.removeFromRight(kStarZoneW);
 
-    // Kind / folder icon
     auto iconArea = row.removeFromLeft(17).toFloat().withSizeKeepingCentre(15.0f, 15.0f);
-    drawIcon(g, e.isDirectory ? icons::folder : kindIcon(e.kind), iconArea,
-             isSelected ? colours::accent() : colours::text3(), 1.4f);
+    drawIcon(g, e.isDirectory ? icons::folder : kindIcon(e.kind), iconArea, iconCol, 1.4f);
     row.removeFromLeft(6);
 
     if (e.isDirectory)
     {
-        g.setColour(isSelected ? colours::text() : colours::text2());
-        g.setFont(uiFont(14.0f, true));
+        g.setColour(isSelected ? juce::Colours::white : colours::text());
+        g.setFont(uiFont(12.0f, true));
         g.drawText(e.name, row, juce::Justification::centredLeft, true);
         return;
     }
-
-    // Fixed right zones: [ … name | star | meta | play/eq ]
-    auto playZone = row.removeFromRight(kPlayZoneW);
-    auto metaZone = row.removeFromRight(kMetaZoneW);
-    auto starZone = row.removeFromRight(kStarZoneW);
 
     if (showEq)
     {
         auto eq = playZone.toFloat().withSizeKeepingCentre(13.0f, 13.0f);
         const double t = juce::Time::getMillisecondCounterHiRes() / 1000.0;
-        g.setColour(colours::accent());
+        g.setColour(juce::Colours::white.withAlpha(0.9f));
         for (int i = 0; i < 3; ++i)
         {
             const float phase = (float) std::sin(t * 7.0 + i * 2.1) * 0.5f + 0.5f;
             const float bh = 4.0f + phase * (eq.getHeight() - 4.0f);
-            const float x = eq.getX() + (float) i * 5.0f;
-            g.fillRoundedRectangle(x, eq.getBottom() - bh, 3.2f, bh, 1.2f);
+            g.fillRoundedRectangle(eq.getX() + (float) i * 5.0f, eq.getBottom() - bh, 3.2f, bh, 1.2f);
         }
     }
     else if (hovered)
@@ -419,52 +503,45 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
         }
         else
         {
-            drawIcon(g, icons::play, pb.reduced(2.0f), colours::text2(), 1.4f);
+            drawIcon(g, icons::play, pb.reduced(2.0f), textCol, 1.4f);
         }
     }
 
-    // Meta: root · bpm
-    juce::String meta;
-    if (e.rootName.isNotEmpty()) meta << e.rootName;
-    if (e.bpm > 0.0) meta << (meta.isEmpty() ? "" : " ") << juce::String((int) std::lround(e.bpm));
-    if (meta.isNotEmpty())
-    {
-        g.setFont(monoFont(13.0f, false));
-        g.setColour(colours::text3());
-        g.drawText(meta, metaZone, juce::Justification::centredRight);
-    }
+    g.setFont(monoFont(11.0f, false));
+    g.setColour(metaCol);
+    if (e.rootName.isNotEmpty())
+        g.drawText(e.rootName, keyZone, juce::Justification::centredRight);
+    if (e.bpm > 0.0)
+        g.drawText(juce::String((int) std::lround(e.bpm)), tempoZone, juce::Justification::centredRight);
+    if (e.bars > 0)
+        g.drawText(juce::String(e.bars), barsZone, juce::Justification::centredRight);
 
-    // Star (favourite): always visible so the affordance is discoverable.
     {
         auto st = starZone.toFloat().withSizeKeepingCentre(14.0f, 14.0f);
-        const auto col = e.starred ? colours::accent()
-                       : hoverStar ? colours::text()
-                                   : colours::text3();
+        const auto col = e.starred ? (isSelected ? juce::Colours::white : colours::accent())
+                       : hoverStar ? textCol : metaCol;
         drawIcon(g, icons::star, st, col, e.starred ? 1.9f : 1.25f);
     }
 
     if (e.edited)
     {
         auto dot = row.removeFromRight(8).toFloat().withSizeKeepingCentre(5.0f, 5.0f);
-        g.setColour(colours::accent());
+        g.setColour(isSelected ? juce::Colours::white : colours::accent());
         g.fillEllipse(dot);
         row.removeFromRight(1);
     }
 
-    // Same font for every row — selection changes colour + left accent bar only.
-    g.setColour(isSelected ? colours::text() : colours::text2());
-    g.setFont(uiFont(14.0f, false));
+    g.setColour(isSelected ? juce::Colours::white : colours::text());
+    g.setFont(uiFont(12.0f, false));
     g.drawText(e.name, row, juce::Justification::centredLeft, true);
 }
-
-// ── FileListPanel::ListContent ───────────────────────────────────────────────
 
 void FileListPanel::ListContent::paint(juce::Graphics& g)
 {
     const int rowH = metrics::listRowH();
     const auto clip = g.getClipBounds();
     const int first = juce::jmax(0, clip.getY() / rowH);
-    const int last = juce::jmin((int) owner.entries.size() - 1, clip.getBottom() / rowH);
+    const int last = juce::jmin((int) owner.sortOrder.size() - 1, clip.getBottom() / rowH);
     for (int i = first; i <= last; ++i)
         owner.paintRow(g, i, { 0, i * rowH, getWidth(), rowH }, i == hoverRow,
                        i == hoverRow && hoverPlay, i == hoverRow && hoverStar);
@@ -473,17 +550,19 @@ void FileListPanel::ListContent::paint(juce::Graphics& g)
 void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
 {
     const int rowH = metrics::listRowH();
-    const int row = e.y / rowH;
-    const bool valid = juce::isPositiveAndBelow(row, (int) owner.entries.size());
-    const bool isDir = valid && owner.entries[(size_t) row].isDirectory;
-    const int newHover = valid ? row : -1;
+    const int disp = e.y / rowH;
+    const bool valid = juce::isPositiveAndBelow(disp, (int) owner.sortOrder.size());
+    const int entryIdx = valid ? owner.displayToEntry(disp) : -1;
+    const bool isDir = entryIdx >= 0 && owner.entries[(size_t) entryIdx].isDirectory;
     const int fromRight = getWidth() - 8 - e.x;
     const bool newHoverPlay = valid && !isDir && fromRight >= 0 && fromRight < kPlayZoneW;
-    const bool newHoverStar = valid && !isDir && fromRight >= kPlayZoneW + kMetaZoneW
-                              && fromRight < kPlayZoneW + kMetaZoneW + kStarZoneW;
-    if (newHover != hoverRow || newHoverPlay != hoverPlay || newHoverStar != hoverStar)
+    const bool newHoverStar = valid && !isDir
+        && fromRight >= kPlayZoneW + kBarsW + kTempoW + kKeyW
+        && fromRight < kPlayZoneW + kBarsW + kTempoW + kKeyW + kStarZoneW;
+
+    if (disp != hoverRow || newHoverPlay != hoverPlay || newHoverStar != hoverStar)
     {
-        hoverRow = newHover;
+        hoverRow = valid ? disp : -1;
         hoverPlay = newHoverPlay;
         hoverStar = newHoverStar;
         repaint();
@@ -493,46 +572,42 @@ void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
 void FileListPanel::ListContent::mouseExit(const juce::MouseEvent&)
 {
     hoverRow = -1;
-    hoverPlay = false;
-    hoverStar = false;
+    hoverPlay = hoverStar = false;
     repaint();
 }
 
 void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
 {
-    if (owner.entries.empty())
+    // Column header clicks are handled by the parent panel.
+    if (e.y < 0) return;
+
+    // Sort header lives on the parent — check if click was forwarded from header.
+    const int rowH = metrics::listRowH();
+    const int disp = e.y / rowH;
+    if (!juce::isPositiveAndBelow(disp, (int) owner.sortOrder.size()))
+        return;
+
+    const int entryIdx = owner.displayToEntry(disp);
+    if (entryIdx < 0) return;
+    const auto& entry = owner.entries[(size_t) entryIdx];
+    const int fromRight = getWidth() - 8 - e.x;
+
+    if (!entry.isDirectory && fromRight >= 0 && fromRight < kPlayZoneW)
     {
-        if (owner.onOpenFolder)
-            owner.onOpenFolder();
+        if (owner.onPlayRow) owner.onPlayRow(entryIdx);
+        return;
+    }
+    if (!entry.isDirectory
+        && fromRight >= kPlayZoneW + kBarsW + kTempoW + kKeyW
+        && fromRight < kPlayZoneW + kBarsW + kTempoW + kKeyW + kStarZoneW)
+    {
+        if (owner.onToggleStar) owner.onToggleStar(entryIdx);
         return;
     }
 
-    const int row = e.y / metrics::listRowH();
-    if (!juce::isPositiveAndBelow(row, (int) owner.entries.size()))
-        return;
-    owner.grabKeyboardFocus();
-
-    const auto& entry = owner.entries[(size_t) row];
-    if (entry.isDirectory)
-    {
-        owner.setSelectedIndex(row);
-        if (owner.onEnterFolder)
-            owner.onEnterFolder(row);
-        return;
-    }
-
-    if (hoverStar && owner.onToggleStar)
-    {
-        owner.onToggleStar(row);
-        return;
-    }
-    if (hoverPlay && owner.onPlayRow)
-    {
-        owner.setSelectedIndex(row);
-        owner.onPlayRow(row);
-        return;
-    }
-    owner.setSelectedIndex(row);
+    owner.setSelectedIndex(entryIdx);
+    if (entry.isDirectory && e.getNumberOfClicks() > 1 && owner.onEnterFolder)
+        owner.onEnterFolder(entryIdx);
 }
 
 } // namespace pflow

@@ -3,59 +3,14 @@
 #include <set>
 #include "EditModel.h"
 #include "GrooveEngine.h"
-#include "KnobPanel.h"
 #include "UiAtoms.h"
 
 namespace pflow {
 
-// ── Shared vertical pitch mapping for the mini roll ──────────────────────────
-struct PitchRowMap
-{
-    int minPitch = 48, maxPitch = 72;   // inclusive
-    float rowH = 8.0f;
-
-    int numRows() const { return maxPitch - minPitch + 1; }
-    float yForPitchTop(int pitch, float height) const
-    {
-        return height - (float) (pitch - minPitch + 1) * rowH;
-    }
-    int pitchForY(float y, float height) const
-    {
-        return minPitch + (int) std::floor((height - y) / rowH);
-    }
-    void fit(const std::vector<RollNote>& notes, float height, int minRange = 16);
-};
-
 /** Effective per-note velocity (file velocity as base, groove on top). */
 double effectiveVelocity(const RollNote& n, const GrooveParams& k);
 
-// ── PianoRollMini ────────────────────────────────────────────────────────────
-// Read-only compact roll: resolved+grooved notes + playhead. No editing.
-
-class PianoRollMini : public juce::Component
-{
-public:
-    void setNotes(std::vector<RollNote> resolvedGrooved, int bars, const GrooveParams& groove);
-    void setPlayheadStep(double step, bool playing);
-    void setTimeStretch(double stretch);
-    void paint(juce::Graphics&) override;
-
-private:
-    std::vector<RollNote> notes;
-    GrooveParams knobs;
-    int bars = 1;
-    double playheadStep = 0.0;
-    bool playing = false;
-    double timeStretch = 1.0;
-};
-
-// ── PianoRollEditorD ─────────────────────────────────────────────────────────
-// instrument strip · toolbar · roll · velocity lane · Groove panel.
-//
-// Roll geometry (Live/Logic-style): the content spans the full MIDI pitch
-// range (or only note-bearing rows when folded) at a fixed, zoomable row
-// height, scrolling both axes inside a viewport. The key gutter shares the
-// exact same row mapping, offset by the viewport's vertical scroll.
+// Cupertino editor: clip header · toolbar · roll · velocity lane.
 
 class PianoRollEditor : public juce::Component
 {
@@ -79,8 +34,6 @@ public:
     void deleteSelectedNotes();   // non-destructive (edit.deleted)
 
     std::function<void(const ClipEdit&)> onEditChanged;
-    std::function<void(const GrooveParams&)> onGrooveChanged;
-    std::function<void(bool)> onLockToggled;   // browse-lock for pitch edits
     /** Loop region in unstretched steps [start, end); end exclusive. */
     std::function<void(double startStep, double endStep)> onLoopChanged;
 
@@ -144,10 +97,6 @@ private:
         static constexpr int headerH = 22;
         static constexpr int laneH = 64;
 
-    private:
-        const RollNote* noteAtX(float x) const;
-        void applyDragVelocity(const juce::MouseEvent&);
-        int dragNoteId = -1;
     };
 
     /** Folding Scale section (Bottom placement): octave / key / mode / fit / map. */
@@ -271,7 +220,6 @@ private:
     VelocityLane velocityLane { *this };
     bool velocityOpen = false;
     ScalePanel scalePanel { *this };
-    KnobsPanel knobsPanel;
 
     static constexpr int stripH = 46;
     static constexpr int toolbarH = 36;

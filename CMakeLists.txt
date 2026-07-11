@@ -99,6 +99,7 @@ target_sources(MidiBrowser PRIVATE
     Source/TransportBar.cpp
     Source/BrowserPanels.cpp
     Source/KnobPanel.cpp
+    Source/EffectsInspector.cpp
     Source/PianoRollEditor.cpp
     Source/Theme.cpp
 )

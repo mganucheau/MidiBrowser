@@ -244,20 +244,19 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     original.lastBrowserDir = "/tmp/MidiBrowserSaved";
     original.trimEmptyMeasuresPreview = true;
     original.syncSessionBars.store(8);
-    tweaks().theme.store((int) ThemeId::Ink);
-    tweaks().accent.store((int) AccentId::Mint);
+    original.effectsOpen = true;
+    original.effectsLock = true;
+    original.lockedGroove.swing = 42;
+    original.lockedGroove.pocket = -20;
     tweaks().density.store((int) Density::Comfortable);
-    tweaks().grid.store((int) GridStyle::Blueprint);
+    tweaks().size.store((int) ContentSize::Large);
     original.addSavedBrowserDir(juce::File::getSpecialLocation(juce::File::tempDirectory).getFullPathName());
 
     juce::MemoryBlock state;
     original.getStateInformation(state);
 
-    // Reset the shared tweaks, then confirm setState restores them.
-    tweaks().theme.store((int) ThemeId::Graphite);
-    tweaks().accent.store((int) AccentId::Amber);
     tweaks().density.store((int) Density::Compact);
-    tweaks().grid.store((int) GridStyle::Minimal);
+    tweaks().size.store((int) ContentSize::Medium);
 
     MidiBrowserProcessor restored;
     restored.setStateInformation(state.getData(), (int) state.getSize());
@@ -265,16 +264,16 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     REQUIRE(restored.lastBrowserDir == original.lastBrowserDir);
     REQUIRE(restored.trimEmptyMeasuresPreview == original.trimEmptyMeasuresPreview);
     REQUIRE(restored.syncSessionBars.load() == 8);
-    REQUIRE(tweaks().theme.load() == (int) ThemeId::Ink);
-    REQUIRE(tweaks().accent.load() == (int) AccentId::Mint);
+    REQUIRE(restored.effectsOpen);
+    REQUIRE(restored.effectsLock);
+    REQUIRE(restored.lockedGroove.swing == 42);
+    REQUIRE(restored.lockedGroove.pocket == -20);
     REQUIRE(tweaks().density.load() == (int) Density::Comfortable);
-    REQUIRE(tweaks().grid.load() == (int) GridStyle::Blueprint);
+    REQUIRE(tweaks().size.load() == (int) ContentSize::Large);
     REQUIRE(restored.savedBrowserDirs.size() == original.savedBrowserDirs.size());
 
-    tweaks().theme.store((int) ThemeId::Graphite);
-    tweaks().accent.store((int) AccentId::Amber);
     tweaks().density.store((int) Density::Compact);
-    tweaks().grid.store((int) GridStyle::Minimal);
+    tweaks().size.store((int) ContentSize::Medium);
 }
 
 TEST_CASE("Processor state ignores empty and legacy-safe payloads", "[Processor][qa]")

@@ -4,10 +4,8 @@
 
 namespace pflow {
 
-// ── Transport bar ────────────────────────────────────────────────────────────
-// app glyph + wordmark · play/stop · Synced/Free pill · BPM · (/2 x2 when open) ·
-// Editor fold icon. BPM is a static readout when synced and an editable number
-// input (20–300) driving playback tempo when free.
+// Cupertino toolbar: traffic lights · title · play/stop · BPM pill · spacer ·
+// editor / effects toggles. BPM is editable when unsynced.
 
 class TransportBar : public juce::Component
 {
@@ -19,24 +17,25 @@ public:
 
     void setPlaying(bool);
     void setSynced(bool, juce::NotificationType notify = juce::dontSendNotification);
-    void setHostBpm(double);      // live DAW tempo (shown ×multiplier when synced)
+    void setHostBpm(double);
     void setBpmMultiplier(double);
     void setFreeBpm(double);
-    void setClipBpm(double);      // embedded tempo from the selected MIDI file
+    void setClipBpm(double);
     void setEditorOpen(bool);
+    void setEffectsOpen(bool);
 
     std::function<void()> onPlayPause;
     std::function<void()> onStop;
     std::function<void()> onToggleEditor;
+    std::function<void()> onToggleEffects;
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
-    std::function<void(double)> onMultiplierChanged;   // ÷2 / ×2 while synced
-    std::function<void()> onDragToDaw;   // begin external drag of the edited clip
+    std::function<void(double)> onMultiplierChanged;
+    std::function<void()> onDragToDaw;
 
 private:
     void refreshBpm();
 
-    /** Chip that starts an external drag instead of clicking. */
     class DragChip : public ChipBtn
     {
     public:
@@ -55,7 +54,6 @@ private:
             dragging = false;
             ChipBtn::mouseUp(e);
         }
-
     private:
         bool dragging = false;
     };
@@ -63,16 +61,17 @@ private:
     IconBtn btnPlay { icons::play, "Play / pause preview" };
     IconBtn btnStop { icons::stop, "Stop" };
     PillToggle syncToggle { "Synced", "Free" };
-    IconBtn syncIcon { icons::infinity, "Toggle DAW sync" };
     juce::Label bpmLabel;
     ChipBtn btnHalf { "/2" };
     ChipBtn btnDouble { "x2" };
     DragChip btnDragToDaw { "Drag to DAW" };
-    IconBtn btnEditor { icons::arrowsOut, "Open editor" };
+    IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
+    IconBtn btnEffects { icons::sliders, "Toggle effects" };
 
     bool playing = false;
     bool synced = true;
     bool editorOpen = false;
+    bool effectsOpen = false;
     double hostBpm = 124.0;
     double freeBpm = 124.0;
     double multiplier = 1.0;

@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "BrowserPanels.h"
 #include "TestHelpers.h"
 #include <catch2/catch_approx.hpp>
 
@@ -83,7 +84,7 @@ TEST_CASE("Trim button trims and restores through the real editor UI", "[editoru
     dir.deleteRecursively();
 }
 
-TEST_CASE("Fold and lock buttons are reachable and lock persists a template", "[editorui]")
+TEST_CASE("Fold and pitch-lock buttons are reachable; lock persists a template", "[editorui]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
 
@@ -92,16 +93,18 @@ TEST_CASE("Fold and lock buttons are reachable and lock persists a template", "[
     MidiBrowserProcessor proc;
     proc.lastBrowserDir = dir.getFullPathName();
     proc.editorOpen = true;
+    proc.effectsOpen = true;
 
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     ed->setVisible(true);
-    ed->setSize(1100, 620);
+    ed->setSize(1300, 620);
 
     auto* fold = dynamic_cast<juce::Button*>(findById(ed.get(), "btnFold"));
     REQUIRE(fold != nullptr);
     REQUIRE(fold->isEnabled());
     fold->onClick();   // no crash, toggles fold state
 
+    // Pitch lock lives in the Effects inspector (Pitch & Scale section).
     auto* lock = dynamic_cast<juce::Button*>(findById(ed.get(), "btnLock"));
     REQUIRE(lock != nullptr);
     REQUIRE_FALSE(proc.editLock);
@@ -110,6 +113,62 @@ TEST_CASE("Fold and lock buttons are reachable and lock persists a template", "[
     lock->onClick();
     CHECK_FALSE(proc.editLock);
 
+    auto* fxLock = dynamic_cast<juce::Button*>(findById(ed.get(), "btnEffectsLock"));
+    REQUIRE(fxLock != nullptr);
+    REQUIRE_FALSE(proc.effectsLock);
+    fxLock->onClick();
+    CHECK(proc.effectsLock);
+    fxLock->onClick();
+    CHECK_FALSE(proc.effectsLock);
+
     ed = nullptr;
     dir.deleteRecursively();
+}
+
+TEST_CASE("File table keyboard nav follows sorted display order", "[editorui]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+
+    FileListPanel panel;
+    panel.setSize(400, 300);
+
+    std::vector<FileListEntry> entries(3);
+    entries[0].name = "zebra";
+    entries[0].bars = 8;
+    entries[0].bpm = 120;
+    entries[1].name = "alpha";
+    entries[1].bars = 2;
+    entries[1].bpm = 90;
+    entries[2].name = "middle";
+    entries[2].bars = 4;
+    entries[2].bpm = 100;
+    panel.setEntries(std::move(entries));
+
+    // Default sort: Name ascending → alpha, middle, zebra
+    std::vector<int> visited;
+    panel.onSelect = [&](int idx) { visited.push_back(idx); };
+
+    panel.setSelectedIndex(1); // alpha (entry 1)
+    REQUIRE(panel.getSelectedIndex() == 1);
+
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    REQUIRE(panel.getSelectedIndex() == 2); // middle
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    REQUIRE(panel.getSelectedIndex() == 0); // zebra
+
+    // Sort by Bars ascending → alpha(2), middle(4), zebra(8)
+    panel.setSort(FileListPanel::SortColumn::Bars, true);
+    panel.setSelectedIndex(1); // alpha
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    REQUIRE(panel.getSelectedIndex() == 2); // middle
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    REQUIRE(panel.getSelectedIndex() == 0); // zebra
+
+    // Bars descending → zebra, middle, alpha
+    panel.setSort(FileListPanel::SortColumn::Bars, false);
+    panel.setSelectedIndex(0); // zebra
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    REQUIRE(panel.getSelectedIndex() == 2); // middle
+    panel.keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    REQUIRE(panel.getSelectedIndex() == 1); // alpha
 }

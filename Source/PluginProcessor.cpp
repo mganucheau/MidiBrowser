@@ -287,13 +287,9 @@ void MidiBrowserProcessor::removeSavedBrowserDir(const juce::String& path)
 void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
     juce::XmlElement xml("MidiBrowserState");
-    xml.setAttribute("version", 3);
-    xml.setAttribute("tweakTheme", tweaks().theme.load());
-    xml.setAttribute("tweakAccent", tweaks().accent.load());
+    xml.setAttribute("version", 4);
     xml.setAttribute("tweakDensity", tweaks().density.load());
-    xml.setAttribute("tweakGrid", tweaks().grid.load());
     xml.setAttribute("tweakSize", tweaks().size.load());
-    xml.setAttribute("tweakScalePlacement", tweaks().scalePlacement.load());
     xml.setAttribute("syncSessionBars", syncSessionBars.load());
     xml.setAttribute("lastBrowserDir", lastBrowserDir);
     xml.setAttribute("trimEmptyMeasuresPreview", trimEmptyMeasuresPreview ? 1 : 0);
@@ -301,15 +297,23 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("freeBpm", freeBpm.load());
     xml.setAttribute("bpmMultiplier", bpmMultiplier.load());
     xml.setAttribute("editorOpen", editorOpen ? 1 : 0);
+    xml.setAttribute("effectsOpen", effectsOpen ? 1 : 0);
     xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
-    xml.setAttribute("miniOpen", miniOpen ? 1 : 0);
     xml.setAttribute("editLock", editLock ? 1 : 0);
+    xml.setAttribute("effectsLock", effectsLock ? 1 : 0);
     xml.setAttribute("lockAutoTrim", lockAutoTrim ? 1 : 0);
     xml.setAttribute("lockOctave", lockedEdit.octave);
     xml.setAttribute("lockFitScale", lockedEdit.fitScale ? 1 : 0);
     xml.setAttribute("lockMapToRoot", lockedEdit.mapToRoot ? 1 : 0);
     xml.setAttribute("lockRoot", lockedEdit.root);
     xml.setAttribute("lockMode", (int) lockedEdit.mode);
+    xml.setAttribute("lockSwing", lockedGroove.swing);
+    xml.setAttribute("lockPocket", lockedGroove.pocket);
+    xml.setAttribute("lockHumanize", lockedGroove.humanize);
+    xml.setAttribute("lockDynamics", lockedGroove.dynamics);
+    xml.setAttribute("lockLength", lockedGroove.length);
+    xml.setAttribute("lockIntensity", lockedGroove.intensity);
+    xml.setAttribute("lockSwingBase", (int) lockedGroove.swingBase);
     for (const auto& folder : savedBrowserDirs)
     {
         if (folder.isNotEmpty())
@@ -401,18 +405,10 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
     {
         if (xml->hasTagName("MidiBrowserState") || xml->hasTagName("PatternFlowState"))
         {
-            tweaks().theme.store(juce::jlimit(0, kNumThemes - 1,
-                xml->getIntAttribute("tweakTheme", (int) ThemeId::Graphite)));
-            tweaks().accent.store(juce::jlimit(0, kNumAccents - 1,
-                xml->getIntAttribute("tweakAccent", (int) AccentId::Amber)));
             tweaks().density.store(juce::jlimit(0, 1,
                 xml->getIntAttribute("tweakDensity", (int) Density::Compact)));
-            tweaks().grid.store(juce::jlimit(0, kNumGridStyles - 1,
-                xml->getIntAttribute("tweakGrid", (int) GridStyle::Minimal)));
             tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1,
                 xml->getIntAttribute("tweakSize", (int) ContentSize::Medium)));
-            tweaks().scalePlacement.store(juce::jlimit(0, kNumScalePlacements - 1,
-                xml->getIntAttribute("tweakScalePlacement", (int) ScalePlacement::Top)));
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");
@@ -421,9 +417,10 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             freeBpm.store(juce::jlimit(20.0, 300.0, xml->getDoubleAttribute("freeBpm", 124.0)));
             bpmMultiplier.store(juce::jlimit(0.25, 4.0, xml->getDoubleAttribute("bpmMultiplier", 1.0)));
             editorOpen = xml->getIntAttribute("editorOpen", 0) != 0;
-            sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
-            miniOpen = xml->getIntAttribute("miniOpen", 1) != 0;
+            effectsOpen = xml->getIntAttribute("effectsOpen", 0) != 0;
+            sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 0) != 0;
             editLock = xml->getIntAttribute("editLock", 0) != 0;
+            effectsLock = xml->getIntAttribute("effectsLock", 0) != 0;
             lockAutoTrim = xml->getIntAttribute("lockAutoTrim", 0) != 0;
             lockedEdit = ClipEdit();
             lockedEdit.octave = juce::jlimit(-3, 3, xml->getIntAttribute("lockOctave", 0));
@@ -432,6 +429,15 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             lockedEdit.root = juce::jlimit(-1, 11, xml->getIntAttribute("lockRoot", -1));
             lockedEdit.mode = (Mode) juce::jlimit(0, kNumModes - 1,
                 xml->getIntAttribute("lockMode", (int) Mode::Dorian));
+            lockedGroove = GrooveParams();
+            lockedGroove.set(0, xml->getIntAttribute("lockSwing", 0));
+            lockedGroove.set(1, xml->getIntAttribute("lockPocket", 0));
+            lockedGroove.set(2, xml->getIntAttribute("lockHumanize", 0));
+            lockedGroove.set(3, xml->getIntAttribute("lockDynamics", 0));
+            lockedGroove.set(4, xml->getIntAttribute("lockLength", 100));
+            lockedGroove.set(5, xml->getIntAttribute("lockIntensity", 100));
+            lockedGroove.swingBase = xml->getIntAttribute("lockSwingBase", 0) != 0
+                                         ? SwingBase::Sixteenth : SwingBase::Eighth;
             for (auto* child : xml->getChildIterator())
             {
                 if (child->hasTagName("SavedFolder"))

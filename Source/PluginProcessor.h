@@ -93,10 +93,14 @@ public:
     bool lockAutoTrim = false;
     ClipEdit lockedEdit;
 
+    // Effects browse-lock: when set, groove params persist across file selection.
+    bool effectsLock = false;
+    GrooveParams lockedGroove;
+
     // UI layout state (persisted)
     bool editorOpen = false;
-    bool sidebarCollapsed = true;
-    bool miniOpen = true;
+    bool effectsOpen = false;
+    bool sidebarCollapsed = false;
 
     juce::String lastBrowserDir;
     bool trimEmptyMeasuresPreview = false;

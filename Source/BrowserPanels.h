@@ -5,9 +5,7 @@
 
 namespace pflow {
 
-// ── Favorites sidebar ────────────────────────────────────────────────────────
-// Collapsed: 48px icon rail (toggle + one chip per saved folder).
-// Expanded: labelled list with active highlight, add-current, remove-on-hover.
+// Cupertino source sidebar: always 176px with FAVORITES / LOCATIONS sections.
 
 class FavoritesSidebar : public juce::Component
 {
@@ -21,9 +19,9 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
 
     void setSavedDirs(const juce::StringArray& paths, const juce::String& activePath);
-    bool isCollapsed() const { return collapsed; }
-    void setCollapsed(bool shouldCollapse);
-    int idealWidth() const { return collapsed ? metrics::sidebarRailW : metrics::sidebarExpandedW; }
+    bool isCollapsed() const { return false; }
+    void setCollapsed(bool) {}
+    int idealWidth() const { return metrics::sidebarW; }
 
     std::function<void(const juce::String&)> onPickDir;
     std::function<void(const juce::String&)> onRemoveDir;
@@ -33,44 +31,44 @@ public:
 
 private:
     struct RowHit { int index = -1; bool removeZone = false; };
-    RowHit hitTest(juce::Point<int> pos) const;
+    RowHit rowHitAt(juce::Point<int> pos) const;
     juce::Rectangle<int> rowBounds(int index) const;
 
-    IconBtn btnToggle { icons::sidebar, "Show saved folders" };
     IconBtn btnAdd { icons::plus, "Save current folder" };
-    IconBtn btnTweaks { icons::gear, "Tweaks: theme, accent, spacing, grid" };
+    IconBtn btnTweaks { icons::gear, "Tweaks: spacing, content size" };
     juce::StringArray dirs;
     juce::String active;
-    bool collapsed = true;
     int hoverRow = -1;
     bool hoverRemove = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FavoritesSidebar)
 };
 
-// ── File list ────────────────────────────────────────────────────────────────
-// Header (folder name + count, no filter box) above scrollable rows:
-// kind icon · name · root/bpm meta · edited dot · hover play · playing EQ.
+// Sortable 4-column file table: Name · Key · Tempo · Bars.
 
 struct FileListEntry
 {
     juce::File file;
-    juce::String name;      // display name (no extension)
+    juce::String name;
     ClipKind kind = ClipKind::Keys;
-    juce::String rootName;  // "C".."B" or empty
+    juce::String rootName;
     double bpm = 0.0;
-    bool edited = false;    // !editIsClean for this file
-    bool starred = false;   // favourited
+    int bars = 0;
+    bool edited = false;
+    bool starred = false;
     bool isDirectory = false;
 };
 
 class FileListPanel : public juce::Component, private juce::Timer
 {
 public:
+    enum class SortColumn { Name, Key, Tempo, Bars };
+
     FileListPanel();
 
     void resized() override;
     void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
 
     void setFolderName(const juce::String& name);
@@ -79,21 +77,20 @@ public:
     void setSelectedIndex(int index, juce::NotificationType notify = juce::sendNotification);
     int getSelectedIndex() const { return selected; }
     int getNumEntries() const { return (int) entries.size(); }
-    void setPlaying(bool isPlaying);   // equalizer on the selected row
+    void setPlaying(bool isPlaying);
 
-    /** Move selection by ±1 from the keyboard; scrolls the row into view. */
     void selectAdjacent(int direction);
 
-    std::function<void(int)> onSelect;         // row chosen (click or keys)
-    std::function<void(int)> onPlayRow;        // hover play button pressed
-    std::function<void(int)> onToggleStar;     // star zone clicked
-    std::function<void()> onOpenFolder;        // header folder button / empty state
-    std::function<void()> onToggleStarFilter;  // header star-filter button
-    std::function<void()> onEnterParent;       // Left: leave current folder
-    std::function<void(int)> onEnterFolder;    // Right / open directory row
+    std::function<void(int)> onSelect;
+    std::function<void(int)> onPlayRow;
+    std::function<void(int)> onToggleStar;
+    std::function<void()> onOpenFolder;
+    std::function<void()> onToggleStarFilter;
+    std::function<void()> onEnterParent;
+    std::function<void(int)> onEnterFolder;
 
-    /** Header star-filter button: shown when the folder has starred files. */
     void setStarFilter(bool filterOn, bool anyStarred);
+    void setSort(SortColumn column, bool ascending);
 
     const FileListEntry* entryAt(int index) const
     {
@@ -116,19 +113,28 @@ private:
         bool hoverStar = false;
     };
 
-    // Fixed right-side row zones (stable layout, no hover shifting)
+    static constexpr int kKeyW = 40;
+    static constexpr int kTempoW = 48;
+    static constexpr int kBarsW = 40;
     static constexpr int kPlayZoneW = 20;
-    static constexpr int kMetaZoneW = 40;
     static constexpr int kStarZoneW = 18;
 
     void timerCallback() override;
     void ensureRowVisible(int index);
     void paintRow(juce::Graphics&, int index, juce::Rectangle<int> r,
                   bool hovered, bool hoverPlay, bool hoverStar);
+    void paintColumnHeader(juce::Graphics&);
     void updateContentSize();
+    void rebuildSortOrder();
+    int displayToEntry(int displayIdx) const;
+    int entryToDisplay(int entryIdx) const;
+    juce::Rectangle<int> headerColumnBounds(SortColumn col) const;
 
     juce::String folderName { "Select a folder" };
     std::vector<FileListEntry> entries;
+    std::vector<int> sortOrder;   // display index → entry index
+    SortColumn sortColumn = SortColumn::Name;
+    bool sortAscending = true;
     int selected = -1;
     bool playing = false;
 
