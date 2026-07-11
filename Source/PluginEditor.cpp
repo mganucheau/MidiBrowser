@@ -59,11 +59,6 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         processorRef.freerunBeat.store(0.0);
     };
     transport.onFreeBpmChanged = [this](double bpm) { processorRef.freeBpm.store(bpm); };
-    transport.onMultiplierChanged = [this](double m)
-    {
-        processorRef.bpmMultiplier.store(m);
-        applyTimeStretchFromMultiplier();
-    };
     transport.onToggleEditor = [this] { toggleEditorFold(); };
     transport.onToggleEffects = [this] { toggleEffectsFold(); };
     transport.onDragToDaw = [this] { startDragExport(); };
@@ -96,6 +91,12 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         refreshSidebar();
     };
     sidebar.onOpenTweaks = [this] { showTweaksMenu(); };
+    sidebar.onCollapsedChanged = [this]
+    {
+        processorRef.sidebarCollapsed = sidebar.isCollapsed();
+        applyLayoutState();
+    };
+    sidebar.setCollapsed(processorRef.sidebarCollapsed);
     content.addAndMakeVisible(sidebar);
 
     // ── File list ──
@@ -143,7 +144,11 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     };
     fileList.onEnterParent = [this] { enterParentFolder(); };
     fileList.onEnterFolder = [this](int displayIdx) { enterFolderAtDisplay(displayIdx); };
+    fileList.onDragFile = [this](const juce::File& f) { startDragOriginalFile(f); };
     content.addAndMakeVisible(fileList);
+
+    content.addAndMakeVisible(previewHeader);
+    content.addAndMakeVisible(miniRoll);
 
     // ── Piano-roll editor ──
     rollEditor.onEditChanged = [this](const ClipEdit& e)
@@ -180,6 +185,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
                 processorRef.lockedGroove = k;
             rollEditor.setClip(*clip, selectedEdit(), k);
             pushPreviewToProcessor();
+            updateMiniPreview();
         }
     };
     effectsInspector.onEditChanged = [this](const ClipEdit& e)
@@ -192,6 +198,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             rollEditor.setClip(*clip, e, selectedGroove());
             refreshEntryMeta(selectedIdx);
             pushPreviewToProcessor();
+            updateMiniPreview();
         }
     };
     effectsInspector.onEffectsLockToggled = [this](bool locked)
@@ -217,10 +224,19 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             processorRef.lockedGroove = GrooveParams();
             rollEditor.setClip(*clip, selectedEdit(), GrooveParams());
             pushPreviewToProcessor();
+            updateMiniPreview();
         }
+    };
+    effectsInspector.onBpmMultiplierChanged = [this](double m)
+    {
+        processorRef.bpmMultiplier.store(m);
+        transport.setBpmMultiplier(m);
+        applyTimeStretchFromMultiplier();
+        updateMiniPreview();
     };
     effectsInspector.setEffectsLocked(processorRef.effectsLock);
     effectsInspector.setPitchLocked(processorRef.editLock);
+    effectsInspector.setBpmMultiplier(processorRef.bpmMultiplier.load());
     content.addAndMakeVisible(effectsInspector);
 
     if (processorRef.lastBrowserDir.isNotEmpty())
@@ -235,6 +251,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     applyLayoutState();
     startTimerHz(30);
     setWantsKeyboardFocus(true);
+    updateMiniPreview();
 }
 
 MidiBrowserEditor::~MidiBrowserEditor()
@@ -377,8 +394,10 @@ void MidiBrowserEditor::syncEffectsInspector()
     effectsInspector.setHasClip(selectedClip() != nullptr);
     effectsInspector.setEdit(selectedEdit(), juce::dontSendNotification);
     effectsInspector.setGroove(selectedGroove(), juce::dontSendNotification);
+    effectsInspector.setBpmMultiplier(processorRef.bpmMultiplier.load(), juce::dontSendNotification);
     effectsInspector.setEffectsLocked(processorRef.effectsLock);
     effectsInspector.setPitchLocked(processorRef.editLock);
+    updateMiniPreview();
 }
 
 void MidiBrowserEditor::chooseFolder()
@@ -487,6 +506,7 @@ void MidiBrowserEditor::selectIndex(int index)
         fileList.setSelectedIndex(d, juce::dontSendNotification);
 
     pushPreviewToProcessor();
+    updateMiniPreview();
 }
 
 void MidiBrowserEditor::refreshEntryMeta(int index)
@@ -565,6 +585,71 @@ void MidiBrowserEditor::startDragExport()
         juce::StringArray(file.getFullPathName()), false, &transport);
 }
 
+void MidiBrowserEditor::startDragOriginalFile(const juce::File& file)
+{
+    if (!file.getFullPathName().isNotEmpty() || !file.existsAsFile())
+        return;
+    juce::DragAndDropContainer::performExternalDragDropOfFiles(
+        juce::StringArray(file.getFullPathName()), true, &fileList);
+}
+
+void MidiBrowserEditor::updateMiniPreview()
+{
+    const auto* clip = selectedClip();
+    if (clip == nullptr)
+    {
+        miniRoll.setNotes({}, 1, {});
+        previewHeader.repaint();
+        transport.setHasClip(false);
+        return;
+    }
+
+    transport.setHasClip(true);
+    const auto edit = selectedEdit();
+    const auto groove = selectedGroove();
+    const auto resolved = resolveClip(*clip, edit);
+    miniRoll.setNotes(applyGroove(resolved.notes, groove), resolved.bars, groove);
+    const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
+    miniRoll.setTimeStretch(stretch);
+    previewHeader.repaint();
+}
+
+// ── Preview header ───────────────────────────────────────────────────────────
+
+void MidiBrowserEditor::PreviewHeader::paint(juce::Graphics& g)
+{
+    g.fillAll(colours::panel());
+    g.setColour(colours::line());
+    g.fillRect(getLocalBounds().removeFromTop(1));
+
+    auto r = getLocalBounds().reduced(10, 0);
+    auto caret = r.removeFromLeft(12).toFloat().withSizeKeepingCentre(9.0f, 9.0f);
+    drawIcon(g, owner.processorRef.previewOpen ? icons::caretDown : icons::caretUp,
+             caret, colours::text3(), 1.5f);
+    r.removeFromLeft(6);
+
+    const auto* clip = owner.selectedClip();
+    g.setColour(colours::text2());
+    g.setFont(uiFont(13.0f, true));
+    g.drawText(clip != nullptr ? clip->name : "Preview",
+               r.withTrimmedRight(52), juce::Justification::centredLeft, true);
+
+    if (clip != nullptr)
+    {
+        const auto resolved = resolveClip(*clip, owner.selectedEdit());
+        g.setColour(colours::text3());
+        g.setFont(monoFont(12.0f, false));
+        g.drawText(juce::String(resolved.bars) + " bars", r, juce::Justification::centredRight);
+    }
+}
+
+void MidiBrowserEditor::PreviewHeader::mouseDown(const juce::MouseEvent&)
+{
+    owner.processorRef.previewOpen = !owner.processorRef.previewOpen;
+    owner.applyLayoutState();
+    owner.repaint();
+}
+
 // ── layout ───────────────────────────────────────────────────────────────────
 
 void MidiBrowserEditor::toggleEditorFold()
@@ -589,9 +674,7 @@ void MidiBrowserEditor::applyLayoutState()
     if (getHeight() > 0)
         lastWindowH = getHeight();
 
-    const int side = metrics::sidebarW;
-    // Table is fixed when other panes are open; when browser-only it flexes
-    // inside the window (default width still uses fileTableW as the target).
+    const int side = sidebar.idealWidth();
     const int table = metrics::fileTableW;
     const int logicalW = side + table
                          + (edOpen ? metrics::editorPaneW : 0)
@@ -602,15 +685,17 @@ void MidiBrowserEditor::applyLayoutState()
                                                + (fxOpen ? metrics::effectsPaneW : 0)) * s);
     setResizeLimits(minW, juce::roundToInt(420 * s), 2400, 2000);
 
+    const int previewExtra = processorRef.previewOpen ? metrics::miniRollH() + 34 : 0;
+    const int targetH = juce::jmax(juce::roundToInt((460 + previewExtra) * s), lastWindowH);
+
     layoutAnimFromW = getWidth() > 0 ? getWidth() : w;
     layoutTargetW = w;
     layoutAnimStartMs = juce::Time::getMillisecondCounterHiRes();
     if (std::abs(layoutAnimFromW - layoutTargetW) < 2)
     {
-        setSize(w, juce::jmax(juce::roundToInt(460 * s), lastWindowH));
+        setSize(w, targetH);
         resized();
     }
-    // Else timerCallback eases width toward layoutTargetW.
 }
 
 void MidiBrowserEditor::resized()
@@ -629,21 +714,39 @@ void MidiBrowserEditor::layoutContent()
     auto r = content.getLocalBounds();
     const bool edOpen = processorRef.editorOpen;
     const bool fxOpen = processorRef.effectsOpen;
+    const bool previewOpen = processorRef.previewOpen;
 
     transport.setBounds(r.removeFromTop(metrics::transportH()));
 
     rollEditor.setVisible(edOpen);
     effectsInspector.setVisible(fxOpen);
+    previewHeader.setVisible(true);
+    miniRoll.setVisible(previewOpen);
 
     auto row = r;
-    sidebar.setBounds(row.removeFromLeft(metrics::sidebarW));
+    sidebar.setBounds(row.removeFromLeft(sidebar.idealWidth()));
 
     if (fxOpen)
         effectsInspector.setBounds(row.removeFromRight(metrics::effectsPaneW));
     if (edOpen)
         rollEditor.setBounds(row.removeFromRight(metrics::editorPaneW));
 
-    fileList.setBounds(row);
+    auto browserCol = row;
+    const int previewHeaderH = 26;
+    const int previewBlockH = previewOpen ? previewHeaderH + metrics::miniRollH() + 8 : previewHeaderH;
+
+    if (previewOpen)
+    {
+        auto preview = browserCol.removeFromBottom(metrics::miniRollH() + 8);
+        previewHeader.setBounds(browserCol.removeFromBottom(previewHeaderH));
+        miniRoll.setBounds(preview.reduced(8, 4));
+    }
+    else
+    {
+        previewHeader.setBounds(browserCol.removeFromBottom(previewHeaderH));
+    }
+
+    fileList.setBounds(browserCol);
     browserColW = fileList.getWidth();
 }
 
@@ -786,19 +889,9 @@ void MidiBrowserEditor::timerCallback()
             layoutTargetW = 0;
     }
 
-    // Hosts often skip processBlock while stopped — pull tempo/position here
-    // so the BPM readout stays live even when the transport isn't running.
-    if (auto* playHead = processorRef.getPlayHead())
-    {
-        if (const auto posInfo = playHead->getPosition())
-        {
-            if (auto bpm = posInfo->getBpm(); bpm.hasValue())
-                processorRef.hostBpm.store(*bpm);
-            if (auto ppq = posInfo->getPpqPosition(); ppq.hasValue())
-                processorRef.hostBeatPos.store(*ppq);
-            processorRef.hostPlaying.store(posInfo->getIsPlaying());
-        }
-    }
+    // Transport state is read from processor atomics (updated in processBlock).
+    // Do not call getPlayHead()->getPosition() here — AU hosts can crash
+    // when the editor timer invokes a stale host callback.
 
     const bool sounding = processorRef.isPreviewSounding();
     transport.setPlaying(sounding);
@@ -829,6 +922,7 @@ void MidiBrowserEditor::timerCallback()
         step = beat * 4.0;
     }
     rollEditor.setPlayheadStep(step, sounding);
+    miniRoll.setPlayheadStep(step, sounding);
 }
 
 } // namespace pflow

@@ -5,7 +5,7 @@
 
 namespace pflow {
 
-// Cupertino source sidebar: always 176px with FAVORITES / LOCATIONS sections.
+// Cupertino source sidebar: collapsible rail (icons) or expanded list.
 
 class FavoritesSidebar : public juce::Component
 {
@@ -19,9 +19,9 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
 
     void setSavedDirs(const juce::StringArray& paths, const juce::String& activePath);
-    bool isCollapsed() const { return false; }
-    void setCollapsed(bool) {}
-    int idealWidth() const { return metrics::sidebarW; }
+    bool isCollapsed() const { return collapsed; }
+    void setCollapsed(bool shouldCollapse);
+    int idealWidth() const { return collapsed ? metrics::sidebarRailW : metrics::sidebarExpandedW; }
 
     std::function<void(const juce::String&)> onPickDir;
     std::function<void(const juce::String&)> onRemoveDir;
@@ -34,10 +34,12 @@ private:
     RowHit rowHitAt(juce::Point<int> pos) const;
     juce::Rectangle<int> rowBounds(int index) const;
 
+    IconBtn btnToggle { icons::sidebar, "Show or hide saved folders" };
     IconBtn btnAdd { icons::plus, "Save current folder" };
     IconBtn btnTweaks { icons::gear, "Tweaks: spacing, content size" };
     juce::StringArray dirs;
     juce::String active;
+    bool collapsed = true;
     int hoverRow = -1;
     bool hoverRemove = false;
 
@@ -88,6 +90,8 @@ public:
     std::function<void()> onToggleStarFilter;
     std::function<void()> onEnterParent;
     std::function<void(int)> onEnterFolder;
+    /** Drag original MIDI file to the DAW (no edits applied). */
+    std::function<void(const juce::File&)> onDragFile;
 
     void setStarFilter(bool filterOn, bool anyStarred);
     void setSort(SortColumn column, bool ascending);
@@ -107,10 +111,14 @@ private:
         void mouseMove(const juce::MouseEvent&) override;
         void mouseExit(const juce::MouseEvent&) override;
         void mouseDown(const juce::MouseEvent&) override;
+        void mouseDrag(const juce::MouseEvent&) override;
+        void mouseUp(const juce::MouseEvent&) override;
+        void clearDragState();
         FileListPanel& owner;
         int hoverRow = -1;
         bool hoverPlay = false;
         bool hoverStar = false;
+        juce::String dragSourcePath;
     };
 
     static constexpr int kKeyW = 40;

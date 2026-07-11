@@ -10,6 +10,36 @@ namespace pflow {
 /** Effective per-note velocity (file velocity as base, groove on top). */
 double effectiveVelocity(const RollNote& n, const GrooveParams& k);
 
+struct PitchRowMap
+{
+    int minPitch = 48, maxPitch = 72;
+    float rowH = 8.0f;
+    int numRows() const { return maxPitch - minPitch + 1; }
+    float yForPitchTop(int pitch, float height) const
+    {
+        return height - (float) (pitch - minPitch + 1) * rowH;
+    }
+    void fit(const std::vector<RollNote>& notes, float height, int minRange = 16);
+};
+
+/** Read-only compact roll for the browser preview strip. */
+class PianoRollMini : public juce::Component
+{
+public:
+    void setNotes(std::vector<RollNote> resolvedGrooved, int bars, const GrooveParams& groove);
+    void setPlayheadStep(double step, bool playing);
+    void setTimeStretch(double stretch);
+    void paint(juce::Graphics&) override;
+
+private:
+    std::vector<RollNote> notes;
+    GrooveParams knobs;
+    int bars = 1;
+    double playheadStep = 0.0;
+    bool playing = false;
+    double timeStretch = 1.0;
+};
+
 // Cupertino editor: clip header · toolbar · roll · velocity lane.
 
 class PianoRollEditor : public juce::Component

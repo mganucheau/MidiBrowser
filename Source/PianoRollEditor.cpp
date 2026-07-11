@@ -3,9 +3,100 @@
 
 namespace pflow {
 
+void PitchRowMap::fit(const std::vector<RollNote>& notes, float height, int minRange)
+{
+    int lo = 127, hi = 0;
+    for (const auto& n : notes)
+    {
+        lo = juce::jmin(lo, n.pitch);
+        hi = juce::jmax(hi, n.pitch);
+    }
+    if (notes.empty()) { lo = 57; hi = 74; }
+    lo -= 1; hi += 1;
+    while (hi - lo + 1 < minRange)
+    {
+        if (lo > 0) --lo;
+        if (hi - lo + 1 < minRange && hi < 127) ++hi;
+        if (lo == 0 && hi == 127) break;
+    }
+    minPitch = juce::jlimit(0, 127, lo);
+    maxPitch = juce::jlimit(minPitch, 127, hi);
+    rowH = height / (float) numRows();
+}
+
 double effectiveVelocity(const RollNote& n, const GrooveParams& k)
 {
     return noteVelocityWithBase(juce::jlimit(0.04, 1.0, n.fileVelocity / 127.0), n, k);
+}
+
+void PianoRollMini::setNotes(std::vector<RollNote> resolvedGrooved, int numBars,
+                             const GrooveParams& groove)
+{
+    notes = std::move(resolvedGrooved);
+    bars = juce::jmax(1, numBars);
+    knobs = groove;
+    repaint();
+}
+
+void PianoRollMini::setPlayheadStep(double step, bool isPlaying)
+{
+    playheadStep = step;
+    playing = isPlaying;
+    repaint();
+}
+
+void PianoRollMini::setTimeStretch(double stretch)
+{
+    timeStretch = juce::jmax(0.25, stretch);
+    repaint();
+}
+
+void PianoRollMini::paint(juce::Graphics& g)
+{
+    auto b = getLocalBounds().toFloat();
+    g.setColour(colours::rollBg());
+    g.fillRoundedRectangle(b, 8.0f);
+    g.setColour(juce::Colour(0xffe0ddd8));
+    g.drawRoundedRectangle(b.reduced(0.5f), 8.0f, 1.0f);
+
+    if (notes.empty())
+    {
+        g.setColour(colours::text3());
+        g.setFont(uiFont(13.0f, false));
+        g.drawText("Select a MIDI file", getLocalBounds(), juce::Justification::centred);
+        return;
+    }
+
+    PitchRowMap map;
+    map.fit(notes, b.getHeight() - 8.0f, 14);
+    const double totalSteps = (double) bars * kStepsPerBar * timeStretch;
+    const float pps = (b.getWidth() - 8.0f) / (float) juce::jmax(1.0, totalSteps);
+    auto inner = b.reduced(4.0f);
+
+    g.setColour(colours::rollRowline());
+    const int displayBars = juce::jmax(1, (int) std::lround((double) bars * timeStretch));
+    for (int bar = 1; bar < displayBars; ++bar)
+        g.fillRect(inner.getX() + (float) (bar * kStepsPerBar) * pps, inner.getY(),
+                   1.0f, inner.getHeight());
+
+    for (const auto& n : notes)
+    {
+        const double v = effectiveVelocity(n, knobs);
+        auto r = juce::Rectangle<float>(
+            inner.getX() + (float) (n.start * timeStretch) * pps,
+            inner.getY() + map.yForPitchTop(n.pitch, inner.getHeight()),
+            juce::jmax(2.0f, (float) (n.len * timeStretch) * pps - 0.5f),
+            juce::jmax(2.0f, map.rowH - 0.8f));
+        g.setColour(colours::accent().withAlpha((float) (0.35 + 0.6 * v)));
+        g.fillRoundedRectangle(r, 1.5f);
+    }
+
+    if (playing)
+    {
+        g.setColour(colours::playhead());
+        g.fillRect(inner.getX() + (float) (playheadStep * timeStretch) * pps,
+                   inner.getY(), 1.5f, inner.getHeight());
+    }
 }
 
 // ── PianoRollEditor ──────────────────────────────────────────────────────────

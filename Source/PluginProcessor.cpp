@@ -298,6 +298,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("bpmMultiplier", bpmMultiplier.load());
     xml.setAttribute("editorOpen", editorOpen ? 1 : 0);
     xml.setAttribute("effectsOpen", effectsOpen ? 1 : 0);
+    xml.setAttribute("previewOpen", previewOpen ? 1 : 0);
     xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
     xml.setAttribute("editLock", editLock ? 1 : 0);
     xml.setAttribute("effectsLock", effectsLock ? 1 : 0);
@@ -313,7 +314,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("lockDynamics", lockedGroove.dynamics);
     xml.setAttribute("lockLength", lockedGroove.length);
     xml.setAttribute("lockIntensity", lockedGroove.intensity);
-    xml.setAttribute("lockSwingBase", (int) lockedGroove.swingBase);
+    xml.setAttribute("lockSwingGrid", lockedGroove.swingGridIndex);
     for (const auto& folder : savedBrowserDirs)
     {
         if (folder.isNotEmpty())
@@ -418,7 +419,8 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             bpmMultiplier.store(juce::jlimit(0.25, 4.0, xml->getDoubleAttribute("bpmMultiplier", 1.0)));
             editorOpen = xml->getIntAttribute("editorOpen", 0) != 0;
             effectsOpen = xml->getIntAttribute("effectsOpen", 0) != 0;
-            sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 0) != 0;
+            previewOpen = xml->getIntAttribute("previewOpen", 1) != 0;
+            sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
             editLock = xml->getIntAttribute("editLock", 0) != 0;
             effectsLock = xml->getIntAttribute("effectsLock", 0) != 0;
             lockAutoTrim = xml->getIntAttribute("lockAutoTrim", 0) != 0;
@@ -436,8 +438,10 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             lockedGroove.set(3, xml->getIntAttribute("lockDynamics", 0));
             lockedGroove.set(4, xml->getIntAttribute("lockLength", 100));
             lockedGroove.set(5, xml->getIntAttribute("lockIntensity", 100));
-            lockedGroove.swingBase = xml->getIntAttribute("lockSwingBase", 0) != 0
-                                         ? SwingBase::Sixteenth : SwingBase::Eighth;
+            lockedGroove.swingGridIndex = juce::jlimit(0, 5,
+                xml->getIntAttribute("lockSwingGrid", xml->getIntAttribute("lockSwingBase", 0) != 0 ? 0 : 1));
+            lockedGroove.swingBase = lockedGroove.swingGridIndex == 0
+                                          ? SwingBase::Sixteenth : SwingBase::Eighth;
             for (auto* child : xml->getChildIterator())
             {
                 if (child->hasTagName("SavedFolder"))

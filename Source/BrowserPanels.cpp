@@ -15,9 +15,7 @@ const char* kindIcon(ClipKind k)
     }
 }
 
-constexpr int kSidebarPad = 10;
-constexpr int kSectionH = 22;
-constexpr int kRowH = 26;
+constexpr int kSidebarHeaderH = 34;
 
 } // namespace
 
@@ -25,6 +23,9 @@ constexpr int kRowH = 26;
 
 FavoritesSidebar::FavoritesSidebar()
 {
+    btnToggle.onClick = [this] { setCollapsed(!collapsed); };
+    addAndMakeVisible(btnToggle);
+
     btnAdd.onClick = [this] { if (onAddCurrent) onAddCurrent(); };
     addAndMakeVisible(btnAdd);
 
@@ -39,10 +40,23 @@ void FavoritesSidebar::setSavedDirs(const juce::StringArray& paths, const juce::
     repaint();
 }
 
+void FavoritesSidebar::setCollapsed(bool shouldCollapse)
+{
+    if (collapsed == shouldCollapse) return;
+    collapsed = shouldCollapse;
+    btnToggle.setTooltip(collapsed ? "Expand favorites" : "Collapse to icons");
+    if (onCollapsedChanged) onCollapsedChanged();
+    resized();
+    repaint();
+}
+
 juce::Rectangle<int> FavoritesSidebar::rowBounds(int index) const
 {
-    const int y = kSectionH + 4 + index * kRowH;
-    return { kSidebarPad, y, getWidth() - kSidebarPad * 2, kRowH - 2 };
+    const int rowH = collapsed ? 40 : 30;
+    const int y = kSidebarHeaderH + 4 + index * rowH;
+    if (collapsed)
+        return { 4, y, getWidth() - 8, rowH - 6 };
+    return { 6, y, getWidth() - 12, rowH - 4 };
 }
 
 FavoritesSidebar::RowHit FavoritesSidebar::rowHitAt(juce::Point<int> pos) const
@@ -51,15 +65,21 @@ FavoritesSidebar::RowHit FavoritesSidebar::rowHitAt(juce::Point<int> pos) const
     {
         const auto r = rowBounds(i);
         if (r.contains(pos))
-            return { i, pos.x > r.getRight() - 22 };
+            return { i, !collapsed && pos.x > r.getRight() - 22 };
     }
     return {};
 }
 
 void FavoritesSidebar::resized()
 {
-    btnAdd.setBounds(getWidth() - 34, 2, 24, 22);
-    btnTweaks.setBounds(kSidebarPad, getHeight() - 34, 24, 24);
+    auto top = juce::Rectangle<int>(0, 0, getWidth(), kSidebarHeaderH);
+    btnToggle.setBounds(top.removeFromLeft(metrics::sidebarRailW).withSizeKeepingCentre(26, 26));
+    btnAdd.setVisible(!collapsed);
+    if (!collapsed)
+        btnAdd.setBounds(top.removeFromRight(30).withSizeKeepingCentre(22, 22));
+
+    btnTweaks.setBounds(juce::Rectangle<int>(0, getHeight() - 34, metrics::sidebarRailW, 30)
+                            .withSizeKeepingCentre(24, 24));
 }
 
 void FavoritesSidebar::mouseMove(const juce::MouseEvent& e)
@@ -102,45 +122,53 @@ void FavoritesSidebar::paint(juce::Graphics& g)
     g.setColour(colours::line());
     g.fillRect(getLocalBounds().removeFromRight(1));
 
-    g.setColour(colours::text3());
-    g.setFont(uiFont(10.0f, true));
-    g.drawText("FAVORITES", kSidebarPad, 4, getWidth() - 50, 16,
-               juce::Justification::centredLeft);
+    if (!collapsed)
+    {
+        g.setColour(colours::text3());
+        g.setFont(uiFont(10.0f, true));
+        g.drawText("FAVORITES", metrics::sidebarRailW - 4, 0, 80, kSidebarHeaderH,
+                   juce::Justification::centredLeft);
+    }
 
     for (int i = 0; i < dirs.size(); ++i)
     {
-        const auto r = rowBounds(i).toFloat();
+        const juce::File dir(dirs[i]);
         const bool isActive = dirs[i] == active;
         const bool hovered = i == hoverRow;
+        auto r = rowBounds(i);
 
         if (isActive || hovered)
         {
             g.setColour(isActive ? colours::accentSoft()
                                  : colours::elev().withAlpha(0.7f));
-            g.fillRoundedRectangle(r, 6.0f);
+            g.fillRoundedRectangle(r.toFloat(), 6.0f);
         }
 
-        auto icon = juce::Rectangle<float>(r.getX() + 6.0f, r.getY() + 5.0f, 14.0f, 14.0f);
-        drawIcon(g, icons::folder, icon, isActive ? colours::accent() : colours::text2(), 1.4f);
+        const auto iconCol = isActive ? colours::accent() : colours::text2();
+        if (collapsed)
+        {
+            drawIcon(g, icons::folder, r.toFloat().reduced(10.0f), iconCol, 1.5f);
+        }
+        else
+        {
+            auto row = r.reduced(7, 0);
+            drawIcon(g, icons::folder, row.removeFromLeft(16).toFloat()
+                        .withSizeKeepingCentre(14.0f, 14.0f), iconCol, 1.4f);
+            row.removeFromLeft(6);
 
-        g.setColour(isActive ? colours::text() : colours::text2());
-        g.setFont(uiFont(12.5f, isActive));
-        const auto name = juce::File(dirs[i]).getFileName();
-        g.drawText(name, r.withTrimmedLeft(26.0f).withTrimmedRight(22.0f).toNearestInt(),
-                   juce::Justification::centredLeft, true);
+            if (hovered)
+            {
+                auto xArea = row.removeFromRight(18).toFloat().withSizeKeepingCentre(10.0f, 10.0f);
+                drawIcon(g, icons::x, xArea,
+                         hoverRemove ? colours::text() : colours::text3(), 1.4f);
+            }
 
-        if (hovered)
-            drawIcon(g, icons::x,
-                     juce::Rectangle<float>(r.getRight() - 18.0f, r.getY() + 5.0f, 12.0f, 12.0f),
-                     hoverRemove ? colours::text() : colours::text3(), 1.4f);
+            g.setColour(isActive ? colours::text() : colours::text2());
+            g.setFont(uiFont(12.5f, isActive));
+            const auto label = dir.getFileName().isNotEmpty() ? dir.getFileName() : dirs[i];
+            g.drawText(label, row, juce::Justification::centredLeft, true);
+        }
     }
-
-    // LOCATIONS header under favorites
-    const int locY = kSectionH + 4 + dirs.size() * kRowH + 10;
-    g.setColour(colours::text3());
-    g.setFont(uiFont(10.0f, true));
-    g.drawText("LOCATIONS", kSidebarPad, locY, getWidth() - 20, 16,
-               juce::Justification::centredLeft);
 }
 
 // ── FileListPanel ────────────────────────────────────────────────────────────
@@ -171,6 +199,7 @@ void FileListPanel::setEntries(std::vector<FileListEntry> e)
 {
     entries = std::move(e);
     selected = juce::jlimit(-1, (int) entries.size() - 1, selected);
+    content.clearDragState();
     rebuildSortOrder();
     updateContentSize();
     content.repaint();
@@ -192,7 +221,7 @@ void FileListPanel::setSelectedIndex(int index, juce::NotificationType notify)
     ensureRowVisible(entryToDisplay(selected));
     content.repaint();
     if (notify != juce::dontSendNotification && onSelect && selected >= 0)
-        onSelect(selected);
+        onSelect(entryToDisplay(selected));
 }
 
 void FileListPanel::setPlaying(bool isPlaying)
@@ -594,20 +623,54 @@ void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
 
     if (!entry.isDirectory && fromRight >= 0 && fromRight < kPlayZoneW)
     {
-        if (owner.onPlayRow) owner.onPlayRow(entryIdx);
+        if (owner.onPlayRow) owner.onPlayRow(owner.entryToDisplay(entryIdx));
         return;
     }
     if (!entry.isDirectory
         && fromRight >= kPlayZoneW + kBarsW + kTempoW + kKeyW
         && fromRight < kPlayZoneW + kBarsW + kTempoW + kKeyW + kStarZoneW)
     {
-        if (owner.onToggleStar) owner.onToggleStar(entryIdx);
+        if (owner.onToggleStar) owner.onToggleStar(owner.entryToDisplay(entryIdx));
         return;
     }
 
     owner.setSelectedIndex(entryIdx);
+    if (!entry.isDirectory)
+    {
+        dragSourcePath = entry.file.getFullPathName();
+        if (dragSourcePath.isEmpty())
+            clearDragState();
+    }
+    else
+        clearDragState();
+
     if (entry.isDirectory && e.getNumberOfClicks() > 1 && owner.onEnterFolder)
-        owner.onEnterFolder(entryIdx);
+        owner.onEnterFolder(disp);
+}
+
+void FileListPanel::ListContent::clearDragState()
+{
+    dragSourcePath.clear();
+}
+
+void FileListPanel::ListContent::mouseUp(const juce::MouseEvent&)
+{
+    clearDragState();
+}
+
+void FileListPanel::ListContent::mouseDrag(const juce::MouseEvent& e)
+{
+    if (dragSourcePath.isEmpty() || e.getDistanceFromDragStart() < 8)
+        return;
+
+    const juce::File file(dragSourcePath);
+    clearDragState();
+
+    if (!file.getFullPathName().isNotEmpty() || !file.existsAsFile())
+        return;
+
+    if (owner.onDragFile)
+        owner.onDragFile(file);
 }
 
 } // namespace pflow

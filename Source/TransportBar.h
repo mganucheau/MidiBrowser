@@ -4,8 +4,7 @@
 
 namespace pflow {
 
-// Cupertino toolbar: traffic lights · title · play/stop · BPM pill · spacer ·
-// editor / effects toggles. BPM is editable when unsynced.
+// Cupertino toolbar: title · play/stop · BPM pill · editor / effects toggles · drag.
 
 class TransportBar : public juce::Component
 {
@@ -23,6 +22,7 @@ public:
     void setClipBpm(double);
     void setEditorOpen(bool);
     void setEffectsOpen(bool);
+    void setHasClip(bool has);
 
     std::function<void()> onPlayPause;
     std::function<void()> onStop;
@@ -30,7 +30,6 @@ public:
     std::function<void()> onToggleEffects;
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
-    std::function<void(double)> onMultiplierChanged;
     std::function<void()> onDragToDaw;
 
 private:
@@ -62,8 +61,6 @@ private:
     IconBtn btnStop { icons::stop, "Stop" };
     PillToggle syncToggle { "Synced", "Free" };
     juce::Label bpmLabel;
-    ChipBtn btnHalf { "/2" };
-    ChipBtn btnDouble { "x2" };
     DragChip btnDragToDaw { "Drag to DAW" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
     IconBtn btnEffects { icons::sliders, "Toggle effects" };
@@ -72,6 +69,7 @@ private:
     bool synced = true;
     bool editorOpen = false;
     bool effectsOpen = false;
+    bool hasClip = false;
     double hostBpm = 124.0;
     double freeBpm = 124.0;
     double multiplier = 1.0;

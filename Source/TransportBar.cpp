@@ -32,28 +32,8 @@ TransportBar::TransportBar()
     };
     addAndMakeVisible(bpmLabel);
 
-    btnHalf.mono = true;
-    btnHalf.setTooltip("Play at half the DAW tempo");
-    btnHalf.onClick = [this]
-    {
-        multiplier = juce::jmax(0.25, multiplier * 0.5);
-        refreshBpm();
-        if (onMultiplierChanged) onMultiplierChanged(multiplier);
-    };
-    addAndMakeVisible(btnHalf);
-
-    btnDouble.mono = true;
-    btnDouble.setTooltip("Play at double the DAW tempo");
-    btnDouble.onClick = [this]
-    {
-        multiplier = juce::jmin(4.0, multiplier * 2.0);
-        refreshBpm();
-        if (onMultiplierChanged) onMultiplierChanged(multiplier);
-    };
-    addAndMakeVisible(btnDouble);
-
     btnDragToDaw.accentText = true;
-    btnDragToDaw.setTooltip("Drag onto a DAW track");
+    btnDragToDaw.setTooltip("Drag edited clip onto a DAW track");
     btnDragToDaw.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
     addAndMakeVisible(btnDragToDaw);
@@ -101,7 +81,8 @@ void TransportBar::setHostBpm(double b)
 void TransportBar::setBpmMultiplier(double m)
 {
     multiplier = juce::jlimit(0.25, 4.0, m);
-    refreshBpm();
+    if (synced)
+        refreshBpm();
 }
 
 void TransportBar::setFreeBpm(double b)
@@ -135,6 +116,12 @@ void TransportBar::setEffectsOpen(bool open)
     resized();
 }
 
+void TransportBar::setHasClip(bool has)
+{
+    hasClip = has;
+    resized();
+}
+
 void TransportBar::refreshBpm()
 {
     syncToggle.onLabel = synced ? "Synced" : "Free";
@@ -149,15 +136,6 @@ void TransportBar::refreshBpm()
                        synced ? juce::Colours::transparentBlack : colours::elev());
     bpmLabel.setColour(juce::TextEditor::textColourId, colours::accent());
     bpmLabel.setTooltip(synced ? "DAW tempo × multiplier" : "Playback tempo, 20–300");
-
-    btnHalf.active = multiplier < 1.0;
-    btnDouble.active = multiplier > 1.0;
-    btnHalf.setEnabled(synced);
-    btnDouble.setEnabled(synced);
-    btnHalf.setVisible(synced);
-    btnDouble.setVisible(synced);
-    btnHalf.repaint();
-    btnDouble.repaint();
     bpmLabel.repaint();
     syncToggle.repaint();
 }
@@ -171,8 +149,7 @@ void TransportBar::resized()
         return a.withSizeKeepingCentre(a.getWidth(), h);
     };
 
-    // Traffic lights + title reserved on the left (painted).
-    r.removeFromLeft(118);
+    r.removeFromLeft(4); // title painted in paint()
 
     btnPlay.setBounds(mid(r.removeFromLeft(btnSize), btnSize));
     r.removeFromLeft(4);
@@ -182,21 +159,12 @@ void TransportBar::resized()
     syncToggle.setBounds(mid(r.removeFromLeft(juce::jmin(syncToggle.idealWidth(), 88)), 24));
     r.removeFromLeft(6);
     bpmLabel.setBounds(mid(r.removeFromLeft(88), 22));
-    r.removeFromLeft(4);
 
-    if (synced)
-    {
-        btnHalf.setBounds(mid(r.removeFromLeft(32), 22));
-        r.removeFromLeft(2);
-        btnDouble.setBounds(mid(r.removeFromLeft(32), 22));
-    }
-
-    // Right: effects, editor, optional drag
     btnEffects.setBounds(mid(r.removeFromRight(btnSize), btnSize));
     r.removeFromRight(4);
     btnEditor.setBounds(mid(r.removeFromRight(btnSize), btnSize));
 
-    btnDragToDaw.setVisible(editorOpen && r.getWidth() > 120);
+    btnDragToDaw.setVisible(editorOpen && hasClip);
     if (btnDragToDaw.isVisible())
     {
         r.removeFromRight(8);
@@ -213,21 +181,9 @@ void TransportBar::paint(juce::Graphics& g)
     g.setColour(colours::lineStrong());
     g.fillRect(b.removeFromBottom(1.0f));
 
-    // Traffic lights
-    const float cy = (float) getHeight() * 0.5f;
-    const float dots[] = { 14.0f, 32.0f, 50.0f };
-    const juce::Colour cols[] = {
-        juce::Colour(0xffff5f57), juce::Colour(0xfffebc2e), juce::Colour(0xff28c840)
-    };
-    for (int i = 0; i < 3; ++i)
-    {
-        g.setColour(cols[i]);
-        g.fillEllipse(dots[i], cy - 5.0f, 10.0f, 10.0f);
-    }
-
     g.setColour(colours::text());
     g.setFont(uiFont(13.0f, true));
-    g.drawText("MidiBrowser", 68, 0, 90, getHeight(), juce::Justification::centredLeft);
+    g.drawText("MidiBrowser", 12, 0, 100, getHeight(), juce::Justification::centredLeft);
 }
 
 } // namespace pflow

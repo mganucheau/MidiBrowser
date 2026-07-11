@@ -21,12 +21,16 @@ public:
     void setEdit(const ClipEdit&, juce::NotificationType notify = juce::dontSendNotification);
     ClipEdit getEdit() const { return edit; }
 
+    void setBpmMultiplier(double mult, juce::NotificationType notify = juce::dontSendNotification);
+    double getBpmMultiplier() const { return bpmMultiplier; }
+
     void setEffectsLocked(bool locked);
     void setPitchLocked(bool locked);
     void setHasClip(bool has);
 
     std::function<void(const GrooveParams&)> onGrooveChanged;
     std::function<void(const ClipEdit&)> onEditChanged;
+    std::function<void(double)> onBpmMultiplierChanged;
     std::function<void(bool)> onEffectsLockToggled;
     std::function<void(bool)> onPitchLockToggled;
     std::function<void()> onResetGroove;
@@ -53,6 +57,39 @@ private:
         juce::Rectangle<float> track;
     };
 
+    /** Discrete steps with custom labels (swing grid, tempo). */
+    class DiscreteSlider : public juce::Component
+    {
+    public:
+        DiscreteSlider(const juce::String& label, int numSteps, int defStep);
+        void setLabels(const juce::StringArray& labels);
+        void paint(juce::Graphics&) override;
+        void resized() override;
+        void mouseDown(const juce::MouseEvent&) override;
+        void mouseDrag(const juce::MouseEvent&) override;
+        void mouseDoubleClick(const juce::MouseEvent&) override;
+        void setStep(int s, juce::NotificationType notify = juce::sendNotification);
+        int getStep() const { return step; }
+        std::function<void(int)> onChange;
+    private:
+        void setFromX(float x);
+        juce::String label;
+        juce::StringArray labels;
+        int numSteps, defStep, step;
+        juce::Rectangle<float> track;
+    };
+
+    class LabeledRow : public juce::Component
+    {
+    public:
+        LabeledRow(const juce::String& caption, juce::Component& control);
+        void resized() override;
+        void paint(juce::Graphics&) override;
+    private:
+        juce::String caption;
+        juce::Component& control;
+    };
+
     class Section : public juce::Component
     {
     public:
@@ -64,27 +101,21 @@ private:
         bool isOpen() const { return open; }
         int idealHeight() const;
         juce::String title;
-        bool open = true;
+        bool open = false;
         std::vector<juce::Component*> rows;
         std::function<void()> onToggle;
-    };
-
-    class SwingBaseRow : public juce::Component
-    {
-    public:
-        SwingBaseRow(ChipBtn& eighth, ChipBtn& sixteenth);
-        void resized() override;
-    private:
-        ChipBtn &eight, &sixteenth;
+        static constexpr int kHeaderH = 32;
+        static constexpr int kRowH = 44;
+        static constexpr int kPadH = 12;
     };
 
     void notifyGroove();
     void notifyEdit();
     void layoutSections();
-    void syncSwingBaseButtons();
 
     GrooveParams groove;
     ClipEdit edit;
+    double bpmMultiplier = 1.0;
     bool effectsLocked = false;
     bool pitchLocked = false;
     bool hasClip = false;
@@ -99,25 +130,28 @@ private:
     Section pitch { "Pitch & Scale" };
 
     ParamSlider swing { "Swing", 0, 100, 0, false };
+    DiscreteSlider swingGrid { "Swing speed", 6, 1 };
+    DiscreteSlider tempo { "Tempo", 3, 1 };
     ParamSlider pocket { "Pocket", -100, 100, 0, true };
     ParamSlider humanize { "Humanize", 0, 100, 0, false };
-    ChipBtn btnSwing8 { "1/8" };
-    ChipBtn btnSwing16 { "1/16" };
-    SwingBaseRow swingBaseRow { btnSwing8, btnSwing16 };
     ParamSlider dynamicsSl { "Dynamics", -100, 100, 0, true };
     ParamSlider intensity { "Intensity", 0, 200, 100, false };
     ParamSlider lengthSl { "Length", 25, 200, 100, false };
 
-    Stepper octaveStepper;
-    juce::ComboBox rootPicker, modePicker;
+    juce::ComboBox octavePicker, rootPicker, modePicker;
     MiniSwitch fitSwitch { "Fit to scale" };
     MiniSwitch mapSwitch { "Map to root" };
+    LabeledRow octaveRow { "Octave", octavePicker };
+    LabeledRow keyRow { "Key", rootPicker };
+    LabeledRow modeRow { "Mode", modePicker };
+    LabeledRow fitRow { "Fit to scale", fitSwitch };
+    LabeledRow mapRow { "Map to root", mapSwitch };
 
     juce::Viewport viewport;
     juce::Component body;
 
     static constexpr int headerH = 36;
-    static constexpr int bannerH = 28;
+    static constexpr int kBodyPadH = 12;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EffectsInspector)
 };

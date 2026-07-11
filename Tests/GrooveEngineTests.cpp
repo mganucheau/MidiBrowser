@@ -66,6 +66,7 @@ TEST_CASE("GrooveParams defaults and activeCount", "[groove]")
     CHECK(k.pocket == -100);
 
     GrooveParams t;
+    t.swingGridIndex = 0;
     t.swingBase = SwingBase::Sixteenth;
     CHECK(t.activeCount() == 1);
     CHECK_FALSE(t.isDefault());
@@ -99,6 +100,7 @@ TEST_CASE("swing at 1/16 base delays odd sixteenth slots", "[groove]")
 {
     GrooveParams k;
     k.swing = 100;
+    k.swingGridIndex = 0;
     k.swingBase = SwingBase::Sixteenth;
     // Max delay = 0.5 step; odd floor(start) slots move.
     const auto g = applyGroove(testNotes(), k);

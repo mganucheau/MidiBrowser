@@ -192,11 +192,11 @@ namespace metrics {
     constexpr int comboTextPadding  = 8;
 
     constexpr int sidebarW          = 176;
-    constexpr int sidebarRailW      = 176;   // always expanded in Cupertino
+    constexpr int sidebarRailW      = 48;
     constexpr int sidebarExpandedW  = 176;
     constexpr int fileTableW        = 356;
     constexpr int editorPaneW       = 470;
-    constexpr int effectsPaneW      = 200;
+    constexpr int effectsPaneW      = 240;
     constexpr int openRollW         = editorPaneW;
     constexpr int openRollMinW      = 360;
     constexpr int foldedWindowW     = sidebarW + fileTableW;

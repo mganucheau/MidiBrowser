@@ -12,10 +12,11 @@
 
 namespace pflow {
 
-// Cupertino shell: toolbar / [sidebar | file table | editor? | effects?]
+// Cupertino shell: toolbar / [sidebar | file table + preview | editor? | effects?]
 
 class MidiBrowserEditor : public juce::AudioProcessorEditor,
-                          public juce::Timer
+                          public juce::Timer,
+                          public juce::DragAndDropContainer
 {
 public:
     explicit MidiBrowserEditor(MidiBrowserProcessor&);
@@ -37,9 +38,11 @@ private:
     void enterParentFolder();
     void applyTimeStretchFromMultiplier();
     void refreshEntryMeta(int index);
+    void updateMiniPreview();
     MidiClip buildRenderedClip() const;
     void pushPreviewToProcessor();
     void startDragExport();
+    void startDragOriginalFile(const juce::File& file);
     void applyLayoutState();
     void layoutContent();
     void toggleEditorFold();
@@ -66,8 +69,19 @@ private:
     TransportBar transport;
     FavoritesSidebar sidebar;
     FileListPanel fileList;
+    PianoRollMini miniRoll;
     PianoRollEditor rollEditor;
     EffectsInspector effectsInspector;
+
+    class PreviewHeader : public juce::Component
+    {
+    public:
+        explicit PreviewHeader(MidiBrowserEditor& o) : owner(o) {}
+        void paint(juce::Graphics&) override;
+        void mouseDown(const juce::MouseEvent&) override;
+        MidiBrowserEditor& owner;
+    };
+    PreviewHeader previewHeader { *this };
 
     juce::File rootDir;
     std::vector<StepClip> clips;

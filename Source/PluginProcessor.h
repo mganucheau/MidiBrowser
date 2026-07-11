@@ -100,7 +100,8 @@ public:
     // UI layout state (persisted)
     bool editorOpen = false;
     bool effectsOpen = false;
-    bool sidebarCollapsed = false;
+    bool previewOpen = true;
+    bool sidebarCollapsed = true;
 
     juce::String lastBrowserDir;
     bool trimEmptyMeasuresPreview = false;

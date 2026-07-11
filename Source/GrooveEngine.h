@@ -43,6 +43,8 @@ struct GrooveParams
     int intensity = 100;    // 0..200     velocity % (100 = original)
 
     SwingBase swingBase = SwingBase::Eighth;
+    /** Swing grid: 0=1/16 … 5=2 (see kSwingGridLabels). */
+    int swingGridIndex = 1;
 
     int  get(int knobIndex) const;
     void set(int knobIndex, int value);

@@ -50,7 +50,7 @@ bool GrooveParams::isDefault() const
 {
     return swing == 0 && pocket == 0 && humanize == 0 && dynamics == 0
         && length == 100 && intensity == 100
-        && swingBase == SwingBase::Eighth;
+        && swingGridIndex == 1;
 }
 
 int GrooveParams::activeCount() const
@@ -58,7 +58,7 @@ int GrooveParams::activeCount() const
     int n = 0;
     for (int i = 0; i < kNumKnobs; ++i)
         if (get(i) != kKnobDefs[(size_t) i].def) ++n;
-    if (swingBase != SwingBase::Eighth) ++n;
+    if (swingGridIndex != 1) ++n;
     return n;
 }
 
@@ -83,10 +83,11 @@ double hashSigned(int id, int salt)
     return (double) (knuthHash(id + salt) % 1000u) / 1000.0 * 2.0 - 1.0;
 }
 
-/** Swing grid period in 16th-steps: 8th-base = 2, 16th-base = 1. */
-int swingPeriod(SwingBase b)
+/** Swing grid period in 16th-steps for index 0=1/16 … 5=2. */
+int swingPeriodSteps(int gridIndex)
 {
-    return b == SwingBase::Sixteenth ? 1 : 2;
+    static const int periods[] = { 1, 2, 4, 8, 16, 32 };
+    return periods[juce::jlimit(0, 5, gridIndex)];
 }
 
 /** Metric accent weight by sixteenth in the bar (Ableton-style).
@@ -108,7 +109,7 @@ std::vector<RollNote> applyGroove(const std::vector<RollNote>& notes, const Groo
     if (k.isDefault())
         return notes;
 
-    const int period = swingPeriod(k.swingBase);
+    const int period = swingPeriodSteps(k.swingGridIndex);
     // Max swing delay = half a period (Ableton Timing toward the next grid).
     const double swingMax = (double) period * 0.5;
     // Pocket: magnitude = looseness, sign = direction. Strong beats stay
