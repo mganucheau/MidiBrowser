@@ -50,6 +50,13 @@ private:
     void showTweaksMenu();
     void refreshSidebar();
     void syncEffectsInspector();
+    void setBrowseMode(int mode);
+    void loadStarredClips();
+    void runSearch(const BrowserSearch& criteria);
+    void runSearchAsync(const BrowserSearch& criteria);
+    void saveCurrentSearch();
+    bool clipMatchesSearch(const StepClip& clip, const juce::File& file,
+                           const BrowserSearch& criteria) const;
 
     const StepClip* selectedClip() const;
     ClipEdit selectedEdit() const;
@@ -92,7 +99,9 @@ private:
         juce::File file;
     };
     std::vector<DisplayRow> displayRows;
-    bool starFilterOn = false;
+    int browseMode = 0;   // 0 folder, 1 starred, 2 search
+    BrowserSearch activeSearch;
+    int activeSavedSearchIdx = -1;
     int selectedIdx = -1;
     int lastWindowH = 560;
     int browserColW = metrics::fileTableW;

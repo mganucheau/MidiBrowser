@@ -27,6 +27,8 @@ public:
     void setEffectsLocked(bool locked);
     void setPitchLocked(bool locked);
     void setHasClip(bool has);
+    void setClipRoot(int rootPc);
+    void setTrimState(bool active, bool enabled, const juce::String& label);
 
     std::function<void(const GrooveParams&)> onGrooveChanged;
     std::function<void(const ClipEdit&)> onEditChanged;
@@ -34,6 +36,7 @@ public:
     std::function<void(bool)> onEffectsLockToggled;
     std::function<void(bool)> onPitchLockToggled;
     std::function<void()> onResetGroove;
+    std::function<void()> onTrimClicked;
 
 private:
     class ParamSlider : public juce::Component
@@ -79,15 +82,36 @@ private:
         juce::Rectangle<float> track;
     };
 
-    class LabeledRow : public juce::Component
+    class InlineSettingRow : public juce::Component
     {
     public:
-        LabeledRow(const juce::String& caption, juce::Component& control);
+        InlineSettingRow(const juce::String& label, juce::Component& control, int ctrlW = 110);
         void resized() override;
         void paint(juce::Graphics&) override;
     private:
-        juce::String caption;
+        juce::String label;
         juce::Component& control;
+        int controlW;
+    };
+
+    class PitchShiftRow : public juce::Component
+    {
+    public:
+        PitchShiftRow();
+        void resized() override;
+        void paint(juce::Graphics&) override;
+        void setFromEdit(const ClipEdit& e, int clipRootPc);
+        std::function<void(int)> onChange;
+    private:
+        void setValue(int v, juce::NotificationType notify = juce::sendNotification);
+        void bump(int delta);
+        int value = 0;
+        int clipRoot = -1;
+        ClipEdit editCtx;
+        IconBtn btnDown { icons::minus, "Pitch down" };
+        IconBtn btnUp { icons::plus, "Pitch up" };
+        juce::Label valueBox;
+        juce::Label notePreview;
     };
 
     class Section : public juce::Component
@@ -104,9 +128,9 @@ private:
         bool open = false;
         std::vector<juce::Component*> rows;
         std::function<void()> onToggle;
-        static constexpr int kHeaderH = 32;
-        static constexpr int kRowH = 44;
-        static constexpr int kPadH = 12;
+    static constexpr int kHeaderH = 32;
+        static constexpr int kRowH = 32;
+        static constexpr int kPadH = 8;
     };
 
     void notifyGroove();
@@ -119,19 +143,20 @@ private:
     bool effectsLocked = false;
     bool pitchLocked = false;
     bool hasClip = false;
+    int clipRootPc = -1;
 
-    IconBtn btnLock { icons::lockOpen, "Lock effects while browsing" };
     IconBtn btnReset { icons::undo, "Reset effects to defaults" };
-    IconBtn btnPitchLock { icons::lockOpen, "Lock pitch edits while browsing" };
+    IconBtn btnEffectsLock { icons::lockOpen, "Lock effects while browsing" };
 
+    Section playback { "Playback" };
     Section timing { "Timing" };
     Section dynamics { "Dynamics" };
     Section lengthSec { "Length" };
     Section pitch { "Pitch & Scale" };
 
     ParamSlider swing { "Swing", 0, 100, 0, false };
-    DiscreteSlider swingGrid { "Swing speed", 6, 1 };
-    DiscreteSlider tempo { "Tempo", 3, 1 };
+    juce::ComboBox swingGridPicker;
+    juce::ComboBox tempoPicker;
     ParamSlider pocket { "Pocket", -100, 100, 0, true };
     ParamSlider humanize { "Humanize", 0, 100, 0, false };
     ParamSlider dynamicsSl { "Dynamics", -100, 100, 0, true };
@@ -139,19 +164,25 @@ private:
     ParamSlider lengthSl { "Length", 25, 200, 100, false };
 
     juce::ComboBox octavePicker, rootPicker, modePicker;
-    MiniSwitch fitSwitch { "Fit to scale" };
-    MiniSwitch mapSwitch { "Map to root" };
-    LabeledRow octaveRow { "Octave", octavePicker };
-    LabeledRow keyRow { "Key", rootPicker };
-    LabeledRow modeRow { "Mode", modePicker };
-    LabeledRow fitRow { "Fit to scale", fitSwitch };
-    LabeledRow mapRow { "Map to root", mapSwitch };
+    MiniSwitch fitSwitch { "" };
+    MiniSwitch mapSwitch { "" };
+    InlineSettingRow swingGridRow { "Swing speed", swingGridPicker, 110 };
+    InlineSettingRow tempoRow { "Tempo", tempoPicker, 88 };
+    ChipBtn btnTrim { "Trim", icons::scissors };
+    InlineSettingRow trimRow { "Trim", btnTrim, 88 };
+    InlineSettingRow octaveRow { "Octave", octavePicker, 72 };
+    PitchShiftRow pitchShiftRow;
+    InlineSettingRow keyRow { "Key", rootPicker, 96 };
+    InlineSettingRow modeRow { "Mode", modePicker, 118 };
+    InlineSettingRow fitRow { "Fit to scale", fitSwitch, 52 };
+    InlineSettingRow mapRow { "Map to root", mapSwitch, 52 };
 
     juce::Viewport viewport;
     juce::Component body;
 
     static constexpr int headerH = 36;
-    static constexpr int kBodyPadH = 12;
+    static constexpr int kBodyPadH = 8;
+    static constexpr int kSliderMaxW = 196;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EffectsInspector)
 };

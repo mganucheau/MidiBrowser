@@ -62,8 +62,10 @@ public:
     void setScalePlacement(ScalePlacement placement);
     bool hasSelection() const { return !selection.empty(); }
     void deleteSelectedNotes();   // non-destructive (edit.deleted)
+    void toggleTrim();
 
     std::function<void(const ClipEdit&)> onEditChanged;
+    std::function<void(bool active, bool enabled, const juce::String& label)> onTrimStateChanged;
     /** Loop region in unstretched steps [start, end); end exclusive. */
     std::function<void(double startStep, double endStep)> onLoopChanged;
 
@@ -124,6 +126,7 @@ private:
         void mouseDrag(const juce::MouseEvent&) override;
         void mouseUp(const juce::MouseEvent&) override;
         PianoRollEditor& owner;
+        int dragNoteId = -1;
         static constexpr int headerH = 22;
         static constexpr int laneH = 64;
 
@@ -188,7 +191,11 @@ private:
     void zoomRowsAround(float factor, float contentY);
     void commitNoteDrag();
     void selectPitch(int pitch, bool additive);
-    void toggleTrim();
+    void refreshTrimButtonState();
+    int velocityForNote(const RollNote& n) const;
+    const RollNote* noteAtVelocityX(float laneX) const;
+    void setVelocityFromLaneY(int noteId, float laneY);
+    int snapBarsZoom(int clipBars) const;
     void removeBadge(const juce::String& key);
     void resetLoopToClip();
     void setLoopSteps(double start, double end, bool notify);
@@ -214,6 +221,7 @@ private:
     bool folded = false;
     float pxPerStepBase = 6.0f;             // fit-to-width at zoomX 1
     float zoomX = 1.0f;                     // horizontal zoom, 1..6
+    int visibleBarsZoom = 8;
     float rowH = 13.0f;                     // vertical zoom (px per semitone)
     int divisionSteps = 4;                  // grid + snap (1/4 default)
     double playheadStep = 0.0;
@@ -231,7 +239,7 @@ private:
 
     // ── children ──
     Stepper octaveStepper;
-    juce::ComboBox rootPicker, modePicker, divisionPicker;
+    juce::ComboBox rootPicker, modePicker, divisionPicker, barsZoomPicker;
     MiniSwitch fitSwitch { "Fit to scale" };
     MiniSwitch mapSwitch { "Map to root" };
     IconBtn btnLock { icons::lockOpen, "Lock pitch edits while browsing" };

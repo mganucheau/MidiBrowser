@@ -3,6 +3,7 @@
 #include "MidiFileData.h"
 #include "EditModel.h"
 #include "GrooveEngine.h"
+#include "BrowserPanels.h"
 #include <atomic>
 #include <map>
 
@@ -107,9 +108,12 @@ public:
     bool trimEmptyMeasuresPreview = false;
     juce::StringArray savedBrowserDirs;
     juce::StringArray starredFiles;   // favourited file paths (persisted)
+    std::vector<SavedSearchEntry> savedSearches;
 
     void addSavedBrowserDir(const juce::String& path);
     void removeSavedBrowserDir(const juce::String& path);
+    void addSavedSearch(const SavedSearchEntry& entry);
+    void removeSavedSearch(int index);
     bool isStarred(const juce::String& path) const { return starredFiles.contains(path); }
     void toggleStarred(const juce::String& path)
     {

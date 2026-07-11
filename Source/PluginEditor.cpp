@@ -20,12 +20,43 @@ FileListEntry entryForClip(const StepClip& clip, const juce::File& f,
     return e;
 }
 
-bool anyStarredIn(const MidiBrowserProcessor& p, const std::vector<StepClip>& clips)
+bool clipMatches(const StepClip& clip, const juce::File& file, const BrowserSearch& s)
 {
-    for (const auto& c : clips)
-        if (p.isStarred(c.filePath))
-            return true;
-    return false;
+    if (s.query.isNotEmpty()
+        && !file.getFileNameWithoutExtension().containsIgnoreCase(s.query))
+        return false;
+    if (s.bpm > 0.0 && std::abs(clip.bpm - s.bpm) > 0.5)
+        return false;
+    if (s.keyRoot >= 0 && clip.root != s.keyRoot)
+        return false;
+    if (s.bars > 0 && clip.bars != s.bars)
+        return false;
+    return true;
+}
+
+void scanMidiFiles(const juce::File& dir, bool subdirs,
+                   std::vector<StepClip>& out,
+                   const std::function<bool(const StepClip&, const juce::File&)>& matches)
+{
+    if (!dir.isDirectory()) return;
+
+    auto files = dir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi");
+    files.sort();
+    for (const auto& f : files)
+    {
+        auto clip = makeStepClip(parseMidiFile(f));
+        if (matches(clip, f))
+            out.push_back(std::move(clip));
+    }
+
+    if (!subdirs) return;
+    auto dirs = dir.findChildFiles(juce::File::findDirectories, false, "*");
+    dirs.sort();
+    for (const auto& d : dirs)
+    {
+        if (d.getFileName().startsWithChar('.')) continue;
+        scanMidiFiles(d, true, out, matches);
+    }
 }
 
 } // namespace
@@ -71,11 +102,15 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     content.addAndMakeVisible(transport);
 
     // ── Sidebar ──
+    sidebar.onOpenFolder = [this] { chooseFolder(); };
     sidebar.onPickDir = [this](const juce::String& path)
     {
         const juce::File dir(path);
         if (dir.isDirectory())
+        {
+            setBrowseMode(0);
             setRootDirectory(dir);
+        }
     };
     sidebar.onAddCurrent = [this]
     {
@@ -90,6 +125,33 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         processorRef.removeSavedBrowserDir(path);
         refreshSidebar();
     };
+    sidebar.onShowStarred = [this]
+    {
+        setBrowseMode(1);
+        loadStarredClips();
+    };
+    sidebar.onShowSearch = [this] { sidebar.setSearchFormOpen(!sidebar.isSearchFormOpen()); };
+    sidebar.onRunSearch = [this](const BrowserSearch& s) { runSearchAsync(s); };
+    sidebar.onPickSavedSearch = [this](int idx)
+    {
+        if (!juce::isPositiveAndBelow(idx, (int) processorRef.savedSearches.size()))
+            return;
+        activeSavedSearchIdx = idx;
+        activeSearch = processorRef.savedSearches[(size_t) idx].search;
+        setBrowseMode(2);
+        runSearchAsync(activeSearch);
+        refreshSidebar();
+    };
+    sidebar.onRemoveSavedSearch = [this](int idx)
+    {
+        processorRef.removeSavedSearch(idx);
+        if (activeSavedSearchIdx == idx)
+            activeSavedSearchIdx = -1;
+        else if (activeSavedSearchIdx > idx)
+            --activeSavedSearchIdx;
+        refreshSidebar();
+    };
+    sidebar.onSaveCurrentSearch = [this] { saveCurrentSearch(); };
     sidebar.onOpenTweaks = [this] { showTweaksMenu(); };
     sidebar.onCollapsedChanged = [this]
     {
@@ -100,7 +162,6 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     content.addAndMakeVisible(sidebar);
 
     // ── File list ──
-    fileList.onOpenFolder = [this] { chooseFolder(); };
     fileList.onSelect = [this](int displayIdx)
     {
         if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
@@ -130,19 +191,11 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (const int d = displayForClip(selectedIdx); d >= 0)
             fileList.setSelectedIndex(d, juce::dontSendNotification);
     };
-    fileList.onToggleStarFilter = [this]
+    fileList.onEnterParent = [this]
     {
-        starFilterOn = !starFilterOn;
-        rebuildEntries();
-        if (const int d = displayForClip(selectedIdx); d >= 0)
-            fileList.setSelectedIndex(d, juce::dontSendNotification);
-        else
-        {
-            for (const auto& row : displayRows)
-                if (!row.isDirectory) { selectIndex(row.clipIndex); break; }
-        }
+        if (browseMode == 0)
+            enterParentFolder();
     };
-    fileList.onEnterParent = [this] { enterParentFolder(); };
     fileList.onEnterFolder = [this](int displayIdx) { enterFolderAtDisplay(displayIdx); };
     fileList.onDragFile = [this](const juce::File& f) { startDragOriginalFile(f); };
     content.addAndMakeVisible(fileList);
@@ -165,6 +218,10 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             pushPreviewToProcessor();
             syncEffectsInspector();
         }
+    };
+    rollEditor.onTrimStateChanged = [this](bool active, bool enabled, const juce::String& label)
+    {
+        effectsInspector.setTrimState(active, enabled, label);
     };
     rollEditor.onLoopChanged = [this](double startStep, double endStep)
     {
@@ -205,7 +262,21 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     {
         processorRef.effectsLock = locked;
         if (locked)
+        {
             processorRef.lockedGroove = selectedGroove();
+        }
+        else
+        {
+            processorRef.lockedGroove = GrooveParams();
+            processorRef.clipGrooves.clear();
+            if (const auto* clip = selectedClip())
+            {
+                rollEditor.setClip(*clip, selectedEdit(), GrooveParams());
+                pushPreviewToProcessor();
+                updateMiniPreview();
+            }
+            syncEffectsInspector();
+        }
     };
     effectsInspector.onPitchLockToggled = [this](bool locked)
     {
@@ -216,6 +287,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             processorRef.lockAutoTrim = selectedEdit().hasTrim();
         }
     };
+    effectsInspector.onTrimClicked = [this] { rollEditor.toggleTrim(); };
     effectsInspector.onResetGroove = [this]
     {
         if (const auto* clip = selectedClip())
@@ -235,7 +307,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         updateMiniPreview();
     };
     effectsInspector.setEffectsLocked(processorRef.effectsLock);
-    effectsInspector.setPitchLocked(processorRef.editLock);
+    juce::ignoreUnused(processorRef.editLock);
     effectsInspector.setBpmMultiplier(processorRef.bpmMultiplier.load());
     content.addAndMakeVisible(effectsInspector);
 
@@ -264,10 +336,12 @@ MidiBrowserEditor::~MidiBrowserEditor()
 
 void MidiBrowserEditor::setRootDirectory(const juce::File& dir, bool keepSelection)
 {
+    browseMode = 0;
     rootDir = dir;
     processorRef.lastBrowserDir = dir.getFullPathName();
     rescanFolder(keepSelection);
     refreshSidebar();
+    fileList.grabBrowseFocus();
 }
 
 void MidiBrowserEditor::rescanFolder(bool keepSelection)
@@ -312,18 +386,188 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
     }
 }
 
+void MidiBrowserEditor::setBrowseMode(int mode)
+{
+    browseMode = juce::jlimit(0, 2, mode);
+    sidebar.setBrowseMode(browseMode);
+}
+
+void MidiBrowserEditor::loadStarredClips()
+{
+    const juce::String previousPath =
+        (selectedIdx >= 0 && selectedIdx < (int) clips.size())
+            ? clips[(size_t) selectedIdx].filePath : juce::String();
+
+    clips.clear();
+    for (const auto& path : processorRef.starredFiles)
+    {
+        const juce::File f(path);
+        if (f.existsAsFile())
+            clips.push_back(makeStepClip(parseMidiFile(f)));
+    }
+
+    fileList.setFolderName("Favorites");
+    rebuildEntries();
+
+    int nextSel = clips.empty() ? -1 : 0;
+    if (previousPath.isNotEmpty())
+        for (int i = 0; i < (int) clips.size(); ++i)
+            if (clips[(size_t) i].filePath == previousPath)
+                nextSel = i;
+
+    selectedIdx = -1;
+    if (nextSel >= 0)
+        selectIndex(nextSel);
+    else
+    {
+        rollEditor.clearClip();
+        syncEffectsInspector();
+        processorRef.setPreviewState({}, false, false, false);
+    }
+    fileList.grabBrowseFocus();
+}
+
+bool MidiBrowserEditor::clipMatchesSearch(const StepClip& clip, const juce::File& file,
+                                          const BrowserSearch& criteria) const
+{
+    return clipMatches(clip, file, criteria);
+}
+
+void MidiBrowserEditor::runSearch(const BrowserSearch& criteria)
+{
+    const juce::String previousPath =
+        (selectedIdx >= 0 && selectedIdx < (int) clips.size())
+            ? clips[(size_t) selectedIdx].filePath : juce::String();
+
+    activeSearch = criteria;
+    clips.clear();
+
+    const juce::File searchRoot = rootDir.isDirectory() ? rootDir
+        : juce::File(processorRef.lastBrowserDir);
+    if (searchRoot.isDirectory())
+    {
+        const auto matcher = [this, criteria](const StepClip& clip, const juce::File& f)
+        {
+            return clipMatchesSearch(clip, f, criteria);
+        };
+        scanMidiFiles(searchRoot, criteria.subdirs, clips, matcher);
+    }
+
+    juce::String title = "Search";
+    if (criteria.query.isNotEmpty())
+        title = criteria.query;
+    else if (criteria.bpm > 0.0)
+        title = juce::String((int) std::lround(criteria.bpm)) + " BPM";
+    fileList.setFolderName(title);
+    rebuildEntries();
+
+    int nextSel = clips.empty() ? -1 : 0;
+    if (previousPath.isNotEmpty())
+        for (int i = 0; i < (int) clips.size(); ++i)
+            if (clips[(size_t) i].filePath == previousPath)
+                nextSel = i;
+
+    selectedIdx = -1;
+    if (nextSel >= 0)
+        selectIndex(nextSel);
+    else
+    {
+        rollEditor.clearClip();
+        syncEffectsInspector();
+        processorRef.setPreviewState({}, false, false, false);
+    }
+    fileList.grabBrowseFocus();
+}
+
+void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria)
+{
+    sidebar.setSearchFormOpen(false);
+
+    const juce::File searchRoot = rootDir.isDirectory() ? rootDir
+        : juce::File(processorRef.lastBrowserDir);
+    if (!searchRoot.isDirectory())
+        return;
+
+    fileList.setSearching(true);
+    activeSearch = criteria;
+    activeSavedSearchIdx = -1;
+    setBrowseMode(2);
+
+    juce::Thread::launch([this, criteria, searchRoot]
+    {
+        std::vector<StepClip> found;
+        const auto matcher = [criteria](const StepClip& clip, const juce::File& f)
+        {
+            return clipMatches(clip, f, criteria);
+        };
+        scanMidiFiles(searchRoot, criteria.subdirs, found, matcher);
+
+        juce::MessageManager::callAsync([this, results = std::move(found), criteria]() mutable
+        {
+            clips = std::move(results);
+            juce::String title = "Search";
+            if (criteria.query.isNotEmpty())
+                title = criteria.query;
+            else if (criteria.bpm > 0.0)
+                title = juce::String((int) std::lround(criteria.bpm)) + " BPM";
+            fileList.setFolderName(title);
+            rebuildEntries();
+            fileList.setSearching(false);
+            refreshSidebar();
+
+            selectedIdx = -1;
+            if (!clips.empty())
+                selectIndex(0);
+            else
+            {
+                rollEditor.clearClip();
+                syncEffectsInspector();
+                processorRef.setPreviewState({}, false, false, false);
+            }
+            fileList.grabBrowseFocus();
+        });
+    });
+}
+
+void MidiBrowserEditor::saveCurrentSearch()
+{
+    if (browseMode != 2)
+        return;
+
+    auto dialog = std::make_shared<juce::AlertWindow>("Save search",
+        "Name this search:", juce::AlertWindow::NoIcon);
+    dialog->addTextEditor("name",
+        activeSearch.query.isNotEmpty() ? activeSearch.query : "Search", "Name");
+    dialog->addButton("Save", 1);
+    dialog->addButton("Cancel", 0);
+
+    dialog->enterModalState(true, juce::ModalCallbackFunction::create(
+        [this, dialog](int result)
+        {
+            if (result != 1) return;
+            SavedSearchEntry entry;
+            entry.name = dialog->getTextEditorContents("name").trim();
+            if (entry.name.isEmpty())
+                entry.name = "Search";
+            entry.search = activeSearch;
+            processorRef.addSavedSearch(entry);
+            activeSavedSearchIdx = (int) processorRef.savedSearches.size() - 1;
+            refreshSidebar();
+        }));
+}
+
 void MidiBrowserEditor::rebuildEntries()
 {
     displayRows.clear();
     std::vector<FileListEntry> entries;
 
-    if (rootDir.isDirectory())
+    if (browseMode == 0 && rootDir.isDirectory())
     {
         auto dirs = rootDir.findChildFiles(juce::File::findDirectories, false, "*");
         dirs.sort();
         for (const auto& d : dirs)
         {
-            if (d.getFileName().startsWith(".")) continue;
+            if (d.getFileName().startsWithChar('.')) continue;
             FileListEntry e;
             e.file = d;
             e.name = d.getFileName();
@@ -337,9 +581,6 @@ void MidiBrowserEditor::rebuildEntries()
     {
         const auto& clip = clips[(size_t) i];
         const bool starred = processorRef.isStarred(clip.filePath);
-        if (starFilterOn && !starred)
-            continue;
-
         const bool edited = processorRef.editLock
                                 && !editIsClean(processorRef.editFor(clip.filePath));
         entries.push_back(entryForClip(clip, juce::File(clip.filePath), edited, starred));
@@ -347,7 +588,6 @@ void MidiBrowserEditor::rebuildEntries()
     }
 
     fileList.setEntries(std::move(entries));
-    fileList.setStarFilter(starFilterOn, anyStarredIn(processorRef, clips));
 
     if (const int d = displayForClip(selectedIdx); d >= 0)
         fileList.setSelectedIndex(d, juce::dontSendNotification);
@@ -363,6 +603,8 @@ int MidiBrowserEditor::displayForClip(int clipIdx) const
 
 void MidiBrowserEditor::enterFolderAtDisplay(int displayIdx)
 {
+    if (browseMode != 0)
+        return;
     if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
         return;
     const auto& row = displayRows[(size_t) displayIdx];
@@ -391,12 +633,14 @@ void MidiBrowserEditor::applyTimeStretchFromMultiplier()
 
 void MidiBrowserEditor::syncEffectsInspector()
 {
-    effectsInspector.setHasClip(selectedClip() != nullptr);
+    const auto* clip = selectedClip();
+    effectsInspector.setHasClip(clip != nullptr);
+    effectsInspector.setClipRoot(clip != nullptr ? clip->root : -1);
     effectsInspector.setEdit(selectedEdit(), juce::dontSendNotification);
     effectsInspector.setGroove(selectedGroove(), juce::dontSendNotification);
     effectsInspector.setBpmMultiplier(processorRef.bpmMultiplier.load(), juce::dontSendNotification);
     effectsInspector.setEffectsLocked(processorRef.effectsLock);
-    effectsInspector.setPitchLocked(processorRef.editLock);
+    juce::ignoreUnused(processorRef.editLock);
     updateMiniPreview();
 }
 
@@ -628,19 +872,9 @@ void MidiBrowserEditor::PreviewHeader::paint(juce::Graphics& g)
              caret, colours::text3(), 1.5f);
     r.removeFromLeft(6);
 
-    const auto* clip = owner.selectedClip();
     g.setColour(colours::text2());
     g.setFont(uiFont(13.0f, true));
-    g.drawText(clip != nullptr ? clip->name : "Preview",
-               r.withTrimmedRight(52), juce::Justification::centredLeft, true);
-
-    if (clip != nullptr)
-    {
-        const auto resolved = resolveClip(*clip, owner.selectedEdit());
-        g.setColour(colours::text3());
-        g.setFont(monoFont(12.0f, false));
-        g.drawText(juce::String(resolved.bars) + " bars", r, juce::Justification::centredRight);
-    }
+    g.drawText("Preview", r, juce::Justification::centredLeft, true);
 }
 
 void MidiBrowserEditor::PreviewHeader::mouseDown(const juce::MouseEvent&)
@@ -720,28 +954,35 @@ void MidiBrowserEditor::layoutContent()
 
     rollEditor.setVisible(edOpen);
     effectsInspector.setVisible(fxOpen);
-    previewHeader.setVisible(true);
-    miniRoll.setVisible(previewOpen);
+    const bool showPreview = !edOpen;
+    previewHeader.setVisible(showPreview);
+    miniRoll.setVisible(showPreview && previewOpen);
 
     auto row = r;
     sidebar.setBounds(row.removeFromLeft(sidebar.idealWidth()));
 
-    if (fxOpen)
-        effectsInspector.setBounds(row.removeFromRight(metrics::effectsPaneW));
+    const int browserW = metrics::fileTableW;
+    auto browserCol = row.removeFromLeft(browserW);
+
+    int paneX = sidebar.getWidth() + browserW;
+    const int paneY = row.getY();
+    const int paneH = row.getHeight();
     if (edOpen)
-        rollEditor.setBounds(row.removeFromRight(metrics::editorPaneW));
-
-    auto browserCol = row;
-    const int previewHeaderH = 26;
-    const int previewBlockH = previewOpen ? previewHeaderH + metrics::miniRollH() + 8 : previewHeaderH;
-
-    if (previewOpen)
     {
-        auto preview = browserCol.removeFromBottom(metrics::miniRollH() + 8);
-        previewHeader.setBounds(browserCol.removeFromBottom(previewHeaderH));
-        miniRoll.setBounds(preview.reduced(8, 4));
+        rollEditor.setBounds(paneX, paneY, metrics::editorPaneW, paneH);
+        paneX += metrics::editorPaneW;
     }
-    else
+    if (fxOpen)
+        effectsInspector.setBounds(paneX, paneY, metrics::effectsPaneW, paneH);
+    const int previewHeaderH = 26;
+
+    if (showPreview && previewOpen)
+    {
+        auto preview = browserCol.removeFromBottom(metrics::miniRollH());
+        previewHeader.setBounds(browserCol.removeFromBottom(previewHeaderH));
+        miniRoll.setBounds(preview);
+    }
+    else if (showPreview)
     {
         previewHeader.setBounds(browserCol.removeFromBottom(previewHeaderH));
     }
@@ -810,6 +1051,8 @@ void MidiBrowserEditor::refreshSidebar()
 {
     sidebar.setSavedDirs(processorRef.savedBrowserDirs,
                          rootDir.isDirectory() ? rootDir.getFullPathName() : juce::String());
+    sidebar.setSavedSearches(processorRef.savedSearches, activeSavedSearchIdx);
+    sidebar.setBrowseMode(browseMode);
 }
 
 // ── ticking ──────────────────────────────────────────────────────────────────
@@ -868,9 +1111,13 @@ bool MidiBrowserEditor::keyPressed(const juce::KeyPress& key)
         || key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey
         || key == juce::KeyPress::returnKey)
     {
+        if (!fileList.hasKeyboardFocus(true))
+            fileList.grabBrowseFocus();
         return fileList.keyPressed(key);
     }
 
+    if (!fileList.hasKeyboardFocus(true))
+        fileList.grabBrowseFocus();
     return fileList.keyPressed(key);
 }
 

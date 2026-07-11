@@ -4,7 +4,7 @@
 
 namespace pflow {
 
-// Cupertino toolbar: title · play/stop · BPM pill · editor / effects toggles · drag.
+// Cupertino toolbar: title · play/stop · sync · BPM · editor / effects toggles · drag.
 
 class TransportBar : public juce::Component
 {
@@ -57,9 +57,8 @@ private:
         bool dragging = false;
     };
 
-    IconBtn btnPlay { icons::play, "Play / pause preview" };
-    IconBtn btnStop { icons::stop, "Stop" };
-    PillToggle syncToggle { "Synced", "Free" };
+    IconBtn btnPlay { icons::play, "Play preview" };
+    IconBtn btnSync { icons::infinity, "Sync to DAW transport" };
     juce::Label bpmLabel;
     DragChip btnDragToDaw { "Drag to DAW" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };

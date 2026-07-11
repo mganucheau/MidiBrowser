@@ -174,25 +174,26 @@ void EffectsInspector::DiscreteSlider::paint(juce::Graphics& g)
     g.drawEllipse(thumbX - 7.0f, track.getCentreY() - 7.0f, 14.0f, 14.0f, 0.8f);
 }
 
-// ── LabeledRow ───────────────────────────────────────────────────────────────
+// ── InlineSettingRow ─────────────────────────────────────────────────────────
 
-EffectsInspector::LabeledRow::LabeledRow(const juce::String& cap, juce::Component& c)
-    : caption(cap), control(c)
+EffectsInspector::InlineSettingRow::InlineSettingRow(const juce::String& l,
+                                                       juce::Component& c, int cw)
+    : label(l), control(c), controlW(cw)
 {
     addAndMakeVisible(control);
 }
 
-void EffectsInspector::LabeledRow::resized()
+void EffectsInspector::InlineSettingRow::resized()
 {
     auto r = getLocalBounds();
-    control.setBounds(r.withTrimmedTop(16).reduced(0, 2));
+    control.setBounds(r.removeFromRight(controlW).withSizeKeepingCentre(controlW, 24));
 }
 
-void EffectsInspector::LabeledRow::paint(juce::Graphics& g)
+void EffectsInspector::InlineSettingRow::paint(juce::Graphics& g)
 {
-    g.setFont(uiFont(11.0f, false));
+    g.setFont(uiFont(12.0f, false));
     g.setColour(colours::text2());
-    g.drawText(caption, getLocalBounds().removeFromTop(14), juce::Justification::centredLeft);
+    g.drawText(label, getLocalBounds(), juce::Justification::centredLeft);
 }
 
 // ── Section ──────────────────────────────────────────────────────────────────
@@ -246,6 +247,76 @@ void EffectsInspector::Section::paint(juce::Graphics& g)
     g.fillPath(caret);
 }
 
+// ── PitchShiftRow ────────────────────────────────────────────────────────────
+
+EffectsInspector::PitchShiftRow::PitchShiftRow()
+{
+    valueBox.setJustificationType(juce::Justification::centred);
+    valueBox.setFont(monoFont(12.0f, true));
+    valueBox.setColour(juce::Label::textColourId, colours::text());
+    valueBox.setEditable(false, false, false);
+    addAndMakeVisible(valueBox);
+
+    notePreview.setJustificationType(juce::Justification::centredLeft);
+    notePreview.setFont(uiFont(11.0f, false));
+    notePreview.setColour(juce::Label::textColourId, colours::text3());
+    addAndMakeVisible(notePreview);
+
+    btnDown.onClick = [this] { bump(-1); };
+    btnUp.onClick = [this] { bump(1); };
+    addAndMakeVisible(btnDown);
+    addAndMakeVisible(btnUp);
+}
+
+void EffectsInspector::PitchShiftRow::setFromEdit(const ClipEdit& e, int rootPc)
+{
+    editCtx = e;
+    clipRoot = rootPc;
+    setValue(e.pitchShift, juce::dontSendNotification);
+}
+
+void EffectsInspector::PitchShiftRow::setValue(int v, juce::NotificationType notify)
+{
+    v = juce::jlimit(-12, 12, v);
+    if (v == value) return;
+    value = v;
+    valueBox.setText(juce::String(value), juce::dontSendNotification);
+
+    const int refPc = editCtx.root >= 0 ? editCtx.root : (clipRoot >= 0 ? clipRoot : 0);
+    int midi = juce::jlimit(0, 127, 60 + refPc + value);
+    if (editCtx.root >= 0 && editCtx.fitScale)
+        midi = fitToScale(midi, editCtx.root, editCtx.mode);
+    notePreview.setText(pitchName(midi) + " (" + juce::String(midi) + ")",
+                        juce::dontSendNotification);
+
+    if (notify != juce::dontSendNotification && onChange)
+        onChange(value);
+}
+
+void EffectsInspector::PitchShiftRow::bump(int delta)
+{
+    setValue(value + delta);
+}
+
+void EffectsInspector::PitchShiftRow::resized()
+{
+    auto r = getLocalBounds();
+    notePreview.setBounds(r.removeFromRight(88));
+    r.removeFromRight(6);
+    btnUp.setBounds(r.removeFromRight(22).withSizeKeepingCentre(20, 20));
+    r.removeFromRight(4);
+    valueBox.setBounds(r.removeFromRight(28).withSizeKeepingCentre(28, 22));
+    r.removeFromRight(4);
+    btnDown.setBounds(r.removeFromRight(22).withSizeKeepingCentre(20, 20));
+}
+
+void EffectsInspector::PitchShiftRow::paint(juce::Graphics& g)
+{
+    g.setFont(uiFont(12.0f, false));
+    g.setColour(colours::text2());
+    g.drawText("Pitch", getLocalBounds().withTrimmedRight(148), juce::Justification::centredLeft);
+}
+
 // ── EffectsInspector ─────────────────────────────────────────────────────────
 
 EffectsInspector::EffectsInspector()
@@ -253,15 +324,6 @@ EffectsInspector::EffectsInspector()
     viewport.setViewedComponent(&body, false);
     viewport.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport);
-
-    btnLock.setComponentID("btnEffectsLock");
-    btnLock.onClick = [this]
-    {
-        effectsLocked = !effectsLocked;
-        setEffectsLocked(effectsLocked);
-        if (onEffectsLockToggled) onEffectsLockToggled(effectsLocked);
-    };
-    addAndMakeVisible(btnLock);
 
     btnReset.setComponentID("btnEffectsReset");
     btnReset.onClick = [this]
@@ -275,49 +337,64 @@ EffectsInspector::EffectsInspector()
     };
     addAndMakeVisible(btnReset);
 
-    btnPitchLock.setComponentID("btnLock");
-    btnPitchLock.onClick = [this]
+    btnEffectsLock.setComponentID("btnLock");
+    btnEffectsLock.onClick = [this]
     {
-        pitchLocked = !pitchLocked;
-        setPitchLocked(pitchLocked);
-        if (onPitchLockToggled) onPitchLockToggled(pitchLocked);
+        effectsLocked = !effectsLocked;
+        setEffectsLocked(effectsLocked);
+        if (onEffectsLockToggled) onEffectsLockToggled(effectsLocked);
     };
-    addAndMakeVisible(btnPitchLock);
+    addAndMakeVisible(btnEffectsLock);
 
-    auto wireSlider = [this](ParamSlider& s, int knobIdx)
+    auto wireSlider = [this](Section& sec, ParamSlider& s, int knobIdx)
     {
         s.onChange = [this, knobIdx](int v)
         {
             groove.set(knobIdx, v);
             notifyGroove();
         };
-        body.addAndMakeVisible(s);
+        sec.addAndMakeVisible(s);
     };
-    wireSlider(swing, 0);
-    wireSlider(pocket, 1);
-    wireSlider(humanize, 2);
-    wireSlider(dynamicsSl, 3);
-    wireSlider(lengthSl, 4);
-    wireSlider(intensity, 5);
+    wireSlider(timing, swing, 0);
+    wireSlider(timing, pocket, 1);
+    wireSlider(timing, humanize, 2);
+    wireSlider(dynamics, dynamicsSl, 3);
+    wireSlider(lengthSec, lengthSl, 4);
+    wireSlider(dynamics, intensity, 5);
 
-    swingGrid.setLabels(juce::StringArray({ "1/16", "1/8", "1/4", "1/2", "1", "2" }));
-    swingGrid.onChange = [this](int idx)
+    swingGridPicker.addItem("1/16", 1);
+    swingGridPicker.addItem("1/8", 2);
+    swingGridPicker.addItem("1/4", 3);
+    swingGridPicker.addItem("1/2", 4);
+    swingGridPicker.addItem("1", 5);
+    swingGridPicker.addItem("2", 6);
+    swingGridPicker.onChange = [this]
     {
+        const int idx = juce::jmax(0, swingGridPicker.getSelectedId() - 1);
         groove.swingGridIndex = idx;
         groove.swingBase = idx == 0 ? SwingBase::Sixteenth : SwingBase::Eighth;
         notifyGroove();
     };
-    body.addAndMakeVisible(swingGrid);
+    timing.addAndMakeVisible(swingGridRow);
 
-    tempo.setLabels(juce::StringArray({ "/2", "1×", "×2" }));
-    tempo.onChange = [this](int idx)
+    tempoPicker.addItem("Half", 1);
+    tempoPicker.addItem("0", 2);
+    tempoPicker.addItem("Double", 3);
+    tempoPicker.onChange = [this]
     {
-        bpmMultiplier = multiplierFromTempoStep(idx);
+        const int id = tempoPicker.getSelectedId();
+        bpmMultiplier = id == 1 ? 0.5 : id == 3 ? 2.0 : 1.0;
         if (onBpmMultiplierChanged) onBpmMultiplierChanged(bpmMultiplier);
     };
-    body.addAndMakeVisible(tempo);
+    playback.addAndMakeVisible(tempoRow);
 
-    timing.rows = { &swing, &swingGrid, &tempo, &pocket, &humanize };
+    btnTrim.setComponentID("btnTrim");
+    btnTrim.onClick = [this] { if (onTrimClicked) onTrimClicked(); };
+    playback.addAndMakeVisible(trimRow);
+
+    playback.rows = { &tempoRow, &trimRow };
+
+    timing.rows = { &swing, &swingGridRow, &pocket, &humanize };
     dynamics.rows = { &dynamicsSl, &intensity };
     lengthSec.rows = { &lengthSl };
 
@@ -326,9 +403,17 @@ EffectsInspector::EffectsInspector()
     octavePicker.onChange = [this]
     {
         edit.octave = octavePicker.getSelectedId() - 4;
+        pitchShiftRow.setFromEdit(edit, clipRootPc);
         notifyEdit();
     };
-    body.addAndMakeVisible(octaveRow);
+    pitch.addAndMakeVisible(octaveRow);
+
+    pitchShiftRow.onChange = [this](int v)
+    {
+        edit.pitchShift = v;
+        notifyEdit();
+    };
+    pitch.addAndMakeVisible(pitchShiftRow);
 
     rootPicker.addItem("—", 1);
     for (int i = 0; i < 12; ++i)
@@ -337,38 +422,41 @@ EffectsInspector::EffectsInspector()
     {
         const int id = rootPicker.getSelectedId();
         edit.root = id <= 1 ? -1 : id - 2;
+        pitchShiftRow.setFromEdit(edit, clipRootPc);
         notifyEdit();
     };
-    body.addAndMakeVisible(keyRow);
+    pitch.addAndMakeVisible(keyRow);
 
     for (int i = 0; i < kNumModes; ++i)
         modePicker.addItem(modeName((Mode) i), i + 1);
     modePicker.onChange = [this]
     {
         edit.mode = (Mode) juce::jmax(0, modePicker.getSelectedId() - 1);
+        pitchShiftRow.setFromEdit(edit, clipRootPc);
         notifyEdit();
     };
-    body.addAndMakeVisible(modeRow);
+    pitch.addAndMakeVisible(modeRow);
 
     fitSwitch.onClick = [this]
     {
         edit.fitScale = fitSwitch.getToggleState();
+        pitchShiftRow.setFromEdit(edit, clipRootPc);
         notifyEdit();
     };
-    body.addAndMakeVisible(fitRow);
+    pitch.addAndMakeVisible(fitRow);
 
     mapSwitch.onClick = [this]
     {
         edit.mapToRoot = mapSwitch.getToggleState();
         notifyEdit();
     };
-    body.addAndMakeVisible(mapRow);
+    pitch.addAndMakeVisible(mapRow);
 
-    pitch.rows = { &octaveRow, &keyRow, &modeRow, &fitRow, &mapRow };
+    pitch.rows = { &octaveRow, &pitchShiftRow, &keyRow, &modeRow, &fitRow, &mapRow };
 
-    for (auto* sec : { &timing, &dynamics, &lengthSec, &pitch })
+    for (auto* sec : { &playback, &timing, &dynamics, &lengthSec, &pitch })
     {
-        sec->setOpen(false);
+        sec->setOpen(sec == &playback);
         sec->onToggle = [this] { layoutSections(); };
         body.addAndMakeVisible(*sec);
     }
@@ -381,18 +469,16 @@ EffectsInspector::EffectsInspector()
 void EffectsInspector::setEffectsLocked(bool locked)
 {
     effectsLocked = locked;
-    btnLock.icon = locked ? icons::lockClosed : icons::lockOpen;
-    btnLock.active = locked;
-    btnLock.repaint();
+    btnEffectsLock.icon = locked ? icons::lockClosed : icons::lockOpen;
+    btnEffectsLock.active = locked;
+    btnEffectsLock.repaint();
     repaint();
 }
 
 void EffectsInspector::setPitchLocked(bool locked)
 {
     pitchLocked = locked;
-    btnPitchLock.icon = locked ? icons::lockClosed : icons::lockOpen;
-    btnPitchLock.active = locked;
-    btnPitchLock.repaint();
+    juce::ignoreUnused(pitchLocked);
 }
 
 void EffectsInspector::setHasClip(bool has)
@@ -401,10 +487,25 @@ void EffectsInspector::setHasClip(bool has)
     repaint();
 }
 
+void EffectsInspector::setClipRoot(int rootPc)
+{
+    clipRootPc = rootPc;
+    pitchShiftRow.setFromEdit(edit, clipRootPc);
+}
+
+void EffectsInspector::setTrimState(bool active, bool enabled, const juce::String& label)
+{
+    btnTrim.active = active;
+    btnTrim.setEnabled(enabled);
+    btnTrim.label = label;
+    btnTrim.repaint();
+}
+
 void EffectsInspector::setBpmMultiplier(double mult, juce::NotificationType)
 {
     bpmMultiplier = juce::jlimit(0.25, 4.0, mult);
-    tempo.setStep(tempoStepFromMultiplier(bpmMultiplier), juce::dontSendNotification);
+    const int tempoId = bpmMultiplier < 0.75 ? 1 : bpmMultiplier > 1.5 ? 3 : 2;
+    tempoPicker.setSelectedId(tempoId, juce::dontSendNotification);
     repaint();
 }
 
@@ -417,7 +518,7 @@ void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
     dynamicsSl.setValue(g.dynamics, juce::dontSendNotification);
     lengthSl.setValue(g.length, juce::dontSendNotification);
     intensity.setValue(g.intensity, juce::dontSendNotification);
-    swingGrid.setStep(juce::jlimit(0, 5, g.swingGridIndex), juce::dontSendNotification);
+    swingGridPicker.setSelectedId(juce::jlimit(1, 6, g.swingGridIndex + 1), juce::dontSendNotification);
     swing.valueText = grooveValueText(kKnobDefs[0], g.swing);
     pocket.valueText = grooveValueText(kKnobDefs[1], g.pocket);
     humanize.valueText = grooveValueText(kKnobDefs[2], g.humanize);
@@ -435,6 +536,7 @@ void EffectsInspector::setEdit(const ClipEdit& e, juce::NotificationType)
     modePicker.setSelectedId((int) e.mode + 1, juce::dontSendNotification);
     fitSwitch.setToggleState(e.fitScale, juce::dontSendNotification);
     mapSwitch.setToggleState(e.mapToRoot, juce::dontSendNotification);
+    pitchShiftRow.setFromEdit(e, clipRootPc);
 }
 
 void EffectsInspector::notifyGroove()
@@ -455,12 +557,14 @@ void EffectsInspector::notifyEdit()
 
 void EffectsInspector::layoutSections()
 {
-    const int w = juce::jmax(1, body.getWidth() - kBodyPadH * 2);
+    const int innerW = juce::jmax(1, body.getWidth() - kBodyPadH * 2);
+    const int w = juce::jmin(innerW, kSliderMaxW);
+    const int x = kBodyPadH + (innerW - w) / 2;
     int y = 0;
-    for (auto* sec : { &timing, &dynamics, &lengthSec, &pitch })
+    for (auto* sec : { &playback, &timing, &dynamics, &lengthSec, &pitch })
     {
         const int h = sec->idealHeight();
-        sec->setBounds(kBodyPadH, y, w, h);
+        sec->setBounds(x, y, w, h);
         sec->resized();
         y += h + 6;
     }
@@ -472,11 +576,9 @@ void EffectsInspector::resized()
 {
     auto r = getLocalBounds();
     auto header = r.removeFromTop(headerH).reduced(kBodyPadH, 4);
-    btnPitchLock.setBounds(header.removeFromRight(24).withSizeKeepingCentre(22, 22));
+    btnEffectsLock.setBounds(header.removeFromRight(24).withSizeKeepingCentre(22, 22));
     header.removeFromRight(4);
     btnReset.setBounds(header.removeFromRight(24).withSizeKeepingCentre(22, 22));
-    header.removeFromRight(4);
-    btnLock.setBounds(header.removeFromRight(24).withSizeKeepingCentre(22, 22));
 
     viewport.setBounds(r);
     body.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()), body.getHeight());

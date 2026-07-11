@@ -42,6 +42,7 @@ TEST_CASE("Trim button trims and restores through the real editor UI", "[editoru
     MidiBrowserProcessor proc;
     proc.lastBrowserDir = dir.getFullPathName();
     proc.editorOpen = true;
+    proc.effectsOpen = true;
 
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     REQUIRE(ed != nullptr);
@@ -104,21 +105,13 @@ TEST_CASE("Fold and pitch-lock buttons are reachable; lock persists a template",
     REQUIRE(fold->isEnabled());
     fold->onClick();   // no crash, toggles fold state
 
-    // Pitch lock lives in the Effects inspector (Pitch & Scale section).
+    // Effects lock lives in the Effects inspector header.
     auto* lock = dynamic_cast<juce::Button*>(findById(ed.get(), "btnLock"));
     REQUIRE(lock != nullptr);
-    REQUIRE_FALSE(proc.editLock);
-    lock->onClick();
-    CHECK(proc.editLock);
-    lock->onClick();
-    CHECK_FALSE(proc.editLock);
-
-    auto* fxLock = dynamic_cast<juce::Button*>(findById(ed.get(), "btnEffectsLock"));
-    REQUIRE(fxLock != nullptr);
     REQUIRE_FALSE(proc.effectsLock);
-    fxLock->onClick();
+    lock->onClick();
     CHECK(proc.effectsLock);
-    fxLock->onClick();
+    lock->onClick();
     CHECK_FALSE(proc.effectsLock);
 
     ed = nullptr;

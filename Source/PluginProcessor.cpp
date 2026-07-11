@@ -284,6 +284,20 @@ void MidiBrowserProcessor::removeSavedBrowserDir(const juce::String& path)
     savedBrowserDirs.removeString(path);
 }
 
+void MidiBrowserProcessor::addSavedSearch(const SavedSearchEntry& entry)
+{
+    if (entry.name.isEmpty()) return;
+    savedSearches.push_back(entry);
+    while (savedSearches.size() > 24)
+        savedSearches.erase(savedSearches.begin());
+}
+
+void MidiBrowserProcessor::removeSavedSearch(int index)
+{
+    if (juce::isPositiveAndBelow(index, (int) savedSearches.size()))
+        savedSearches.erase(savedSearches.begin() + index);
+}
+
 void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
     juce::XmlElement xml("MidiBrowserState");
@@ -331,6 +345,17 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
             child->setAttribute("path", star);
         }
     }
+    for (const auto& ss : savedSearches)
+    {
+        if (ss.name.isEmpty()) continue;
+        auto* child = xml.createNewChildElement("SavedSearch");
+        child->setAttribute("name", ss.name);
+        child->setAttribute("query", ss.search.query);
+        child->setAttribute("bpm", ss.search.bpm);
+        child->setAttribute("key", ss.search.keyRoot);
+        child->setAttribute("bars", ss.search.bars);
+        child->setAttribute("subdirs", ss.search.subdirs ? 1 : 0);
+    }
 
     for (const auto& [path, edit] : clipEdits)
     {
@@ -339,6 +364,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         auto* e = xml.createNewChildElement("ClipEdit");
         e->setAttribute("path", path);
         e->setAttribute("octave", edit.octave);
+        e->setAttribute("pitchShift", edit.pitchShift);
         e->setAttribute("fitScale", edit.fitScale ? 1 : 0);
         e->setAttribute("mapToRoot", edit.mapToRoot ? 1 : 0);
         e->setAttribute("root", edit.root);
@@ -396,6 +422,8 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
 {
     lastBrowserDir.clear();
     savedBrowserDirs.clear();
+    starredFiles.clear();
+    savedSearches.clear();
     trimEmptyMeasuresPreview = false;
     syncSessionBars.store(4);
     clipEdits.clear();
@@ -457,12 +485,25 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     if (path.isNotEmpty() && !starredFiles.contains(path))
                         starredFiles.add(path);
                 }
+                else if (child->hasTagName("SavedSearch"))
+                {
+                    SavedSearchEntry entry;
+                    entry.name = child->getStringAttribute("name");
+                    entry.search.query = child->getStringAttribute("query");
+                    entry.search.bpm = child->getDoubleAttribute("bpm", 0.0);
+                    entry.search.keyRoot = juce::jlimit(-1, 11, child->getIntAttribute("key", -1));
+                    entry.search.bars = juce::jmax(0, child->getIntAttribute("bars", 0));
+                    entry.search.subdirs = child->getIntAttribute("subdirs", 0) != 0;
+                    if (entry.name.isNotEmpty())
+                        savedSearches.push_back(entry);
+                }
                 else if (child->hasTagName("ClipEdit"))
                 {
                     const auto path = child->getStringAttribute("path");
                     if (path.isEmpty()) continue;
                     ClipEdit e;
                     e.octave = juce::jlimit(-3, 3, child->getIntAttribute("octave", 0));
+                    e.pitchShift = juce::jlimit(-12, 12, child->getIntAttribute("pitchShift", 0));
                     e.fitScale = child->getIntAttribute("fitScale", 0) != 0;
                     e.mapToRoot = child->getIntAttribute("mapToRoot", 0) != 0;
                     e.root = juce::jlimit(-1, 11, child->getIntAttribute("root", -1));

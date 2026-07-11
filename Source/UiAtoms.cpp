@@ -221,6 +221,11 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
         lemni.cubicTo(cx - s * 0.15f, cy + s * 0.95f, cx - s, cy + s * 0.95f, cx - s, cy);
         g.strokePath(lemni, st);
     }
+    else if (name == icons::search)
+    {
+        g.drawEllipse(cx - s * 0.55f, cy - s * 0.65f, s * 1.05f, s * 1.05f, px);
+        g.drawLine(cx + s * 0.35f, cy + s * 0.45f, cx + s * 0.95f, cy + s * 1.05f, px * 1.2f);
+    }
     else if (name == icons::gear)
     {
         g.drawEllipse(cx - s * 0.35f, cy - s * 0.35f, s * 0.7f, s * 0.7f, px);

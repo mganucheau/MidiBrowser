@@ -65,6 +65,7 @@ struct NoteMove { int dPitch = 0; int dStep = 0; };
 struct ClipEdit
 {
     int  octave    = 0;
+    int  pitchShift = 0;   // whole-file semitone transpose, -12..12
     bool fitScale  = false;
     bool mapToRoot = false;
     int  root      = -1;            // target root pitch-class, -1 = unset

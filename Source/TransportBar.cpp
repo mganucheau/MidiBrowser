@@ -4,22 +4,28 @@ namespace pflow {
 
 TransportBar::TransportBar()
 {
-    btnPlay.onClick = [this] { if (onPlayPause) onPlayPause(); };
-    btnStop.onClick = [this] { if (onStop) onStop(); };
-    addAndMakeVisible(btnPlay);
-    addAndMakeVisible(btnStop);
-
-    syncToggle.setClickingTogglesState(true);
-    syncToggle.setToggleState(true, juce::dontSendNotification);
-    syncToggle.onClick = [this]
+    btnPlay.onClick = [this]
     {
-        synced = syncToggle.getToggleState();
+        if (playing)
+        {
+            if (onStop) onStop();
+        }
+        else if (onPlayPause)
+            onPlayPause();
+    };
+    addAndMakeVisible(btnPlay);
+
+    btnSync.setClickingTogglesState(true);
+    btnSync.setToggleState(true, juce::dontSendNotification);
+    btnSync.onClick = [this]
+    {
+        synced = btnSync.getToggleState();
         refreshBpm();
         resized();
         if (onSyncChanged)
             onSyncChanged(synced);
     };
-    addAndMakeVisible(syncToggle);
+    addAndMakeVisible(btnSync);
 
     bpmLabel.setJustificationType(juce::Justification::centredLeft);
     bpmLabel.onTextChange = [this]
@@ -55,14 +61,17 @@ void TransportBar::setPlaying(bool p)
 {
     if (playing == p) return;
     playing = p;
-    btnPlay.icon = playing ? icons::pause : icons::play;
+    btnPlay.icon = playing ? icons::stop : icons::play;
+    btnPlay.setTooltip(playing ? "Stop preview" : "Play preview");
     btnPlay.repaint();
 }
 
 void TransportBar::setSynced(bool s, juce::NotificationType notify)
 {
     synced = s;
-    syncToggle.setToggleState(s, juce::dontSendNotification);
+    btnSync.setToggleState(s, juce::dontSendNotification);
+    btnSync.active = s;
+    btnSync.repaint();
     refreshBpm();
     resized();
     if (notify != juce::dontSendNotification && onSyncChanged)
@@ -124,9 +133,6 @@ void TransportBar::setHasClip(bool has)
 
 void TransportBar::refreshBpm()
 {
-    syncToggle.onLabel = synced ? "Synced" : "Free";
-    syncToggle.offLabel = syncToggle.onLabel;
-
     const double shown = synced ? hostBpm * multiplier : freeBpm;
     bpmLabel.setText(juce::String(shown, 1) + " bpm", juce::dontSendNotification);
     bpmLabel.setEditable(false, !synced, false);
@@ -137,28 +143,21 @@ void TransportBar::refreshBpm()
     bpmLabel.setColour(juce::TextEditor::textColourId, colours::accent());
     bpmLabel.setTooltip(synced ? "DAW tempo × multiplier" : "Playback tempo, 20–300");
     bpmLabel.repaint();
-    syncToggle.repaint();
 }
 
 void TransportBar::resized()
 {
-    auto r = getLocalBounds().reduced(12, 0);
+    auto r = getLocalBounds();
     const int btnSize = 26;
+    const int titleW = 118;
+    const int transportW = btnSize + 8 + btnSize + 8 + 88;
+
+    r.removeFromLeft(titleW);
+
     auto mid = [&](juce::Rectangle<int> a, int h)
     {
         return a.withSizeKeepingCentre(a.getWidth(), h);
     };
-
-    r.removeFromLeft(4); // title painted in paint()
-
-    btnPlay.setBounds(mid(r.removeFromLeft(btnSize), btnSize));
-    r.removeFromLeft(4);
-    btnStop.setBounds(mid(r.removeFromLeft(btnSize), btnSize));
-    r.removeFromLeft(10);
-
-    syncToggle.setBounds(mid(r.removeFromLeft(juce::jmin(syncToggle.idealWidth(), 88)), 24));
-    r.removeFromLeft(6);
-    bpmLabel.setBounds(mid(r.removeFromLeft(88), 22));
 
     btnEffects.setBounds(mid(r.removeFromRight(btnSize), btnSize));
     r.removeFromRight(4);
@@ -170,6 +169,13 @@ void TransportBar::resized()
         r.removeFromRight(8);
         btnDragToDaw.setBounds(mid(r.removeFromRight(btnDragToDaw.idealWidth()), 24));
     }
+
+    auto transport = r.withSizeKeepingCentre(transportW, getHeight());
+    btnPlay.setBounds(mid(transport.removeFromLeft(btnSize), btnSize));
+    transport.removeFromLeft(8);
+    btnSync.setBounds(mid(transport.removeFromLeft(btnSize), btnSize));
+    transport.removeFromLeft(8);
+    bpmLabel.setBounds(mid(transport.removeFromLeft(88), 22));
 }
 
 void TransportBar::paint(juce::Graphics& g)
@@ -183,7 +189,7 @@ void TransportBar::paint(juce::Graphics& g)
 
     g.setColour(colours::text());
     g.setFont(uiFont(13.0f, true));
-    g.drawText("MidiBrowser", 12, 0, 100, getHeight(), juce::Justification::centredLeft);
+    g.drawText("MidiBrowser", 12, 0, 110, getHeight(), juce::Justification::centredLeft);
 }
 
 } // namespace pflow

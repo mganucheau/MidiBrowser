@@ -36,6 +36,7 @@ namespace icons {
     inline constexpr const char* lockClosed    = "lock-closed";
     inline constexpr const char* foldRows      = "fold-rows";
     inline constexpr const char* infinity      = "infinity";
+    inline constexpr const char* search        = "search";
 }
 
 /** Stroke-drawn icon centered in bounds. `px` is the stroke width. */

@@ -77,6 +77,7 @@ int fitToScale(int midi, int rootPc, Mode mode)
 void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
 {
     target.octave = locked.octave;
+    target.pitchShift = locked.pitchShift;
     target.fitScale = locked.fitScale;
     target.mapToRoot = locked.mapToRoot;
     target.root = locked.root;
@@ -85,7 +86,7 @@ void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
 
 bool editIsClean(const ClipEdit& e)
 {
-    if (e.octave != 0 || e.fitScale || e.mapToRoot || e.hasTrim()
+    if (e.octave != 0 || e.pitchShift != 0 || e.fitScale || e.mapToRoot || e.hasTrim()
         || e.legacyTrimLead != 0 || e.legacyTrimTail != 0)
         return false;
     if (!e.velocities.empty() || !e.deleted.empty())
@@ -127,7 +128,7 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
         if (auto it = e.moves.find(n.id); it != e.moves.end())
             mv = it->second;
 
-        int pitch = n.pitch + mv.dPitch + e.octave * 12;
+        int pitch = n.pitch + mv.dPitch + e.octave * 12 + e.pitchShift;
 
         if (e.mapToRoot && e.root >= 0 && clip.root >= 0)
         {
