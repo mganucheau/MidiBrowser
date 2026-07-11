@@ -70,10 +70,26 @@ struct ClipEdit
     int  root      = -1;            // target root pitch-class, -1 = unset
     Mode mode      = Mode::Ionian;  // displayed as "Major"
     std::map<int, NoteMove> moves;  // per-note manual moves keyed by note id
-    int  trimLead  = 0;             // leading bars trimmed
-    int  trimTail  = 0;             // trailing bars trimmed
+    /** Empty bars removed by Trim (any position, including middle gaps).
+        Sorted ascending. Legacy trimLead/trimTail are migrated on load. */
+    std::vector<int> removedBars;
+    /** Session-load only: old trimLead/trimTail until resolve has clip.bars. */
+    int legacyTrimLead = 0;
+    int legacyTrimTail = 0;
     std::map<int, int> velocities;  // per-note velocity overrides (1-127)
     std::set<int> deleted;          // per-note non-destructive deletions
+
+    bool hasTrim() const
+    {
+        return !removedBars.empty() || legacyTrimLead > 0 || legacyTrimTail > 0;
+    }
+
+    void clearTrim()
+    {
+        removedBars.clear();
+        legacyTrimLead = 0;
+        legacyTrimTail = 0;
+    }
 };
 
 bool editIsClean(const ClipEdit& e);
@@ -97,8 +113,14 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& edit);
 
 struct EdgeBars { int lead = 0; int tail = 0; };
 
-/** Fully-empty leading/trailing bars of a note set (drives the Trim button). */
+/** Fully-empty leading/trailing bars of a note set. */
 EdgeBars emptyEdgeBars(const std::vector<RollNote>& notes, int bars);
+
+/** Indices of every fully-empty bar (including middle gaps). Sorted ascending. */
+std::vector<int> emptyBars(const std::vector<RollNote>& notes, int bars);
+
+/** Remap a step position after removing the given bar indices. */
+double remapStepAfterRemovingBars(double step, const std::vector<int>& removedBars);
 
 struct EditBadge
 {

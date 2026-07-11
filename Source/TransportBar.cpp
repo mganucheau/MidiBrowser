@@ -14,12 +14,27 @@ TransportBar::TransportBar()
     syncToggle.onClick = [this]
     {
         synced = syncToggle.getToggleState();
+        syncIcon.active = synced;
         refreshBpm();
         resized();
         if (onSyncChanged)
             onSyncChanged(synced);
     };
     addAndMakeVisible(syncToggle);
+
+    syncIcon.active = true;
+    syncIcon.setClickingTogglesState(true);
+    syncIcon.setToggleState(true, juce::dontSendNotification);
+    syncIcon.onClick = [this]
+    {
+        synced = syncIcon.getToggleState();
+        syncToggle.setToggleState(synced, juce::dontSendNotification);
+        syncIcon.active = synced;
+        refreshBpm();
+        if (onSyncChanged)
+            onSyncChanged(synced);
+    };
+    addAndMakeVisible(syncIcon);
 
     bpmLabel.setJustificationType(juce::Justification::centred);
     bpmLabel.onTextChange = [this]
@@ -79,6 +94,8 @@ void TransportBar::setSynced(bool s, juce::NotificationType notify)
 {
     synced = s;
     syncToggle.setToggleState(s, juce::dontSendNotification);
+    syncIcon.setToggleState(s, juce::dontSendNotification);
+    syncIcon.active = s;
     refreshBpm();
     resized();
     if (notify != juce::dontSendNotification && onSyncChanged)
@@ -168,8 +185,14 @@ void TransportBar::resized()
     btnStop.setBounds(mid(r.removeFromLeft(btnSize), btnSize));
     r.removeFromLeft(8);
 
-    syncToggle.setBounds(mid(r.removeFromLeft(juce::jmin(syncToggle.idealWidth(),
-                                                          narrow ? 72 : 96)), 24));
+    // Folded: infinity sync icon. Open: Synced/Free pill.
+    syncToggle.setVisible(editorOpen);
+    syncIcon.setVisible(!editorOpen);
+    if (editorOpen)
+        syncToggle.setBounds(mid(r.removeFromLeft(juce::jmin(syncToggle.idealWidth(),
+                                                              narrow ? 72 : 96)), 24));
+    else
+        syncIcon.setBounds(mid(r.removeFromLeft(btnSize), btnSize));
     r.removeFromLeft(6);
     bpmLabel.setBounds(mid(r.removeFromLeft(narrow ? 48 : 56), 22));
     r.removeFromLeft(2);
@@ -182,23 +205,22 @@ void TransportBar::resized()
         r.removeFromLeft(2);
         btnDouble.setBounds(mid(r.removeFromLeft(narrow ? 30 : 34), 22));
 
-        btnEditor.setBounds(mid(r.removeFromRight(26), 24));
-        r.removeFromRight(6);
+        btnDragToDaw.setVisible(!narrow);
+        if (btnDragToDaw.isVisible())
+        {
+            btnDragToDaw.setBounds(mid(r.removeFromRight(btnDragToDaw.idealWidth()), 24));
+            r.removeFromRight(8);
+        }
+        // Editor toggle flush to the right edge of the bar content.
+        btnEditor.setBounds(mid(r.removeFromRight(btnSize), btnSize));
     }
     else
     {
         btnHalf.setVisible(false);
         btnDouble.setVisible(false);
-        r.removeFromLeft(4);
-        btnEditor.setBounds(mid(r.removeFromLeft(26), 24));
-        r.removeFromLeft(6);
-    }
-
-    btnDragToDaw.setVisible(!narrow && editorOpen);
-    if (btnDragToDaw.isVisible())
-    {
-        btnDragToDaw.setBounds(mid(r.removeFromRight(btnDragToDaw.idealWidth()), 24));
-        r.removeFromRight(8);
+        btnDragToDaw.setVisible(false);
+        // Flush editor icon to the right — no trailing gap.
+        btnEditor.setBounds(mid(r.removeFromRight(btnSize), btnSize));
     }
 }
 

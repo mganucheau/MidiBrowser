@@ -209,6 +209,7 @@ PianoRollEditor::PianoRollEditor()
         {
             divisionSteps = divisionPicker.getSelectedId();
             rollContent.repaint();
+            timeRuler.repaint();
         }
     };
     addAndMakeVisible(divisionPicker);
@@ -238,6 +239,7 @@ PianoRollEditor::PianoRollEditor()
 
     // Roll
     addAndMakeVisible(gutter);
+    addAndMakeVisible(timeRuler);
     rollViewport.setViewedComponent(&rollContent, false);
     rollViewport.setScrollBarsShown(true, true, true, true);
     rollViewport.setScrollBarThickness(8);
@@ -245,6 +247,7 @@ PianoRollEditor::PianoRollEditor()
     {
         gutter.repaint();
         velocityLane.repaint();
+        timeRuler.repaint();
     };
     addAndMakeVisible(rollViewport);
 
@@ -283,12 +286,15 @@ void PianoRollEditor::setClip(const StepClip& c, const ClipEdit& e, const Groove
     if (!sameClip)
     {
         selection.clear();
+        resetLoopToClip();
         computePxPerStepBase();
         updateRollSize();
         scrollToContent();
     }
     else
     {
+        // Keep loop inside the (possibly trimmed) clip length.
+        setLoopSteps(loopStartStep, loopEndStep, false);
         updateRollSize();
     }
     repaint();
@@ -330,7 +336,9 @@ void PianoRollEditor::setTimeStretch(double stretch)
     computePxPerStepBase();
     updateRollSize();
     rollContent.repaint();
+    timeRuler.repaint();
     velocityLane.repaint();
+    notifyLoopChanged();
 }
 
 void PianoRollEditor::setScalePlacement(ScalePlacement placement)
@@ -351,9 +359,9 @@ void PianoRollEditor::rebuildResolved()
     grooved = applyGroove(resolved.notes, groove);
 
     ClipEdit noTrim = edit;
-    noTrim.trimLead = noTrim.trimTail = 0;
+    noTrim.clearTrim();
     const auto preTrim = resolveClip(clip, noTrim);
-    edges = emptyEdgeBars(preTrim.notes, clip.bars);
+    emptyBarIndices = emptyBars(preTrim.notes, clip.bars);
 
     std::set<int> pitches;
     for (const auto& n : resolved.notes)
@@ -366,6 +374,7 @@ void PianoRollEditor::applyEdit(std::function<void(ClipEdit&)> mutate)
     if (!hasClip) return;
     mutate(edit);
     rebuildResolved();
+    setLoopSteps(loopStartStep, loopEndStep, true);
     refreshControls();
     updateRollSize();
     repaint();
@@ -387,15 +396,17 @@ void PianoRollEditor::refreshControls()
     mapSwitch.repaint();
     fitSwitch.repaint();
 
-    // Trim: always labeled Trim/Restore; grayed when nothing to trim.
-    const bool isTrimmed = edit.trimLead + edit.trimTail > 0;
-    const bool canTrim = edges.lead + edges.tail > edit.trimLead + edit.trimTail;
-    btnTrim.setEnabled(canTrim || isTrimmed);
+    // Trim: Trim when empty measures exist; Restore when already compacted.
+    const bool isTrimmed = edit.hasTrim();
+    const bool hasNewEmpties = !emptyBarIndices.empty()
+                               && emptyBarIndices != edit.removedBars;
+    const bool showRestore = isTrimmed && !hasNewEmpties;
+    btnTrim.setEnabled(hasNewEmpties || isTrimmed);
     btnTrim.active = isTrimmed;
-    btnTrim.label = isTrimmed ? "Restore" : "Trim";
-    btnTrim.setTooltip(isTrimmed ? "Restore trimmed bars"
-                      : canTrim ? "Trim empty edge bars"
-                                : "No empty edge bars to trim");
+    btnTrim.label = showRestore ? "Restore" : "Trim";
+    btnTrim.setTooltip(showRestore ? "Restore trimmed bars"
+                      : hasNewEmpties ? "Trim all empty measures"
+                                      : "No empty measures to trim");
     btnTrim.repaint();
 
     btnFold.setEnabled(hasClip && !foldPitches.empty());
@@ -430,7 +441,7 @@ void PianoRollEditor::removeBadge(const juce::String& key)
         else if (key == "scale") e.fitScale = false;
         else if (key == "map")   e.mapToRoot = false;
         else if (key == "moves") e.moves.clear();
-        else if (key == "trim")  { e.trimLead = 0; e.trimTail = 0; }
+        else if (key == "trim")  e.clearTrim();
         else if (key == "vel")   e.velocities.clear();
         else if (key == "del")   e.deleted.clear();
     });
@@ -489,27 +500,221 @@ void PianoRollEditor::nudgeSelection(int dPitch, int dStep)
 
 void PianoRollEditor::toggleTrim()
 {
-    const bool isTrimmed = edit.trimLead + edit.trimTail > 0;
-    // Prefer live edge detection; if somehow zero while trimmed, restore.
-    auto lead = edges.lead;
-    auto tail = edges.tail;
-    if (!isTrimmed && lead + tail == 0)
+    auto toRemove = emptyBarIndices;
+    if (toRemove.empty())
     {
-        // Recompute from the current clip in case edges were stale.
         ClipEdit noTrim = edit;
-        noTrim.trimLead = noTrim.trimTail = 0;
+        noTrim.clearTrim();
         const auto preTrim = resolveClip(clip, noTrim);
-        const auto fresh = emptyEdgeBars(preTrim.notes, clip.bars);
-        lead = fresh.lead;
-        tail = fresh.tail;
+        toRemove = emptyBars(preTrim.notes, clip.bars);
     }
-    if (!isTrimmed && lead + tail == 0)
-        return;   // nothing to trim
-    applyEdit([isTrimmed, lead, tail](ClipEdit& e)
+
+    const bool isTrimmed = edit.hasTrim();
+    const bool hasNewEmpties = !toRemove.empty() && toRemove != edit.removedBars;
+
+    if (isTrimmed && !hasNewEmpties)
     {
-        e.trimLead = isTrimmed ? 0 : lead;
-        e.trimTail = isTrimmed ? 0 : tail;
+        applyEdit([](ClipEdit& e) { e.clearTrim(); });
+        return;
+    }
+    if (toRemove.empty())
+        return;
+
+    applyEdit([toRemove](ClipEdit& e)
+    {
+        e.clearTrim();
+        e.removedBars = toRemove;
     });
+}
+
+void PianoRollEditor::resetLoopToClip()
+{
+    loopStartStep = 0.0;
+    loopEndStep = juce::jmax(minLoopSteps(), clipSteps());
+    notifyLoopChanged();
+    timeRuler.repaint();
+    rollContent.repaint();
+}
+
+void PianoRollEditor::setLoopSteps(double start, double end, bool notify)
+{
+    const double minLen = minLoopSteps();
+    const double maxEnd = juce::jmax(minLen, clipSteps());
+    start = juce::jlimit(0.0, maxEnd - minLen, start);
+    end = juce::jlimit(start + minLen, maxEnd, end);
+    if (std::abs(start - loopStartStep) < 1.0e-9 && std::abs(end - loopEndStep) < 1.0e-9)
+        return;
+    loopStartStep = start;
+    loopEndStep = end;
+    if (notify)
+        notifyLoopChanged();
+    timeRuler.repaint();
+    rollContent.repaint();
+}
+
+void PianoRollEditor::notifyLoopChanged()
+{
+    if (onLoopChanged)
+        onLoopChanged(loopStartStep, loopEndStep);
+}
+
+double PianoRollEditor::stepFromContentX(float x) const
+{
+    const float pps = pxPerStep();
+    if (pps <= 0.0f || timeStretch <= 0.0)
+        return 0.0;
+    return (double) x / ((double) pps * timeStretch);
+}
+
+float PianoRollEditor::contentXFromStep(double step) const
+{
+    return (float) (step * timeStretch) * pxPerStep();
+}
+
+int PianoRollEditor::hitLoopHandle(float contentX, float hitPx) const
+{
+    const float xs = contentXFromStep(loopStartStep);
+    const float xe = contentXFromStep(loopEndStep);
+    if (std::abs(contentX - xs) <= hitPx) return 0;
+    if (std::abs(contentX - xe) <= hitPx) return 1;
+    return -1;
+}
+
+void PianoRollEditor::paintLoopOverlay(juce::Graphics& g, juce::Rectangle<float> clipB,
+                                       float top, float bottom) const
+{
+    const float xs = contentXFromStep(loopStartStep);
+    const float xe = contentXFromStep(loopEndStep);
+    const float h = bottom - top;
+
+    // Dim outside the loop region.
+    g.setColour(juce::Colours::black.withAlpha(0.22f));
+    if (xs > clipB.getX())
+        g.fillRect(clipB.getX(), top, xs - clipB.getX(), h);
+    if (xe < clipB.getRight())
+        g.fillRect(xe, top, clipB.getRight() - xe, h);
+
+    g.setColour(colours::accent().withAlpha(0.85f));
+    g.fillRect(xs - 1.0f, top, 2.0f, h);
+    g.fillRect(xe - 1.0f, top, 2.0f, h);
+}
+
+void PianoRollEditor::paintTimeRulerLabels(juce::Graphics& g, float viewX,
+                                           float width, float height) const
+{
+    if (!hasClip) return;
+
+    const float pps = pxPerStep();
+    if (pps <= 0.0f) return;
+
+    const int bars = juce::jmax(1, resolved.bars);
+    const float pxPerBar = (float) kStepsPerBar * (float) timeStretch * pps;
+    const float pxPerBeat = pxPerBar / 4.0f;
+    const float pxPerDiv = (float) juce::jmax(1, divisionSteps) * (float) timeStretch * pps;
+    constexpr float kMinLabelPx = 30.0f;
+
+    // Label resolution scales with how much room each measure has on screen
+    // (clip length + zoom), not with the grid picker alone — a 32-bar clip on
+    // 1/16 only gets measure numbers; short clips can show beats / divisions.
+    enum class Res { EveryNBars, Bars, Beats, Divisions };
+    Res res = Res::Bars;
+    int barStride = 1;
+
+    if (pxPerBar < kMinLabelPx)
+    {
+        res = Res::EveryNBars;
+        while ((float) barStride * pxPerBar < kMinLabelPx && barStride < 64)
+            barStride *= 2;
+    }
+    else if (bars <= 8 && pxPerBeat >= kMinLabelPx)
+    {
+        res = (bars <= 4 && pxPerDiv >= kMinLabelPx && divisionSteps < kStepsPerBar)
+                  ? Res::Divisions
+                  : Res::Beats;
+    }
+    else if (bars <= 16 && pxPerBeat >= kMinLabelPx * 1.15f)
+    {
+        res = Res::Beats;
+    }
+
+    g.setFont(monoFont(11.0f, true));
+
+    auto drawLabel = [&](float x, const juce::String& text, bool strong)
+    {
+        g.setColour(strong ? colours::text2() : colours::text3());
+        g.fillRect(x, height - (strong ? 4.0f : 3.0f), strong ? 1.0f : 0.5f,
+                   strong ? 4.0f : 3.0f);
+        if (text.isNotEmpty())
+            g.drawText(text, juce::Rectangle<float>(x + 3.0f, 1.0f, 40.0f, height - 5.0f),
+                       juce::Justification::centredLeft, false);
+    };
+
+    if (res == Res::EveryNBars || res == Res::Bars)
+    {
+        for (int bar = 0; bar <= bars; ++bar)
+        {
+            if (res == Res::EveryNBars && (bar % barStride) != 0)
+                continue;
+            const double step = (double) bar * (double) kStepsPerBar;
+            const float x = contentXFromStep(step) - viewX;
+            if (x < -40.0f || x > width + 4.0f) continue;
+            drawLabel(x, bar < bars ? juce::String(bar + 1) : juce::String(), true);
+        }
+    }
+    else if (res == Res::Beats)
+    {
+        const int totalBeats = bars * 4;
+        for (int beat = 0; beat <= totalBeats; ++beat)
+        {
+            const double step = (double) beat * 4.0; // 4 steps per beat
+            const float x = contentXFromStep(step) - viewX;
+            if (x < -40.0f || x > width + 4.0f) continue;
+            const int bar = beat / 4;
+            const int beatInBar = beat % 4;
+            const bool isBar = beatInBar == 0;
+            const juce::String label = beat < totalBeats
+                ? (isBar ? juce::String(bar + 1)
+                         : juce::String(bar + 1) + "." + juce::String(beatInBar + 1))
+                : juce::String();
+            drawLabel(x, label, isBar);
+        }
+    }
+    else // Divisions
+    {
+        const int div = juce::jmax(1, divisionSteps);
+        const int total = (int) std::lround((double) bars * (double) kStepsPerBar);
+        for (int s = 0; s <= total; s += div)
+        {
+            const float x = contentXFromStep((double) s) - viewX;
+            if (x < -40.0f || x > width + 4.0f) continue;
+            const int bar = s / kStepsPerBar;
+            const int stepInBar = s % kStepsPerBar;
+            const bool isBar = stepInBar == 0;
+            const bool isBeat = (stepInBar % 4) == 0;
+            juce::String label;
+            if (s < total)
+            {
+                if (isBar)
+                    label = juce::String(bar + 1);
+                else if (isBeat)
+                    label = juce::String(bar + 1) + "." + juce::String(stepInBar / 4 + 1);
+            }
+            drawLabel(x, label, isBar);
+        }
+    }
+
+    // Loop handles on the ruler.
+    const float xs = contentXFromStep(loopStartStep) - viewX;
+    const float xe = contentXFromStep(loopEndStep) - viewX;
+    g.setColour(colours::accent());
+    auto drawHandle = [&](float x)
+    {
+        juce::Path tri;
+        tri.addTriangle(x - 5.0f, 2.0f, x + 5.0f, 2.0f, x, height - 1.0f);
+        g.fillPath(tri);
+    };
+    drawHandle(xs);
+    drawHandle(xe);
 }
 
 void PianoRollEditor::selectPitch(int pitch, bool additive)
@@ -757,9 +962,12 @@ void PianoRollEditor::resized()
                                    : VelocityLane::headerH;
     velocityLane.setBounds(r.removeFromBottom(laneH));
 
-    // Roll: fixed key gutter + scrolling content
-    gutter.setBounds(r.removeFromLeft(gutterW));
-    rollViewport.setBounds(r);
+    // Ruler above the roll (aligned with the scrolling content, not the gutter).
+    auto rollArea = r;
+    auto rulerRow = rollArea.removeFromTop(rulerH);
+    gutter.setBounds(rollArea.removeFromLeft(gutterW));
+    timeRuler.setBounds(rulerRow.withTrimmedLeft(gutterW));
+    rollViewport.setBounds(rollArea);
     computePxPerStepBase();
     updateRollSize();
 }
@@ -889,6 +1097,8 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
         g.setColour(colours::playhead());
         g.fillRect((float) (ed.playheadStep * ed.timeStretch) * pps, clipB.getY(), 1.5f, clipB.getHeight());
     }
+
+    ed.paintLoopOverlay(g, clipB, clipB.getY(), clipB.getBottom());
 }
 
 void PianoRollEditor::RollContent::mouseDown(const juce::MouseEvent& e)
@@ -905,6 +1115,13 @@ void PianoRollEditor::RollContent::mouseDown(const juce::MouseEvent& e)
         drag = Drag::Pan;
         panStartView = ed.rollViewport.getViewPosition();
         setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+        return;
+    }
+
+    if (const int handle = ed.hitLoopHandle(e.position.x); handle >= 0)
+    {
+        drag = handle == 0 ? Drag::LoopStart : Drag::LoopEnd;
+        setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
         return;
     }
 
@@ -946,6 +1163,15 @@ void PianoRollEditor::RollContent::mouseDrag(const juce::MouseEvent& e)
         ed.rollViewport.setViewPosition(panStartView.x - d.x, panStartView.y - d.y);
         return;
     }
+    if (drag == Drag::LoopStart || drag == Drag::LoopEnd)
+    {
+        const double step = ed.stepFromContentX(e.position.x);
+        if (drag == Drag::LoopStart)
+            ed.setLoopSteps(step, ed.loopEndStep, false);
+        else
+            ed.setLoopSteps(ed.loopStartStep, step, false);
+        return;
+    }
     if (drag == Drag::Note)
     {
         const float dx = e.position.x - dragStart.x;
@@ -973,7 +1199,16 @@ void PianoRollEditor::RollContent::mouseDrag(const juce::MouseEvent& e)
 void PianoRollEditor::RollContent::mouseUp(const juce::MouseEvent&)
 {
     auto& ed = owner;
-    if (drag == Drag::Note)
+    if (drag == Drag::LoopStart || drag == Drag::LoopEnd)
+    {
+        const double div = (double) juce::jmax(1, ed.divisionSteps);
+        auto snap = [div](double s) { return std::round(s / div) * div; };
+        if (drag == Drag::LoopStart)
+            ed.setLoopSteps(snap(ed.loopStartStep), ed.loopEndStep, true);
+        else
+            ed.setLoopSteps(ed.loopStartStep, snap(ed.loopEndStep), true);
+    }
+    else if (drag == Drag::Note)
     {
         ed.commitNoteDrag();
         dragNoteId = -1;
@@ -1023,6 +1258,59 @@ void PianoRollEditor::RollContent::mouseMagnify(const juce::MouseEvent& e, float
 {
     // Trackpad pinch: zoom time toward the cursor (Live/Logic feel).
     owner.zoomXAround(scaleFactor, e.position.x);
+}
+
+// ── TimeRuler ────────────────────────────────────────────────────────────────
+
+void PianoRollEditor::TimeRuler::paint(juce::Graphics& g)
+{
+    auto& ed = owner;
+    g.fillAll(colours::panel());
+    g.setColour(colours::line());
+    g.fillRect(getLocalBounds().removeFromBottom(1));
+
+    if (!ed.hasClip) return;
+
+    const float viewX = (float) ed.rollViewport.getViewPositionX();
+    ed.paintTimeRulerLabels(g, viewX, (float) getWidth(), (float) getHeight());
+}
+
+void PianoRollEditor::TimeRuler::mouseDown(const juce::MouseEvent& e)
+{
+    auto& ed = owner;
+    if (!ed.hasClip) return;
+    const float contentX = e.position.x + (float) ed.rollViewport.getViewPositionX();
+    if (const int handle = ed.hitLoopHandle(contentX, 8.0f); handle >= 0)
+    {
+        drag = handle == 0 ? Drag::LoopStart : Drag::LoopEnd;
+        setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+    }
+}
+
+void PianoRollEditor::TimeRuler::mouseDrag(const juce::MouseEvent& e)
+{
+    auto& ed = owner;
+    if (drag == Drag::None) return;
+    const float contentX = e.position.x + (float) ed.rollViewport.getViewPositionX();
+    const double step = ed.stepFromContentX(contentX);
+    if (drag == Drag::LoopStart)
+        ed.setLoopSteps(step, ed.loopEndStep, false);
+    else
+        ed.setLoopSteps(ed.loopStartStep, step, false);
+}
+
+void PianoRollEditor::TimeRuler::mouseUp(const juce::MouseEvent&)
+{
+    auto& ed = owner;
+    if (drag == Drag::None) return;
+    const double div = (double) juce::jmax(1, ed.divisionSteps);
+    auto snap = [div](double s) { return std::round(s / div) * div; };
+    if (drag == Drag::LoopStart)
+        ed.setLoopSteps(snap(ed.loopStartStep), ed.loopEndStep, true);
+    else
+        ed.setLoopSteps(ed.loopStartStep, snap(ed.loopEndStep), true);
+    drag = Drag::None;
+    setMouseCursor(juce::MouseCursor::NormalCursor);
 }
 
 // ── KeyGutter ────────────────────────────────────────────────────────────────

@@ -69,6 +69,9 @@ public:
     std::atomic<double> freeBpm { 124.0 };
     std::atomic<double> freerunBeat { 0.0 };
     std::atomic<double> bpmMultiplier { 1.0 };   // synced ÷2 / ×2 playback speed
+    /** Freerun loop region in preview beats [start, end). end<=start → full clip. */
+    std::atomic<double> previewLoopStartBeat { 0.0 };
+    std::atomic<double> previewLoopEndBeat { 0.0 };
 
     /** True when the preview is audibly playing right now. */
     bool isPreviewSounding() const

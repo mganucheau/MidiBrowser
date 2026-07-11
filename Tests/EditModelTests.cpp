@@ -77,7 +77,7 @@ TEST_CASE("editIsClean detects default edits", "[editmodel]")
     SECTION("mapToRoot") { e.mapToRoot = true; CHECK_FALSE(editIsClean(e)); }
     SECTION("moves") { e.moves[3] = { 1, 0 }; CHECK_FALSE(editIsClean(e)); }
     SECTION("zero-delta move stays clean") { e.moves[3] = { 0, 0 }; CHECK(editIsClean(e)); }
-    SECTION("trim") { e.trimLead = 1; CHECK_FALSE(editIsClean(e)); }
+    SECTION("trim") { e.removedBars = { 0 }; CHECK_FALSE(editIsClean(e)); }
     SECTION("root/mode alone are not edits")
     {
         e.root = 4;
@@ -145,8 +145,7 @@ TEST_CASE("resolveClip trim shifts notes and shrinks bars", "[editmodel]")
 {
     auto clip = makeClip({ { 0, 60, 16.0, 4.0 }, { 1, 62, 40.0, 2.0 } }, 4);
     ClipEdit e;
-    e.trimLead = 1;
-    e.trimTail = 1;
+    e.removedBars = { 0, 3 };
 
     const auto r = resolveClip(clip, e);
     CHECK(r.bars == 2);
@@ -155,10 +154,29 @@ TEST_CASE("resolveClip trim shifts notes and shrinks bars", "[editmodel]")
 
     SECTION("bars never drop below 1")
     {
-        e.trimLead = 3;
-        e.trimTail = 3;
+        e.removedBars = { 0, 1, 2, 3 };
         CHECK(resolveClip(clip, e).bars == 1);
     }
+
+    SECTION("middle empty bar is compacted")
+    {
+        auto mid = makeClip({ { 0, 60, 0.0, 4.0 }, { 1, 62, 32.0, 4.0 } }, 3);
+        ClipEdit t;
+        t.removedBars = { 1 };
+        const auto out = resolveClip(mid, t);
+        CHECK(out.bars == 2);
+        CHECK(out.notes[0].start == Approx(0.0));
+        CHECK(out.notes[1].start == Approx(16.0));
+    }
+}
+
+TEST_CASE("emptyBars finds every fully-empty measure", "[editmodel]")
+{
+    std::vector<RollNote> notes { { 0, 60, 0.0, 4.0 }, { 1, 62, 32.0, 4.0 } };
+    CHECK(emptyBars(notes, 3) == std::vector<int>{ 1 });
+
+    std::vector<RollNote> edges { { 0, 60, 17.0, 2.0 }, { 1, 62, 36.0, 4.0 } };
+    CHECK(emptyBars(edges, 4) == std::vector<int>({ 0, 3 }));
 }
 
 TEST_CASE("emptyEdgeBars counts fully-empty edge bars", "[editmodel]")
@@ -191,7 +209,7 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
     e.root = 3;               // D#
     e.mode = Mode::Aeolian;
     e.moves[0] = { 0, 4 };
-    e.trimLead = 1;
+    e.removedBars = { 0 };
 
     const auto badges = editBadges(clip, e);
     REQUIRE(badges.size() == 5);
@@ -204,7 +222,7 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
     SECTION("plurals")
     {
         e.moves[1] = { 1, 0 };
-        e.trimTail = 1;
+        e.removedBars = { 0, 1 };
         const auto b = editBadges(clip, e);
         CHECK(b[3].label == "2 notes moved");
         CHECK(b[4].label == juce::String::fromUTF8("Trim −2 bars"));
@@ -229,7 +247,7 @@ TEST_CASE("applyPitchLock copies pitch fields, preserves moves and trim", "[edit
 
     ClipEdit target;
     target.moves[7] = { 2, -4 };
-    target.trimLead = 1;
+    target.removedBars = { 0 };
     target.octave = -2;
     target.root = 9;
 
@@ -241,7 +259,7 @@ TEST_CASE("applyPitchLock copies pitch fields, preserves moves and trim", "[edit
     CHECK(target.mode == Mode::Aeolian);
     CHECK(target.moves.at(7).dPitch == 2);    // per-note moves untouched
     CHECK(target.moves.at(7).dStep == -4);
-    CHECK(target.trimLead == 1);              // trim untouched
+    CHECK(target.removedBars == std::vector<int>{ 0 });  // trim untouched
 }
 
 TEST_CASE("parseMidiFile honours end-of-track length for trailing empty bars", "[editmodel]")

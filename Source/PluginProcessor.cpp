@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Theme.h"
+#include <algorithm>
 #include <cmath>
 
 namespace pflow {
@@ -105,12 +106,30 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
         if (!synced)
         {
-            // Internal clock: loop the armed clip at freeBpm.
+            // Internal clock: loop within the piano-roll loop region (or full clip).
             const double clipLen = juce::jmax(0.25, previewClip.lengthBeats);
-            pStart = std::fmod(beatPos, clipLen);
-            if (pStart < 0.0) pStart += clipLen;
+            double loopStart = previewLoopStartBeat.load();
+            double loopEnd = previewLoopEndBeat.load();
+            if (loopEnd <= loopStart + 1.0e-9)
+            {
+                loopStart = 0.0;
+                loopEnd = clipLen;
+            }
+            loopStart = juce::jlimit(0.0, clipLen, loopStart);
+            loopEnd = juce::jlimit(loopStart + 0.25, clipLen, loopEnd);
+            const double loopLen = loopEnd - loopStart;
+            double local = beatPos;
+            if (local < loopStart || local >= loopEnd)
+                local = loopStart + std::fmod(std::max(0.0, local - loopStart), loopLen);
+            else
+                local = loopStart + std::fmod(local - loopStart, loopLen);
+            if (local < loopStart) local += loopLen;
+            pStart = local;
             pEnd = pStart + blockBeats;
-            freerunBeat.store(std::fmod(pStart + blockBeats, clipLen));
+            double next = pStart + blockBeats;
+            if (next >= loopEnd)
+                next = loopStart + std::fmod(next - loopStart, loopLen);
+            freerunBeat.store(next);
         }
         else if (mult != 1.0)
         {
@@ -319,8 +338,18 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         e->setAttribute("mapToRoot", edit.mapToRoot ? 1 : 0);
         e->setAttribute("root", edit.root);
         e->setAttribute("mode", (int) edit.mode);
-        e->setAttribute("trimLead", edit.trimLead);
-        e->setAttribute("trimTail", edit.trimTail);
+        if (!edit.removedBars.empty())
+        {
+            juce::StringArray parts;
+            for (int b : edit.removedBars)
+                parts.add(juce::String(b));
+            e->setAttribute("removedBars", parts.joinIntoString(","));
+        }
+        else if (edit.legacyTrimLead > 0 || edit.legacyTrimTail > 0)
+        {
+            e->setAttribute("trimLead", edit.legacyTrimLead);
+            e->setAttribute("trimTail", edit.legacyTrimTail);
+        }
         for (const auto& [id, mv] : edit.moves)
         {
             if (mv.dPitch == 0 && mv.dStep == 0) continue;
@@ -429,8 +458,24 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     e.root = juce::jlimit(-1, 11, child->getIntAttribute("root", -1));
                     e.mode = (Mode) juce::jlimit(0, kNumModes - 1,
                                                  child->getIntAttribute("mode", (int) Mode::Dorian));
-                    e.trimLead = juce::jmax(0, child->getIntAttribute("trimLead", 0));
-                    e.trimTail = juce::jmax(0, child->getIntAttribute("trimTail", 0));
+                    const auto removedAttr = child->getStringAttribute("removedBars");
+                    if (removedAttr.isNotEmpty())
+                    {
+                        for (const auto& part : juce::StringArray::fromTokens(removedAttr, ",", ""))
+                        {
+                            const int b = part.getIntValue();
+                            if (b >= 0)
+                                e.removedBars.push_back(b);
+                        }
+                        std::sort(e.removedBars.begin(), e.removedBars.end());
+                        e.removedBars.erase(std::unique(e.removedBars.begin(), e.removedBars.end()),
+                                            e.removedBars.end());
+                    }
+                    else
+                    {
+                        e.legacyTrimLead = juce::jmax(0, child->getIntAttribute("trimLead", 0));
+                        e.legacyTrimTail = juce::jmax(0, child->getIntAttribute("trimTail", 0));
+                    }
                     for (auto* m : child->getChildIterator())
                     {
                         if (m->hasTagName("Move"))

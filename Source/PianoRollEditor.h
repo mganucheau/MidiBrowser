@@ -81,6 +81,8 @@ public:
     std::function<void(const ClipEdit&)> onEditChanged;
     std::function<void(const GrooveParams&)> onGrooveChanged;
     std::function<void(bool)> onLockToggled;   // browse-lock for pitch edits
+    /** Loop region in unstretched steps [start, end); end exclusive. */
+    std::function<void(double startStep, double endStep)> onLoopChanged;
 
 private:
     // ── inner surfaces ──
@@ -97,7 +99,7 @@ private:
         PianoRollEditor& owner;
 
         // interaction state
-        enum class Drag { None, Note, Marquee, Pan };
+        enum class Drag { None, Note, Marquee, Pan, LoopStart, LoopEnd };
         Drag drag = Drag::None;
         int dragNoteId = -1;
         juce::Point<float> dragStart;
@@ -105,6 +107,20 @@ private:
         int dragDRows = 0, dragDStep = 0;       // live preview offsets
         juce::Rectangle<float> marquee;
         bool marqueeAdditive = false;
+    };
+
+    /** Bar/beat labels + loop brace handles above the roll grid. */
+    class TimeRuler : public juce::Component
+    {
+    public:
+        explicit TimeRuler(PianoRollEditor& o) : owner(o) {}
+        void paint(juce::Graphics&) override;
+        void mouseDown(const juce::MouseEvent&) override;
+        void mouseDrag(const juce::MouseEvent&) override;
+        void mouseUp(const juce::MouseEvent&) override;
+        PianoRollEditor& owner;
+        enum class Drag { None, LoopStart, LoopEnd };
+        Drag drag = Drag::None;
     };
 
     class KeyGutter : public juce::Component
@@ -162,6 +178,7 @@ private:
     };
 
     friend class RollContent;
+    friend class TimeRuler;
     friend class KeyGutter;
     friend class VelocityLane;
     friend class ScalePanel;
@@ -194,6 +211,16 @@ private:
     void selectPitch(int pitch, bool additive);
     void toggleTrim();
     void removeBadge(const juce::String& key);
+    void resetLoopToClip();
+    void setLoopSteps(double start, double end, bool notify);
+    void notifyLoopChanged();
+    double clipSteps() const { return (double) resolved.bars * (double) kStepsPerBar; }
+    double minLoopSteps() const { return (double) juce::jmax(1, divisionSteps); }
+    double stepFromContentX(float x) const;
+    float contentXFromStep(double step) const;
+    int hitLoopHandle(float contentX, float hitPx = 6.0f) const; // -1 none, 0 start, 1 end
+    void paintLoopOverlay(juce::Graphics&, juce::Rectangle<float> clipB, float top, float bottom) const;
+    void paintTimeRulerLabels(juce::Graphics&, float viewX, float width, float height) const;
 
     // ── state ──
     bool hasClip = false;
@@ -202,7 +229,7 @@ private:
     GrooveParams groove;
     ResolvedClip resolved;                  // resolveClip output
     std::vector<RollNote> grooved;          // applyGroove(resolved)
-    EdgeBars edges;                         // of pre-trim resolve
+    std::vector<int> emptyBarIndices;       // all empty bars pre-trim
     std::set<int> selection;
     std::vector<int> foldPitches;           // ascending note-bearing pitches
     bool folded = false;
@@ -215,10 +242,13 @@ private:
     bool lockActive = false;
     double timeStretch = 1.0;               // 1 / bpmMultiplier
     ScalePlacement scalePlacement = ScalePlacement::Top;
+    double loopStartStep = 0.0;             // unstretched steps
+    double loopEndStep = 16.0;              // exclusive
 
     static constexpr float kMinRowH = 5.0f;    // max notes on screen
     static constexpr float kMaxRowH = 26.0f;   // min notes on screen
     static constexpr float kMaxZoomX = 6.0f;
+    static constexpr int rulerH = 20;
 
     // ── children ──
     Stepper octaveStepper;
@@ -235,6 +265,7 @@ private:
     std::vector<std::unique_ptr<ChipBtn>> badgeChips;
 
     KeyGutter gutter { *this };
+    TimeRuler timeRuler { *this };
     NotifyingViewport rollViewport;
     RollContent rollContent { *this };
     VelocityLane velocityLane { *this };

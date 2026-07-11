@@ -76,7 +76,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     sidebar.onCollapsedChanged = [this]
     {
         processorRef.sidebarCollapsed = sidebar.isCollapsed();
-        resized();
+        applyLayoutState();
     };
     sidebar.onPickDir = [this](const juce::String& path)
     {
@@ -156,8 +156,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             if (processorRef.editLock)
             {
                 applyPitchLock(e, processorRef.lockedEdit);   // keep the template current
-                // Trim is clip-specific amounts; lock remembers whether to auto-trim.
-                processorRef.lockAutoTrim = (e.trimLead + e.trimTail > 0);
+                processorRef.lockAutoTrim = e.hasTrim();
             }
             refreshEntryMeta(selectedIdx);
             pushPreviewToProcessor();
@@ -185,10 +184,15 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         {
             const auto cur = selectedEdit();
             applyPitchLock(cur, processorRef.lockedEdit);
-            // Locking while Trim is active enables auto-trim for browsing.
-            processorRef.lockAutoTrim = (cur.trimLead + cur.trimTail > 0);
+            processorRef.lockAutoTrim = cur.hasTrim();
         }
         rollEditor.setLockActive(locked);
+    };
+    rollEditor.onLoopChanged = [this](double startStep, double endStep)
+    {
+        const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
+        processorRef.previewLoopStartBeat.store(startStep * stretch / 4.0);
+        processorRef.previewLoopEndBeat.store(endStep * stretch / 4.0);
     };
     rollEditor.setLockActive(processorRef.editLock);
     rollEditor.setScalePlacement((ScalePlacement) tweaks().scalePlacement.load());
@@ -421,11 +425,10 @@ void MidiBrowserEditor::selectIndex(int index)
         if (processorRef.lockAutoTrim)
         {
             ClipEdit probe = e;
-            probe.trimLead = probe.trimTail = 0;
+            probe.clearTrim();
             const auto preTrim = resolveClip(clip, probe);
-            const auto edges = emptyEdgeBars(preTrim.notes, clip.bars);
-            e.trimLead = edges.lead;
-            e.trimTail = edges.tail;
+            e.clearTrim();
+            e.removedBars = emptyBars(preTrim.notes, clip.bars);
         }
         refreshEntryMeta(index);
     }
@@ -548,9 +551,15 @@ void MidiBrowserEditor::applyLayoutState()
     if (getHeight() > 0)
         lastWindowH = getHeight();
 
-    const int w = juce::roundToInt((float) (open ? metrics::openWindowW
-                                                 : metrics::foldedWindowW) * s);
-    setResizeLimits(juce::roundToInt((open ? 640 : 280) * s),
+    // Keep the file-list column width stable across fold/open; grow the window
+    // for the roll so the browser never shrinks under the editor.
+    const int side = sidebar.idealWidth();
+    const int bw = juce::jlimit(metrics::browserMinWidth, metrics::browserMaxWidth,
+                                browserColW > 0 ? browserColW : metrics::browserWidth);
+    const int logicalW = side + bw + (open ? metrics::openRollW : 0);
+    const int w = juce::roundToInt((float) logicalW * s);
+    setResizeLimits(juce::roundToInt((float) (side + metrics::browserMinWidth
+                                              + (open ? metrics::openRollMinW : 0)) * s),
                     juce::roundToInt(420 * s), 1920, 2000);
     setSize(w, juce::jmax(juce::roundToInt(460 * s), lastWindowH));
     resized();
@@ -561,9 +570,12 @@ void MidiBrowserEditor::resized()
     // Content-size tweak: scale the whole UI with one transform; children lay
     // out in logical (unscaled) coordinates inside `content`.
     const float s = contentScale();
-    content.setTransform(juce::AffineTransform::scale(s));
+    // Clear transform before setBounds so layout uses a stable local size.
+    content.setTransform({});
     content.setBounds(0, 0, juce::roundToInt((float) getWidth() / s),
                       juce::roundToInt((float) getHeight() / s));
+    if (std::abs(s - 1.0f) > 1.0e-4f)
+        content.setTransform(juce::AffineTransform::scale(s));
     layoutContent();
 }
 
@@ -581,8 +593,19 @@ void MidiBrowserEditor::layoutContent()
     {
         miniRoll.setVisible(false);
         auto row = r;
-        sidebar.setBounds(row.removeFromLeft(sidebar.idealWidth()));
-        fileList.setBounds(row.removeFromLeft(metrics::browserWidth));
+        const int side = sidebar.idealWidth();
+        sidebar.setBounds(row.removeFromLeft(side));
+
+        // Prefer the remembered browser width; if the host kept a narrow frame,
+        // shrink the browser just enough so the roll still fits — never overlap.
+        int bw = juce::jlimit(metrics::browserMinWidth, metrics::browserMaxWidth,
+                              browserColW > 0 ? browserColW : metrics::browserWidth);
+        if (row.getWidth() > metrics::browserMinWidth + 80
+            && row.getWidth() - bw < metrics::openRollMinW)
+            bw = juce::jmax(metrics::browserMinWidth, row.getWidth() - metrics::openRollMinW);
+        bw = juce::jmin(bw, row.getWidth());
+
+        fileList.setBounds(row.removeFromLeft(bw));
         rollEditor.setBounds(row);
     }
     else
@@ -594,7 +617,10 @@ void MidiBrowserEditor::layoutContent()
 
         auto row = r;
         sidebar.setBounds(row.removeFromLeft(sidebar.idealWidth()));
+        // Folded: browser takes the full remaining width (this is the width we
+        // preserve when the editor opens).
         fileList.setBounds(row);
+        browserColW = fileList.getWidth();
 
         miniHeader.setBounds(preview.removeFromTop(headerH));
         miniRoll.setVisible(processorRef.miniOpen);
@@ -748,6 +774,13 @@ bool MidiBrowserEditor::keyPressed(const juce::KeyPress& key)
             if (!arm)
                 processorRef.freerunBeat.store(0.0);
         }
+        return true;
+    }
+
+    // E toggles the editor pane (same as the transport fold button).
+    if (key.getTextCharacter() == 'e' || key.getTextCharacter() == 'E')
+    {
+        toggleEditorFold();
         return true;
     }
 

@@ -85,7 +85,8 @@ void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
 
 bool editIsClean(const ClipEdit& e)
 {
-    if (e.octave != 0 || e.fitScale || e.mapToRoot || e.trimLead != 0 || e.trimTail != 0)
+    if (e.octave != 0 || e.fitScale || e.mapToRoot || e.hasTrim()
+        || e.legacyTrimLead != 0 || e.legacyTrimTail != 0)
         return false;
     if (!e.velocities.empty() || !e.deleted.empty())
         return false;
@@ -93,6 +94,23 @@ bool editIsClean(const ClipEdit& e)
         if (mv.dPitch != 0 || mv.dStep != 0)
             return false;
     return true;
+}
+
+static std::vector<int> effectiveRemovedBars(const StepClip& clip, const ClipEdit& e)
+{
+    if (!e.removedBars.empty())
+        return e.removedBars;
+
+    std::vector<int> removed;
+    if (e.legacyTrimLead <= 0 && e.legacyTrimTail <= 0)
+        return removed;
+
+    for (int i = 0; i < e.legacyTrimLead && i < clip.bars; ++i)
+        removed.push_back(i);
+    const int firstTail = clip.bars - e.legacyTrimTail;
+    for (int i = std::max(firstTail, e.legacyTrimLead); i < clip.bars; ++i)
+        removed.push_back(i);
+    return removed;
 }
 
 ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
@@ -133,15 +151,33 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
         out.notes.push_back(r);
     }
 
+    const auto removed = effectiveRemovedBars(clip, e);
     int bars = clip.bars;
-    if (e.trimLead != 0 || e.trimTail != 0)
+    if (!removed.empty())
     {
         for (auto& r : out.notes)
-            r.start -= e.trimLead * kStepsPerBar;
-        bars = clip.bars - e.trimLead - e.trimTail;
+            r.start = remapStepAfterRemovingBars(r.start, removed);
+        bars = clip.bars - (int) removed.size();
     }
     out.bars = std::max(1, bars);
     return out;
+}
+
+double remapStepAfterRemovingBars(double step, const std::vector<int>& removedBars)
+{
+    if (removedBars.empty())
+        return step;
+
+    const double barF = step / (double) kStepsPerBar;
+    int removedBefore = 0;
+    for (int b : removedBars)
+    {
+        if ((double) b < barF)
+            ++removedBefore;
+        else
+            break;
+    }
+    return step - (double) removedBefore * (double) kStepsPerBar;
 }
 
 EdgeBars emptyEdgeBars(const std::vector<RollNote>& notes, int bars)
@@ -161,6 +197,31 @@ EdgeBars emptyEdgeBars(const std::vector<RollNote>& notes, int bars)
     e.lead = std::max(0, (int) std::floor(minStep / kStepsPerBar));
     e.tail = std::max(0, bars - (int) std::ceil(maxStep / kStepsPerBar));
     return e;
+}
+
+std::vector<int> emptyBars(const std::vector<RollNote>& notes, int bars)
+{
+    std::vector<int> out;
+    if (bars <= 0)
+        return out;
+
+    for (int b = 0; b < bars; ++b)
+    {
+        const double ms = (double) b * (double) kStepsPerBar;
+        const double me = (double) (b + 1) * (double) kStepsPerBar;
+        bool hasNote = false;
+        for (const auto& n : notes)
+        {
+            if (n.start < me && n.start + n.len > ms)
+            {
+                hasNote = true;
+                break;
+            }
+        }
+        if (!hasNote)
+            out.push_back(b);
+    }
+    return out;
 }
 
 std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
@@ -183,7 +244,7 @@ std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
     if (moved > 0)
         out.push_back({ "moves", juce::String(moved) + (moved > 1 ? " notes moved" : " note moved") });
 
-    const int trimBars = e.trimLead + e.trimTail;
+    const int trimBars = (int) effectiveRemovedBars(clip, e).size();
     if (trimBars > 0)
         out.push_back({ "trim", juce::String::fromUTF8("Trim −") + juce::String(trimBars)
                                     + (trimBars > 1 ? " bars" : " bar") });
@@ -194,7 +255,6 @@ std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
     if (!e.deleted.empty())
         out.push_back({ "del", juce::String((int) e.deleted.size()) + " deleted" });
 
-    juce::ignoreUnused(clip);
     return out;
 }
 

@@ -210,6 +210,17 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
         g.strokePath(a1, st);
         g.strokePath(a2, st);
     }
+    else if (name == icons::infinity)
+    {
+        // Lemniscate (∞) for DAW sync.
+        juce::Path lemni;
+        lemni.startNewSubPath(cx - s, cy);
+        lemni.cubicTo(cx - s, cy - s * 0.95f, cx - s * 0.15f, cy - s * 0.95f, cx, cy);
+        lemni.cubicTo(cx + s * 0.15f, cy + s * 0.95f, cx + s, cy + s * 0.95f, cx + s, cy);
+        lemni.cubicTo(cx + s, cy - s * 0.95f, cx + s * 0.15f, cy - s * 0.95f, cx, cy);
+        lemni.cubicTo(cx - s * 0.15f, cy + s * 0.95f, cx - s, cy + s * 0.95f, cx - s, cy);
+        g.strokePath(lemni, st);
+    }
     else if (name == icons::gear)
     {
         g.drawEllipse(cx - s * 0.35f, cy - s * 0.35f, s * 0.7f, s * 0.7f, px);

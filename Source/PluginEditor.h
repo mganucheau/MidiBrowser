@@ -94,6 +94,9 @@ private:
     bool starFilterOn = false;
     int selectedIdx = -1;                    // index into clips
     int lastWindowH = 560;
+    /** File-list column width. Flexes when the editor is folded; kept stable
+        when the editor opens so the roll starts exactly at the browser edge. */
+    int browserColW = metrics::browserWidth;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiBrowserEditor)
 };

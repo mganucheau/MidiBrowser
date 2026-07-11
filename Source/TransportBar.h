@@ -63,6 +63,7 @@ private:
     IconBtn btnPlay { icons::play, "Play / pause preview" };
     IconBtn btnStop { icons::stop, "Stop" };
     PillToggle syncToggle { "Synced", "Free" };
+    IconBtn syncIcon { icons::infinity, "Toggle DAW sync" };
     juce::Label bpmLabel;
     ChipBtn btnHalf { "/2" };
     ChipBtn btnDouble { "x2" };

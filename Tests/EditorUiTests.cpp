@@ -68,18 +68,16 @@ TEST_CASE("Trim button trims and restores through the real editor UI", "[editoru
     // Click: trims the empty lead bar.
     trim->onClick();
     REQUIRE(proc.clipEdits.count(path) == 1);
-    CHECK(proc.clipEdits[path].trimLead == 1);
-    CHECK(proc.clipEdits[path].trimTail == 0);
+    CHECK(proc.clipEdits[path].removedBars == std::vector<int>{ 0 });
     CHECK(trim->isEnabled());
 
     // Click again: restores.
     trim->onClick();
-    CHECK(proc.clipEdits[path].trimLead == 0);
-    CHECK(proc.clipEdits[path].trimTail == 0);
+    CHECK(proc.clipEdits[path].removedBars.empty());
 
     // And a third time: trims again (it toggles indefinitely).
     trim->onClick();
-    CHECK(proc.clipEdits[path].trimLead == 1);
+    CHECK(proc.clipEdits[path].removedBars == std::vector<int>{ 0 });
 
     ed = nullptr;
     dir.deleteRecursively();

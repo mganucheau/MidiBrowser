@@ -181,7 +181,7 @@ TEST_CASE("Per-clip edits and grooves round-trip through plugin state", "[Proces
     e.root = 5;
     e.mode = Mode::Aeolian;
     e.moves[3] = { 7, -4 };
-    e.trimLead = 2;
+    e.removedBars = { 0, 1 };
     original.clipEdits["/tmp/a.mid"] = e;
 
     GrooveParams k;
@@ -201,7 +201,7 @@ TEST_CASE("Per-clip edits and grooves round-trip through plugin state", "[Proces
     REQUIRE(re.fitScale);
     REQUIRE(re.root == 5);
     REQUIRE(re.mode == Mode::Aeolian);
-    REQUIRE(re.trimLead == 2);
+    REQUIRE(re.removedBars == std::vector<int>({ 0, 1 }));
     REQUIRE(re.moves.at(3).dPitch == 7);
     REQUIRE(re.moves.at(3).dStep == -4);
 

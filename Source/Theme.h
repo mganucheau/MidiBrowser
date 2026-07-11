@@ -173,7 +173,7 @@ namespace colours {
 namespace metrics {
     // Elevation ladder (dark UI — no shadows): bg < panel < panel2 < elev.
     // Surfaces communicate depth via lightness, not box-shadow.
-    constexpr int browserWidth      = 180;   // flush against piano-roll left edge
+    constexpr int browserWidth      = 200;   // default file-list column
     constexpr int browserMinWidth   = 152;
     constexpr int browserMaxWidth   = 424;
     constexpr float uiScale         = 1.0f;
@@ -196,8 +196,11 @@ namespace metrics {
 
     constexpr int sidebarRailW      = 48;
     constexpr int sidebarExpandedW  = 168;
-    constexpr int foldedWindowW     = 304;
-    constexpr int openWindowW       = 980;
+    // Browser column stays fixed; folded = rail + browser, open adds the roll.
+    constexpr int openRollW         = 752;
+    constexpr int foldedWindowW     = sidebarRailW + browserWidth;              // 228
+    constexpr int openWindowW       = sidebarRailW + browserWidth + openRollW;  // 980
+    constexpr int openRollMinW      = 520;
 
     // Density-scaled values (4/8pt grid)
     inline int transportH()  { return currentDensity() == Density::Comfortable ? 56 : 48; }
