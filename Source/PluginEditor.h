@@ -12,7 +12,7 @@
 namespace pflow {
 
 // ── MidiBrowser root ─────────────────────────────────────────────────────────
-// Editor open (~980px): transport / [sidebar | file list 244px | editor].
+// Editor open (~980px): transport / [sidebar | file list | editor].
 // Folded (~300px): transport / [sidebar | file list] / full-width mini preview.
 
 class MidiBrowserEditor : public juce::AudioProcessorEditor,
@@ -31,9 +31,12 @@ private:
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);
     void rescanFolder(bool keepSelection);
     void chooseFolder();
-    void rebuildEntries();                  // display list (star filter applied)
+    void rebuildEntries();                  // display list (folders + star filter)
     int displayForClip(int clipIdx) const;
     void selectIndex(int index);            // index into `clips`
+    void enterFolderAtDisplay(int displayIdx);
+    void enterParentFolder();
+    void applyTimeStretchFromMultiplier();
     void refreshEntryMeta(int index);
     MidiClip buildRenderedClip() const;   // resolved + groove + velocities
     void pushPreviewToProcessor();
@@ -79,8 +82,15 @@ private:
     MiniHeader miniHeader { *this };
 
     juce::File rootDir;
-    std::vector<StepClip> clips;             // every clip in the folder
-    std::vector<int> shown;                  // display order → index into clips
+    std::vector<StepClip> clips;             // every MIDI clip in the folder
+    /** Parallel to file-list rows: directory rows have clipIndex < 0. */
+    struct DisplayRow
+    {
+        bool isDirectory = false;
+        int clipIndex = -1;
+        juce::File file;
+    };
+    std::vector<DisplayRow> displayRows;
     bool starFilterOn = false;
     int selectedIdx = -1;                    // index into clips
     int lastWindowH = 560;

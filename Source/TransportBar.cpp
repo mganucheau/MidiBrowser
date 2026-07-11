@@ -33,7 +33,7 @@ TransportBar::TransportBar()
     addAndMakeVisible(bpmLabel);
 
     btnHalf.mono = true;
-    btnHalf.setTooltip("Play at half the DAW tempo");
+    btnHalf.setTooltip("Play at half the DAW tempo (stretches notes for audition + export)");
     btnHalf.onClick = [this]
     {
         multiplier = juce::jmax(0.25, multiplier * 0.5);
@@ -43,7 +43,7 @@ TransportBar::TransportBar()
     addAndMakeVisible(btnHalf);
 
     btnDouble.mono = true;
-    btnDouble.setTooltip("Play at double the DAW tempo");
+    btnDouble.setTooltip("Play at double the DAW tempo (compresses notes for audition + export)");
     btnDouble.onClick = [this]
     {
         multiplier = juce::jmin(4.0, multiplier * 2.0);
@@ -52,11 +52,6 @@ TransportBar::TransportBar()
     };
     addAndMakeVisible(btnDouble);
 
-    pathLabel.setJustificationType(juce::Justification::centredRight);
-    pathLabel.setInterceptsMouseClicks(false, false);
-    pathLabel.setMinimumHorizontalScale(1.0f);
-    addAndMakeVisible(pathLabel);
-
     btnDragToDaw.accentText = true;
     btnDragToDaw.setTooltip("Drag onto a DAW track to drop a MIDI file with the edits applied");
     btnDragToDaw.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
@@ -64,8 +59,8 @@ TransportBar::TransportBar()
     addAndMakeVisible(btnDragToDaw);
 
     btnEditor.active = false;
-    btnEditor.accentText = true;
     btnEditor.icon = icons::arrowsOut;
+    btnEditor.setTooltip("Open editor");
     btnEditor.onClick = [this] { if (onToggleEditor) onToggleEditor(); };
     addAndMakeVisible(btnEditor);
 
@@ -120,31 +115,24 @@ void TransportBar::setClipBpm(double b)
         refreshBpm();
 }
 
-void TransportBar::setFolderPath(const juce::String& p)
-{
-    pathLabel.setText(p, juce::dontSendNotification);
-}
-
 void TransportBar::setEditorOpen(bool open)
 {
     editorOpen = open;
     btnEditor.icon = open ? icons::arrowsIn : icons::arrowsOut;
     btnEditor.active = open;
-    btnEditor.accentText = !open;
+    btnEditor.setTooltip(open ? "Close editor" : "Open editor");
     btnEditor.repaint();
     resized();
 }
 
 void TransportBar::refreshBpm()
 {
-    // Keep the pill label locked to the real mode (avoids on/off text drift).
     syncToggle.onLabel = synced ? "Synced" : "Free";
     syncToggle.offLabel = syncToggle.onLabel;
 
-    // Synced: live DAW tempo × the ÷2/×2 multiplier. Free: editable.
     const double shown = synced ? hostBpm * multiplier : freeBpm;
     bpmLabel.setText(juce::String(shown, 1), juce::dontSendNotification);
-    bpmLabel.setEditable(false, !synced, false);   // double-click to edit when free
+    bpmLabel.setEditable(false, !synced, false);
     bpmLabel.setFont(monoFont(14.0f, true));
     bpmLabel.setColour(juce::Label::textColourId,
                        synced ? (multiplier != 1.0 ? colours::accent() : colours::text())
@@ -172,7 +160,6 @@ void TransportBar::resized()
     const int btnSize = juce::jmin(28, getHeight() - 12);
     auto mid = [&](juce::Rectangle<int> a, int h) { return a.withSizeKeepingCentre(a.getWidth(), h); };
 
-    // Left: glyph (painted) + wordmark space
     r.removeFromLeft(narrow ? 30 : 118);
 
     auto play = r.removeFromLeft(btnSize);
@@ -195,8 +182,7 @@ void TransportBar::resized()
         r.removeFromLeft(2);
         btnDouble.setBounds(mid(r.removeFromLeft(narrow ? 30 : 34), 22));
 
-        auto editorArea = r.removeFromRight(btnEditor.idealWidth());
-        btnEditor.setBounds(mid(editorArea, 24));
+        btnEditor.setBounds(mid(r.removeFromRight(26), 24));
         r.removeFromRight(6);
     }
     else
@@ -204,7 +190,7 @@ void TransportBar::resized()
         btnHalf.setVisible(false);
         btnDouble.setVisible(false);
         r.removeFromLeft(4);
-        btnEditor.setBounds(mid(r.removeFromLeft(btnEditor.idealWidth()), 24));
+        btnEditor.setBounds(mid(r.removeFromLeft(26), 24));
         r.removeFromLeft(6);
     }
 
@@ -214,11 +200,6 @@ void TransportBar::resized()
         btnDragToDaw.setBounds(mid(r.removeFromRight(btnDragToDaw.idealWidth()), 24));
         r.removeFromRight(8);
     }
-
-    pathLabel.setFont(monoFont(12.0f, false));
-    pathLabel.setColour(juce::Label::textColourId, colours::text3());
-    pathLabel.setVisible(!narrow && r.getWidth() > 60);
-    pathLabel.setBounds(mid(r, 22));
 }
 
 void TransportBar::paint(juce::Graphics& g)
@@ -229,7 +210,6 @@ void TransportBar::paint(juce::Graphics& g)
     g.setColour(colours::line());
     g.fillRect(b.removeFromBottom(1));
 
-    // App glyph: rounded square with two "note" bars.
     const bool narrow = getWidth() < 460;
     auto glyph = juce::Rectangle<float>(8.0f, (float) getHeight() * 0.5f - 9.0f, 18.0f, 18.0f);
     g.setColour(colours::accent());

@@ -61,6 +61,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.onMultiplierChanged = [this](double m)
     {
         processorRef.bpmMultiplier.store(m);
+        applyTimeStretchFromMultiplier();
     };
     transport.onToggleEditor = [this] { toggleEditorFold(); };
     transport.onDragToDaw = [this] { startDragExport(); };
@@ -103,25 +104,30 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     fileList.onOpenFolder = [this] { chooseFolder(); };
     fileList.onSelect = [this](int displayIdx)
     {
-        if (juce::isPositiveAndBelow(displayIdx, (int) shown.size()))
-            selectIndex(shown[(size_t) displayIdx]);
+        if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
+            return;
+        const auto& row = displayRows[(size_t) displayIdx];
+        if (row.isDirectory)
+            return;   // highlight only; enter via Right / click
+        selectIndex(row.clipIndex);
     };
     fileList.onPlayRow = [this](int displayIdx)
     {
-        if (juce::isPositiveAndBelow(displayIdx, (int) shown.size()))
-        {
-            selectIndex(shown[(size_t) displayIdx]);
-            processorRef.previewArmed.store(true);
-        }
+        if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
+            return;
+        const auto& row = displayRows[(size_t) displayIdx];
+        if (row.isDirectory) return;
+        selectIndex(row.clipIndex);
+        processorRef.previewArmed.store(true);
     };
     fileList.onToggleStar = [this](int displayIdx)
     {
-        if (!juce::isPositiveAndBelow(displayIdx, (int) shown.size()))
+        if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
             return;
-        const int clipIdx = shown[(size_t) displayIdx];
-        processorRef.toggleStarred(clips[(size_t) clipIdx].filePath);
+        const auto& row = displayRows[(size_t) displayIdx];
+        if (row.isDirectory || row.clipIndex < 0) return;
+        processorRef.toggleStarred(clips[(size_t) row.clipIndex].filePath);
         rebuildEntries();
-        // Keep selection visible after filter changes.
         if (const int d = displayForClip(selectedIdx); d >= 0)
             fileList.setSelectedIndex(d, juce::dontSendNotification);
     };
@@ -131,9 +137,14 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         rebuildEntries();
         if (const int d = displayForClip(selectedIdx); d >= 0)
             fileList.setSelectedIndex(d, juce::dontSendNotification);
-        else if (!shown.empty())
-            selectIndex(shown.front());
+        else
+        {
+            for (const auto& row : displayRows)
+                if (!row.isDirectory) { selectIndex(row.clipIndex); break; }
+        }
     };
+    fileList.onEnterParent = [this] { enterParentFolder(); };
+    fileList.onEnterFolder = [this](int displayIdx) { enterFolderAtDisplay(displayIdx); };
     content.addAndMakeVisible(fileList);
 
     // ── Piano-roll editor ──
@@ -143,7 +154,11 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         {
             processorRef.editFor(clip->filePath) = e;
             if (processorRef.editLock)
+            {
                 applyPitchLock(e, processorRef.lockedEdit);   // keep the template current
+                // Trim is clip-specific amounts; lock remembers whether to auto-trim.
+                processorRef.lockAutoTrim = (e.trimLead + e.trimTail > 0);
+            }
             refreshEntryMeta(selectedIdx);
             pushPreviewToProcessor();
             miniRoll.setNotes(applyGroove(resolveClip(*clip, e).notes, selectedGroove()),
@@ -167,10 +182,17 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     {
         processorRef.editLock = locked;
         if (locked)
-            applyPitchLock(selectedEdit(), processorRef.lockedEdit);
+        {
+            const auto cur = selectedEdit();
+            applyPitchLock(cur, processorRef.lockedEdit);
+            // Locking while Trim is active enables auto-trim for browsing.
+            processorRef.lockAutoTrim = (cur.trimLead + cur.trimTail > 0);
+        }
         rollEditor.setLockActive(locked);
     };
     rollEditor.setLockActive(processorRef.editLock);
+    rollEditor.setScalePlacement((ScalePlacement) tweaks().scalePlacement.load());
+    applyTimeStretchFromMultiplier();
     content.addAndMakeVisible(rollEditor);
 
     // ── Folded mini preview ──
@@ -221,7 +243,6 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
         clips.push_back(makeStepClip(parseMidiFile(f)));
 
     fileList.setFolderName(rootDir.isDirectory() ? rootDir.getFileName() : "Select a folder");
-    transport.setFolderPath(rootDir.isDirectory() ? rootDir.getFullPathName() : juce::String());
 
     rebuildEntries();
 
@@ -232,8 +253,12 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
                 nextSel = i;
 
     // Prefer a visible (filtered) selection when possible.
-    if (nextSel >= 0 && displayForClip(nextSel) < 0 && !shown.empty())
-        nextSel = shown.front();
+    if (nextSel >= 0 && displayForClip(nextSel) < 0)
+    {
+        nextSel = -1;
+        for (const auto& row : displayRows)
+            if (!row.isDirectory) { nextSel = row.clipIndex; break; }
+    }
 
     selectedIdx = -1;
     if (nextSel >= 0)
@@ -247,8 +272,24 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
 
 void MidiBrowserEditor::rebuildEntries()
 {
-    shown.clear();
+    displayRows.clear();
     std::vector<FileListEntry> entries;
+
+    if (rootDir.isDirectory())
+    {
+        auto dirs = rootDir.findChildFiles(juce::File::findDirectories, false, "*");
+        dirs.sort();
+        for (const auto& d : dirs)
+        {
+            if (d.getFileName().startsWith(".")) continue;
+            FileListEntry e;
+            e.file = d;
+            e.name = d.getFileName();
+            e.isDirectory = true;
+            entries.push_back(e);
+            displayRows.push_back({ true, -1, d });
+        }
+    }
 
     for (int i = 0; i < (int) clips.size(); ++i)
     {
@@ -257,10 +298,10 @@ void MidiBrowserEditor::rebuildEntries()
         if (starFilterOn && !starred)
             continue;
 
-        shown.push_back(i);
         const bool edited = processorRef.editLock
                                 && !editIsClean(processorRef.editFor(clip.filePath));
         entries.push_back(entryForClip(clip, juce::File(clip.filePath), edited, starred));
+        displayRows.push_back({ false, i, juce::File(clip.filePath) });
     }
 
     fileList.setEntries(std::move(entries));
@@ -272,10 +313,44 @@ void MidiBrowserEditor::rebuildEntries()
 
 int MidiBrowserEditor::displayForClip(int clipIdx) const
 {
-    for (int i = 0; i < (int) shown.size(); ++i)
-        if (shown[(size_t) i] == clipIdx)
+    for (int i = 0; i < (int) displayRows.size(); ++i)
+        if (!displayRows[(size_t) i].isDirectory && displayRows[(size_t) i].clipIndex == clipIdx)
             return i;
     return -1;
+}
+
+void MidiBrowserEditor::enterFolderAtDisplay(int displayIdx)
+{
+    if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
+        return;
+    const auto& row = displayRows[(size_t) displayIdx];
+    if (!row.isDirectory || !row.file.isDirectory())
+        return;
+    setRootDirectory(row.file);
+}
+
+void MidiBrowserEditor::enterParentFolder()
+{
+    if (!rootDir.isDirectory())
+        return;
+    const auto parent = rootDir.getParentDirectory();
+    if (parent != rootDir && parent.isDirectory())
+        setRootDirectory(parent);
+}
+
+void MidiBrowserEditor::applyTimeStretchFromMultiplier()
+{
+    const double mult = juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
+    const double stretch = 1.0 / mult;
+    rollEditor.setTimeStretch(stretch);
+    if (const auto* clip = selectedClip())
+    {
+        const auto resolved = resolveClip(*clip, selectedEdit());
+        const auto groove = selectedGroove();
+        miniRoll.setNotes(applyGroove(resolved.notes, groove), resolved.bars, groove);
+        miniRoll.setTimeStretch(stretch);
+        pushPreviewToProcessor();
+    }
 }
 
 void MidiBrowserEditor::chooseFolder()
@@ -337,9 +412,21 @@ void MidiBrowserEditor::selectIndex(int index)
     const auto& clip = clips[(size_t) index];
 
     // Browse-lock: stamp the locked pitch edits onto whatever clip we land on.
+    // Auto-trim recomputes empty edge bars per clip so blank measures disappear
+    // while browsing.
     if (processorRef.editLock)
     {
-        applyPitchLock(processorRef.lockedEdit, processorRef.editFor(clip.filePath));
+        auto& e = processorRef.editFor(clip.filePath);
+        applyPitchLock(processorRef.lockedEdit, e);
+        if (processorRef.lockAutoTrim)
+        {
+            ClipEdit probe = e;
+            probe.trimLead = probe.trimTail = 0;
+            const auto preTrim = resolveClip(clip, probe);
+            const auto edges = emptyEdgeBars(preTrim.notes, clip.bars);
+            e.trimLead = edges.lead;
+            e.trimTail = edges.tail;
+        }
         refreshEntryMeta(index);
     }
     const auto edit = selectedEdit();
@@ -350,7 +437,8 @@ void MidiBrowserEditor::selectIndex(int index)
     // feels seamless. Wrap into the new clip length; synced mode already follows
     // the host and does not restart.
     {
-        const double newLen = juce::jmax(0.25, (double) (resolved.bars * kStepsPerBar) / 4.0);
+        const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
+        const double newLen = juce::jmax(0.25, (double) (resolved.bars * kStepsPerBar) / 4.0 * stretch);
         double beat = processorRef.freerunBeat.load();
         beat = std::fmod(beat, newLen);
         if (beat < 0.0) beat += newLen;
@@ -359,6 +447,7 @@ void MidiBrowserEditor::selectIndex(int index)
 
     transport.setClipBpm(clip.bpm);
     rollEditor.setClip(clip, edit, groove);
+    applyTimeStretchFromMultiplier();
     miniRoll.setNotes(applyGroove(resolved.notes, groove), resolved.bars, groove);
 
     if (const int d = displayForClip(index); d >= 0)
@@ -386,8 +475,8 @@ void MidiBrowserEditor::refreshEntryMeta(int index)
 
 MidiClip MidiBrowserEditor::buildRenderedClip() const
 {
-    // Non-destructive pipeline: resolveClip → applyGroove → velocities. The
-    // source clip and file stay untouched.
+    // Non-destructive pipeline: resolveClip → applyGroove → velocities.
+    // bpmMultiplier stretches timing so /2 exports half-time MIDI at session tempo.
     MidiClip out;
     const auto* clip = selectedClip();
     if (clip == nullptr)
@@ -397,17 +486,18 @@ MidiClip MidiBrowserEditor::buildRenderedClip() const
     const auto groove = selectedGroove();
     const auto resolved = resolveClip(*clip, edit);
     const auto notes = applyGroove(resolved.notes, groove);
+    const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
 
     out.name = clip->name;
     out.bpm = clip->bpm;
-    out.lengthBeats = (double) (resolved.bars * kStepsPerBar) / 4.0;
+    out.lengthBeats = (double) (resolved.bars * kStepsPerBar) / 4.0 * stretch;
     for (const auto& n : notes)
     {
         NoteEvent ev;
         ev.noteNumber = juce::jlimit(0, 127, n.pitch);
         ev.velocity = juce::jlimit(1, 127, (int) std::lround(effectiveVelocity(n, groove) * 127.0));
-        ev.startBeat = n.start / 4.0;
-        ev.lengthBeats = juce::jmax(0.05, n.len / 4.0);
+        ev.startBeat = n.start / 4.0 * stretch;
+        ev.lengthBeats = juce::jmax(0.05, n.len / 4.0 * stretch);
         ev.channel = juce::jlimit(1, 16, n.channel);
         out.notes.push_back(ev);
     }
@@ -590,6 +680,11 @@ void MidiBrowserEditor::showTweaksMenu()
         sizeMenu.addItem(500 + i, sizeNames[i], true, tw.size.load() == i);
     menu.addSubMenu("Content size", sizeMenu);
 
+    juce::PopupMenu scaleMenu;
+    scaleMenu.addItem(600, "Top", true, tw.scalePlacement.load() == (int) ScalePlacement::Top);
+    scaleMenu.addItem(601, "Bottom", true, tw.scalePlacement.load() == (int) ScalePlacement::Bottom);
+    menu.addSubMenu("Scale placement", scaleMenu);
+
     menu.addSeparator();
     const juce::String stamp = juce::String("Build ")
         + build_info::kVersion + " · "
@@ -603,7 +698,12 @@ void MidiBrowserEditor::showTweaksMenu()
             if (result == 0 || result < 0) return;
             auto& t = tweaks();
             bool sizeChanged = false;
-            if (result >= 500)      { t.size.store(result - 500); sizeChanged = true; }
+            if (result >= 600)
+            {
+                t.scalePlacement.store(result - 600);
+                rollEditor.setScalePlacement((ScalePlacement) t.scalePlacement.load());
+            }
+            else if (result >= 500) { t.size.store(result - 500); sizeChanged = true; }
             else if (result >= 400) t.grid.store(result - 400);
             else if (result >= 300) t.density.store(result - 300);
             else if (result >= 200) t.accent.store(result - 200);
@@ -611,7 +711,7 @@ void MidiBrowserEditor::showTweaksMenu()
             lnf.refreshColours();
             sendLookAndFeelChange();
             if (sizeChanged)
-                applyLayoutState();   // rescale the window to match
+                applyLayoutState();
             resized();
             repaint();
         });
@@ -663,23 +763,11 @@ bool MidiBrowserEditor::keyPressed(const juce::KeyPress& key)
 
     // Map page/arrow keys through the display list → clip indices.
     if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey
-        || key == juce::KeyPress::pageUpKey || key == juce::KeyPress::pageDownKey)
+        || key == juce::KeyPress::pageUpKey || key == juce::KeyPress::pageDownKey
+        || key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey
+        || key == juce::KeyPress::returnKey)
     {
-        const int curDisplay = displayForClip(selectedIdx);
-        const int pageRows = juce::jmax(1, fileList.getHeight() / metrics::listRowH());
-        int delta = 0;
-        if (key == juce::KeyPress::upKey)        delta = -1;
-        else if (key == juce::KeyPress::downKey)  delta = 1;
-        else if (key == juce::KeyPress::pageUpKey)   delta = -pageRows;
-        else if (key == juce::KeyPress::pageDownKey) delta = pageRows;
-
-        if (!shown.empty())
-        {
-            const int nextDisplay = juce::jlimit(0, (int) shown.size() - 1,
-                                                 (curDisplay >= 0 ? curDisplay : 0) + delta);
-            selectIndex(shown[(size_t) nextDisplay]);
-            return true;
-        }
+        return fileList.keyPressed(key);
     }
 
     return fileList.keyPressed(key);

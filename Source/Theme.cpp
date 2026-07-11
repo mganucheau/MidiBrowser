@@ -532,12 +532,10 @@ void PatternFlowLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Re
         return;
     }
     auto r = area.reduced(6, 1);
-    const float targetA = isHighlighted ? 1.0f : 0.0f;
-    const juce::int64 key = ((juce::int64) text.hashCode64() << 20) ^ (juce::int64) area.getY();
-    const float a = animatedAlphaForKey(key, targetA, 80.0f);
-    if (a > 0.0f)
+    // Instant highlight only — no fade trail that leaves multiple rows lit.
+    if (isHighlighted)
     {
-        g.setColour(colours::accent().withAlpha(0.85f * a));
+        g.setColour(colours::accent().withAlpha(0.85f));
         g.fillRoundedRectangle(r.toFloat(), metrics::chipRadius);
     }
     juce::Colour col = (textColourToUse != nullptr) ? *textColourToUse : colours::text();

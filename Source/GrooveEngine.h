@@ -11,7 +11,7 @@ namespace pflow {
 // Modelled on Ableton Groove Pool + Logic Q-Swing / Humanize conventions:
 //
 //   Swing     — delay offbeats at a chosen base (1/8 or 1/16); 0 = straight
-//   Pocket    — global push/pull (− ahead / + laid-back); bipolar, 0 = on grid
+//   Pocket    — tight↔loose feel (− push / + laid-back); strong beats move less
 //   Humanize  — deterministic per-note timing jitter (Ableton Random)
 //   Dynamics  — metric accent contrast; bipolar (− inverts, like Ableton Velocity)
 //   Length    — note duration scale; 100 = unchanged (center default)
@@ -36,7 +36,7 @@ extern const std::array<KnobDef, kNumKnobs> kKnobDefs;
 struct GrooveParams
 {
     int swing     = 0;      // 0..100     offbeat delay amount
-    int pocket    = 0;      // -100..100  − push / + lay back
+    int pocket    = 0;      // -100..100  − push / + lay back (metric-weighted)
     int humanize  = 0;      // 0..100     timing jitter
     int dynamics  = 0;      // -100..100  metric accent (− inverts)
     int length    = 100;    // 25..200    duration % (100 = original)

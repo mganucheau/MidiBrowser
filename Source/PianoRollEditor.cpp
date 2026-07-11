@@ -50,6 +50,12 @@ void PianoRollMini::setPlayheadStep(double step, bool isPlaying)
     repaint();
 }
 
+void PianoRollMini::setTimeStretch(double stretch)
+{
+    timeStretch = juce::jmax(0.25, stretch);
+    repaint();
+}
+
 void PianoRollMini::paint(juce::Graphics& g)
 {
     auto b = getLocalBounds().toFloat();
@@ -66,11 +72,13 @@ void PianoRollMini::paint(juce::Graphics& g)
 
     PitchRowMap map;
     map.fit(notes, b.getHeight() - 8.0f, 14);
-    const float pps = (b.getWidth() - 8.0f) / (float) (bars * kStepsPerBar);
+    const double totalSteps = (double) bars * kStepsPerBar * timeStretch;
+    const float pps = (b.getWidth() - 8.0f) / (float) juce::jmax(1.0, totalSteps);
     auto inner = b.reduced(4.0f);
 
     g.setColour(colours::rollRowline());
-    for (int bar = 1; bar < bars; ++bar)
+    const int displayBars = juce::jmax(1, (int) std::lround((double) bars * timeStretch));
+    for (int bar = 1; bar < displayBars; ++bar)
         g.fillRect(inner.getX() + (float) (bar * kStepsPerBar) * pps, inner.getY(),
                    1.0f, inner.getHeight());
 
@@ -78,9 +86,9 @@ void PianoRollMini::paint(juce::Graphics& g)
     {
         const double v = effectiveVelocity(n, knobs);
         auto r = juce::Rectangle<float>(
-            inner.getX() + (float) n.start * pps,
+            inner.getX() + (float) (n.start * timeStretch) * pps,
             inner.getY() + map.yForPitchTop(n.pitch, inner.getHeight()),
-            juce::jmax(2.0f, (float) n.len * pps - 0.5f),
+            juce::jmax(2.0f, (float) (n.len * timeStretch) * pps - 0.5f),
             juce::jmax(2.0f, map.rowH - 0.8f));
         g.setColour((n.moved ? colours::accentBright() : colours::accent())
                         .withAlpha((float) (0.4 + 0.55 * v)));
@@ -90,7 +98,8 @@ void PianoRollMini::paint(juce::Graphics& g)
     if (playing)
     {
         g.setColour(colours::playhead());
-        g.fillRect(inner.getX() + (float) playheadStep * pps, inner.getY(), 1.5f, inner.getHeight());
+        g.fillRect(inner.getX() + (float) (playheadStep * timeStretch) * pps,
+                   inner.getY(), 1.5f, inner.getHeight());
     }
 }
 
@@ -252,6 +261,9 @@ PianoRollEditor::PianoRollEditor()
     };
     knobsPanel.onOpenChanged = [this] { resized(); };
     addAndMakeVisible(knobsPanel);
+
+    addAndMakeVisible(scalePanel);
+    scalePanel.setVisible(false);
 }
 
 PianoRollEditor::~PianoRollEditor() = default;
@@ -305,9 +317,31 @@ void PianoRollEditor::setLockActive(bool locked)
     lockActive = locked;
     btnLock.icon = locked ? icons::lockClosed : icons::lockOpen;
     btnLock.active = locked;
-    btnLock.setTooltip(locked ? "Pitch edits locked: applied to every clip while browsing"
-                              : "Lock pitch edits while browsing");
+    btnLock.setTooltip(locked ? "Pitch edits + trim locked while browsing"
+                              : "Lock pitch edits (and trim, if active) while browsing");
     btnLock.repaint();
+}
+
+void PianoRollEditor::setTimeStretch(double stretch)
+{
+    const double s = juce::jmax(0.25, stretch);
+    if (std::abs(s - timeStretch) < 1.0e-6) return;
+    timeStretch = s;
+    computePxPerStepBase();
+    updateRollSize();
+    rollContent.repaint();
+    velocityLane.repaint();
+}
+
+void PianoRollEditor::setScalePlacement(ScalePlacement placement)
+{
+    if (scalePlacement == placement) return;
+    scalePlacement = placement;
+    scalePanel.setVisible(placement == ScalePlacement::Bottom);
+    if (placement == ScalePlacement::Bottom)
+        scalePanel.setOpen(true);   // always reveal controls when switching to Bottom
+    resized();
+    repaint();
 }
 
 void PianoRollEditor::rebuildResolved()
@@ -353,26 +387,15 @@ void PianoRollEditor::refreshControls()
     mapSwitch.repaint();
     fitSwitch.repaint();
 
-    // Trim: enabled when there is something to trim or restore.
+    // Trim: always labeled Trim/Restore; grayed when nothing to trim.
     const bool isTrimmed = edit.trimLead + edit.trimTail > 0;
     const bool canTrim = edges.lead + edges.tail > edit.trimLead + edit.trimTail;
     btnTrim.setEnabled(canTrim || isTrimmed);
     btnTrim.active = isTrimmed;
-    if (isTrimmed)
-    {
-        btnTrim.label = "Restore";
-        btnTrim.setTooltip("Restore trimmed bars");
-    }
-    else if (canTrim)
-    {
-        btnTrim.label = "Trim";
-        btnTrim.setTooltip("Trim empty edge bars");
-    }
-    else
-    {
-        btnTrim.label = "No empty bars";
-        btnTrim.setTooltip("No empty edge bars to trim");
-    }
+    btnTrim.label = isTrimmed ? "Restore" : "Trim";
+    btnTrim.setTooltip(isTrimmed ? "Restore trimmed bars"
+                      : canTrim ? "Trim empty edge bars"
+                                : "No empty edge bars to trim");
     btnTrim.repaint();
 
     btnFold.setEnabled(hasClip && !foldPitches.empty());
@@ -436,7 +459,32 @@ bool PianoRollEditor::keyPressed(const juce::KeyPress& key)
             return true;
         }
     }
+
+    if (!selection.empty() && key.getModifiers().isShiftDown())
+    {
+        if (key == juce::KeyPress::upKey)    { nudgeSelection(1, 0); return true; }
+        if (key == juce::KeyPress::downKey)  { nudgeSelection(-1, 0); return true; }
+        if (key == juce::KeyPress::leftKey)  { nudgeSelection(0, -divisionSteps); return true; }
+        if (key == juce::KeyPress::rightKey) { nudgeSelection(0, divisionSteps); return true; }
+    }
     return false;
+}
+
+void PianoRollEditor::nudgeSelection(int dPitch, int dStep)
+{
+    if (selection.empty() || (dPitch == 0 && dStep == 0)) return;
+    const auto ids = selection;
+    applyEdit([&ids, dPitch, dStep](ClipEdit& e)
+    {
+        for (int id : ids)
+        {
+            auto& mv = e.moves[id];
+            mv.dPitch += dPitch;
+            mv.dStep += dStep;
+            if (mv.dPitch == 0 && mv.dStep == 0)
+                e.moves.erase(id);
+        }
+    });
 }
 
 void PianoRollEditor::toggleTrim()
@@ -508,9 +556,9 @@ juce::Rectangle<float> PianoRollEditor::noteRect(const RollNote& n, int rowOffse
 {
     const float pps = pxPerStep();
     const int row = juce::jlimit(0, numRows() - 1, rowForPitch(n.pitch) + rowOffset);
-    return { (float) (n.start + stepOffset) * pps,
+    return { (float) ((n.start + stepOffset) * timeStretch) * pps,
              (float) row * effRowH(),
-             juce::jmax(3.0f, (float) n.len * pps - 1.0f),
+             juce::jmax(3.0f, (float) (n.len * timeStretch) * pps - 1.0f),
              juce::jmax(3.0f, effRowH() - 1.0f) };
 }
 
@@ -628,28 +676,20 @@ void PianoRollEditor::commitNoteDrag()
 void PianoRollEditor::resized()
 {
     auto r = getLocalBounds();
+    const bool scaleBottom = scalePlacement == ScalePlacement::Bottom;
 
-    // Instrument strip: primary pitch tools left; Fit/Map demoted as secondary.
+    // Instrument strip: Top = full scale controls; Bottom = lock/revert only.
     auto strip = r.removeFromTop(stripH).reduced(8, 4);
-    octaveStepper.setBounds(strip.removeFromLeft(80).withSizeKeepingCentre(80, 26));
-    strip.removeFromLeft(6);
-    rootPicker.setBounds(strip.removeFromLeft(96).withSizeKeepingCentre(96, 26));
-    strip.removeFromLeft(4);
-    modePicker.setBounds(strip.removeFromLeft(118).withSizeKeepingCentre(118, 26));
-    strip.removeFromLeft(10);
     btnLock.setBounds(strip.removeFromRight(26).withSizeKeepingCentre(24, 24));
+    strip.removeFromRight(4);
+    btnRevert.setBounds(strip.removeFromRight(26).withSizeKeepingCentre(24, 24));
     strip.removeFromRight(8);
-    // Secondary density: Fit / Map share remaining space at lower visual weight.
-    const int secondaryW = juce::jmax(0, strip.getWidth());
-    const int fitW = juce::jmin(fitSwitch.idealWidth(), secondaryW / 2);
-    fitSwitch.setBounds(strip.removeFromLeft(fitW));
-    strip.removeFromLeft(8);
-    mapSwitch.setBounds(strip.removeFromLeft(juce::jmin(mapSwitch.idealWidth(), strip.getWidth())));
+
+    if (!scaleBottom)
+        layoutScaleControls(strip);
 
     // Toolbar: Trim / Fold first so they stay reachable even with many badges.
     auto bar = r.removeFromTop(toolbarH).reduced(8, 5);
-    btnRevert.setBounds(bar.removeFromLeft(26).withSizeKeepingCentre(24, 24));
-    bar.removeFromLeft(6);
     btnTrim.setBounds(bar.removeFromLeft(juce::jmin(btnTrim.idealWidth(), 110))
                           .withSizeKeepingCentre(juce::jmin(btnTrim.idealWidth(), 110), 22));
     bar.removeFromLeft(4);
@@ -681,6 +721,37 @@ void PianoRollEditor::resized()
     // Groove footer
     knobsPanel.setBounds(r.removeFromBottom(knobsPanel.idealHeight()));
 
+    // Scale fold (Bottom placement) sits above Groove, below Velocity.
+    // Controls are siblings of the panel — lay them into the panel body and
+    // bring them above the panel so they stay visible and clickable.
+    if (scaleBottom)
+    {
+        scalePanel.setVisible(true);
+        scalePanel.setBounds(r.removeFromBottom(scalePanel.idealHeight()));
+        if (scalePanel.isOpen())
+        {
+            layoutScaleControls(scalePanel.getBounds().withTrimmedTop(ScalePanel::headerH).reduced(10, 6));
+            octaveStepper.toFront(false);
+            rootPicker.toFront(false);
+            modePicker.toFront(false);
+            fitSwitch.toFront(false);
+            mapSwitch.toFront(false);
+        }
+        else
+        {
+            octaveStepper.setVisible(false);
+            rootPicker.setVisible(false);
+            modePicker.setVisible(false);
+            fitSwitch.setVisible(false);
+            mapSwitch.setVisible(false);
+        }
+    }
+    else
+    {
+        scalePanel.setVisible(false);
+        scalePanel.setBounds({});
+    }
+
     // Velocity lane
     const int laneH = velocityOpen ? VelocityLane::headerH + VelocityLane::laneH
                                    : VelocityLane::headerH;
@@ -691,6 +762,27 @@ void PianoRollEditor::resized()
     rollViewport.setBounds(r);
     computePxPerStepBase();
     updateRollSize();
+}
+
+void PianoRollEditor::layoutScaleControls(juce::Rectangle<int> strip)
+{
+    octaveStepper.setVisible(true);
+    rootPicker.setVisible(true);
+    modePicker.setVisible(true);
+    fitSwitch.setVisible(true);
+    mapSwitch.setVisible(true);
+
+    octaveStepper.setBounds(strip.removeFromLeft(80).withSizeKeepingCentre(80, 26));
+    strip.removeFromLeft(6);
+    rootPicker.setBounds(strip.removeFromLeft(96).withSizeKeepingCentre(96, 26));
+    strip.removeFromLeft(4);
+    modePicker.setBounds(strip.removeFromLeft(118).withSizeKeepingCentre(118, 26));
+    strip.removeFromLeft(10);
+    const int secondaryW = juce::jmax(0, strip.getWidth());
+    const int fitW = juce::jmin(fitSwitch.idealWidth(), secondaryW / 2);
+    fitSwitch.setBounds(strip.removeFromLeft(fitW));
+    strip.removeFromLeft(8);
+    mapSwitch.setBounds(strip.removeFromLeft(juce::jmin(mapSwitch.idealWidth(), strip.getWidth())));
 }
 
 void PianoRollEditor::paint(juce::Graphics& g)
@@ -795,7 +887,7 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
     if (ed.playing)
     {
         g.setColour(colours::playhead());
-        g.fillRect((float) ed.playheadStep * pps, clipB.getY(), 1.5f, clipB.getHeight());
+        g.fillRect((float) (ed.playheadStep * ed.timeStretch) * pps, clipB.getY(), 1.5f, clipB.getHeight());
     }
 }
 
@@ -807,6 +899,14 @@ void PianoRollEditor::RollContent::mouseDown(const juce::MouseEvent& e)
     dragStart = e.position;
     dragDRows = 0;
     dragDStep = 0;
+
+    if (e.mods.isMiddleButtonDown())
+    {
+        drag = Drag::Pan;
+        panStartView = ed.rollViewport.getViewPosition();
+        setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+        return;
+    }
 
     if (const auto* n = ed.noteAt(e.position))
     {
@@ -824,33 +924,36 @@ void PianoRollEditor::RollContent::mouseDown(const juce::MouseEvent& e)
         }
         ed.refreshControls();
         repaint();
-        ed.gutter.repaint();
         ed.velocityLane.repaint();
         return;
     }
 
     drag = Drag::Marquee;
     marqueeAdditive = e.mods.isShiftDown();
-    marquee = { e.position.x, e.position.y, 0.0f, 0.0f };
-    if (!marqueeAdditive && !ed.selection.empty())
-    {
+    marquee = juce::Rectangle<float>(dragStart, dragStart);
+    if (!marqueeAdditive)
         ed.selection.clear();
-        ed.refreshControls();
-        ed.gutter.repaint();
-        ed.velocityLane.repaint();
-    }
+    ed.refreshControls();
     repaint();
 }
 
 void PianoRollEditor::RollContent::mouseDrag(const juce::MouseEvent& e)
 {
     auto& ed = owner;
+    if (drag == Drag::Pan)
+    {
+        const auto d = e.getOffsetFromDragStart();
+        ed.rollViewport.setViewPosition(panStartView.x - d.x, panStartView.y - d.y);
+        return;
+    }
     if (drag == Drag::Note)
     {
         const float dx = e.position.x - dragStart.x;
         const float dy = e.position.y - dragStart.y;
         const int div = juce::jmax(1, ed.divisionSteps);
-        const int stepsMoved = (int) std::round(dx / ed.pxPerStep() / (float) div) * div;
+        // Account for time-stretch so drag distance matches visual grid.
+        const float stepPx = ed.pxPerStep() * (float) ed.timeStretch;
+        const int stepsMoved = (int) std::round(dx / juce::jmax(0.01f, stepPx) / (float) div) * div;
         const int rowsMoved = (int) std::round(dy / ed.effRowH());
         if (stepsMoved != dragDStep || rowsMoved != dragDRows)
         {
@@ -891,6 +994,7 @@ void PianoRollEditor::RollContent::mouseUp(const juce::MouseEvent&)
     }
     drag = Drag::None;
     dragDRows = dragDStep = 0;
+    setMouseCursor(juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -1023,8 +1127,8 @@ void PianoRollEditor::VelocityLane::paint(juce::Graphics& g)
 
     for (const auto& n : ed.grooved)
     {
-        const float x = (float) n.start * pps - (float) scrollX;
-        const float w = juce::jmax(2.0f, (float) n.len * pps - 1.0f);   // match note width
+        const float x = (float) (n.start * ed.timeStretch) * pps - (float) scrollX;
+        const float w = juce::jmax(2.0f, (float) (n.len * ed.timeStretch) * pps - 1.0f);   // match note width
         if (x + w < (float) gutterW - 4.0f || x > (float) getWidth() + 4.0f) continue;
         const double v = effectiveVelocity(n, ed.groove);
         const float bh = juce::jmax(2.0f, (float) v * (float) lane.getHeight());
@@ -1045,8 +1149,8 @@ const RollNote* PianoRollEditor::VelocityLane::noteAtX(float x) const
     float bestDist = 1.0e9f;
     for (const auto& n : ed.grooved)
     {
-        const float nx = (float) n.start * pps;
-        const float w = juce::jmax(2.0f, (float) n.len * pps - 1.0f);
+        const float nx = (float) (n.start * ed.timeStretch) * pps;
+        const float w = juce::jmax(2.0f, (float) (n.len * ed.timeStretch) * pps - 1.0f);
         if (contentX >= nx - 2.0f && contentX <= nx + w + 2.0f)
         {
             const float dist = std::abs(contentX - nx);
@@ -1096,6 +1200,54 @@ void PianoRollEditor::VelocityLane::mouseDrag(const juce::MouseEvent& e)
 void PianoRollEditor::VelocityLane::mouseUp(const juce::MouseEvent&)
 {
     dragNoteId = -1;
+}
+
+// ── ScalePanel (Bottom placement) ────────────────────────────────────────────
+
+int PianoRollEditor::ScalePanel::idealHeight() const
+{
+    return open ? headerH + bodyH : headerH;
+}
+
+void PianoRollEditor::ScalePanel::setOpen(bool shouldOpen)
+{
+    if (open == shouldOpen) return;
+    open = shouldOpen;
+    owner.resized();
+}
+
+bool PianoRollEditor::ScalePanel::hitTest(int x, int y)
+{
+    // Only the header captures clicks (fold toggle). The body lets sibling
+    // scale controls (laid out on top) receive mouse input.
+    juce::ignoreUnused(x);
+    return y >= 0 && y < headerH;
+}
+
+void PianoRollEditor::ScalePanel::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.y <= headerH)
+        setOpen(!open);
+}
+
+void PianoRollEditor::ScalePanel::paint(juce::Graphics& g)
+{
+    g.fillAll(colours::panel());
+    g.setColour(colours::line());
+    g.fillRect(getLocalBounds().removeFromTop(1));
+
+    auto header = getLocalBounds().removeFromTop(headerH).reduced(10, 0);
+    auto caret = header.removeFromLeft(12).toFloat().withSizeKeepingCentre(10.0f, 10.0f);
+    drawIcon(g, open ? icons::caretDown : icons::caretUp, caret, colours::text3(), 1.6f);
+    header.removeFromLeft(6);
+    g.setColour(colours::text2());
+    g.setFont(uiFont(13.0f, true));
+    g.drawText("SCALE", header, juce::Justification::centredLeft);
+}
+
+void PianoRollEditor::ScalePanel::resized()
+{
+    // Controls are siblings of this panel; PianoRollEditor::resized lays them out.
 }
 
 } // namespace pflow

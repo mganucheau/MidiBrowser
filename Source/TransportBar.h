@@ -5,9 +5,9 @@
 namespace pflow {
 
 // ── Transport bar ────────────────────────────────────────────────────────────
-// app glyph + wordmark · play/stop · Synced/Free pill · BPM · (spacer) ·
-// folder path · Editor fold button. BPM is a static readout when synced and
-// an editable number input (20–300) driving playback tempo when free.
+// app glyph + wordmark · play/stop · Synced/Free pill · BPM · (/2 x2 when open) ·
+// Editor fold icon. BPM is a static readout when synced and an editable number
+// input (20–300) driving playback tempo when free.
 
 class TransportBar : public juce::Component
 {
@@ -23,7 +23,6 @@ public:
     void setBpmMultiplier(double);
     void setFreeBpm(double);
     void setClipBpm(double);      // embedded tempo from the selected MIDI file
-    void setFolderPath(const juce::String&);
     void setEditorOpen(bool);
 
     std::function<void()> onPlayPause;
@@ -67,9 +66,8 @@ private:
     juce::Label bpmLabel;
     ChipBtn btnHalf { "/2" };
     ChipBtn btnDouble { "x2" };
-    juce::Label pathLabel;
     DragChip btnDragToDaw { "Drag to DAW" };
-    ChipBtn btnEditor { "Editor", icons::arrowsIn };
+    IconBtn btnEditor { icons::arrowsOut, "Open editor" };
 
     bool playing = false;
     bool synced = true;

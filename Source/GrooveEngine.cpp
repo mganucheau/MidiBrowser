@@ -8,7 +8,7 @@ namespace pflow {
 
 const std::array<KnobDef, kNumKnobs> kKnobDefs {{
     { "swing",     "Swing",      0,  100,   0 },   // 0 = straight (Ableton Timing)
-    { "pocket",    "Pocket",  -100,  100,   0 },   // bipolar: − ahead / + behind
+    { "pocket",    "Pocket",  -100,  100,   0 },   // bipolar: − push / + laid-back loose
     { "humanize",  "Humanize",   0,  100,   0 },   // 0 = locked (Ableton Random)
     { "dynamics",  "Dynamics",-100,  100,   0 },   // bipolar: Ableton Velocity
     { "length",    "Length",    25,  200, 100 },   // 100% = original (center)
@@ -111,8 +111,9 @@ std::vector<RollNote> applyGroove(const std::vector<RollNote>& notes, const Groo
     const int period = swingPeriod(k.swingBase);
     // Max swing delay = half a period (Ableton Timing toward the next grid).
     const double swingMax = (double) period * 0.5;
-    // Pocket: ±1.5 sixteenths at full throw — musical, not extreme.
-    const double pocketShift = (k.pocket / 100.0) * 1.5;
+    // Pocket: magnitude = looseness, sign = direction. Strong beats stay
+    // tighter; weak/offbeats drift more (tight vs loose pocket feel).
+    const double pocketAmt = (k.pocket / 100.0) * 1.8;
     // Humanize: ±0.9 sixteenths at 100% (Ableton Random feel).
     const double humanAmt = (k.humanize / 100.0) * 0.9;
     const double lenMul = std::max(0.05, k.length / 100.0);
@@ -133,8 +134,13 @@ std::vector<RollNote> applyGroove(const std::vector<RollNote>& notes, const Groo
                 start += (k.swing / 100.0) * swingMax;
         }
 
-        // 2. Pocket — global push/pull (negative = ahead of the beat).
-        start += pocketShift;
+        // 2. Pocket — metric-weighted push/pull (not a flat translate).
+        if (k.pocket != 0)
+        {
+            const double w = metricWeight(n.start);          // 1.0 downbeat … 0.38 16ths
+            const double looseness = 1.0 - w;                // weak beats drift more
+            start += pocketAmt * (0.15 + 0.85 * looseness);
+        }
 
         // 3. Humanize — deterministic per-id timing jitter.
         if (k.humanize > 0)

@@ -61,6 +61,7 @@ struct FileListEntry
     double bpm = 0.0;
     bool edited = false;    // !editIsClean for this file
     bool starred = false;   // favourited
+    bool isDirectory = false;
 };
 
 class FileListPanel : public juce::Component, private juce::Timer
@@ -86,11 +87,19 @@ public:
     std::function<void(int)> onSelect;         // row chosen (click or keys)
     std::function<void(int)> onPlayRow;        // hover play button pressed
     std::function<void(int)> onToggleStar;     // star zone clicked
-    std::function<void()> onOpenFolder;        // header folder button
+    std::function<void()> onOpenFolder;        // header folder button / empty state
     std::function<void()> onToggleStarFilter;  // header star-filter button
+    std::function<void()> onEnterParent;       // Left: leave current folder
+    std::function<void(int)> onEnterFolder;    // Right / open directory row
 
     /** Header star-filter button: shown when the folder has starred files. */
     void setStarFilter(bool filterOn, bool anyStarred);
+
+    const FileListEntry* entryAt(int index) const
+    {
+        return juce::isPositiveAndBelow(index, (int) entries.size())
+                   ? &entries[(size_t) index] : nullptr;
+    }
 
 private:
     class ListContent : public juce::Component

@@ -274,6 +274,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("tweakDensity", tweaks().density.load());
     xml.setAttribute("tweakGrid", tweaks().grid.load());
     xml.setAttribute("tweakSize", tweaks().size.load());
+    xml.setAttribute("tweakScalePlacement", tweaks().scalePlacement.load());
     xml.setAttribute("syncSessionBars", syncSessionBars.load());
     xml.setAttribute("lastBrowserDir", lastBrowserDir);
     xml.setAttribute("trimEmptyMeasuresPreview", trimEmptyMeasuresPreview ? 1 : 0);
@@ -284,6 +285,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
     xml.setAttribute("miniOpen", miniOpen ? 1 : 0);
     xml.setAttribute("editLock", editLock ? 1 : 0);
+    xml.setAttribute("lockAutoTrim", lockAutoTrim ? 1 : 0);
     xml.setAttribute("lockOctave", lockedEdit.octave);
     xml.setAttribute("lockFitScale", lockedEdit.fitScale ? 1 : 0);
     xml.setAttribute("lockMapToRoot", lockedEdit.mapToRoot ? 1 : 0);
@@ -380,6 +382,8 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 xml->getIntAttribute("tweakGrid", (int) GridStyle::Minimal)));
             tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1,
                 xml->getIntAttribute("tweakSize", (int) ContentSize::Medium)));
+            tweaks().scalePlacement.store(juce::jlimit(0, kNumScalePlacements - 1,
+                xml->getIntAttribute("tweakScalePlacement", (int) ScalePlacement::Top)));
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");
@@ -391,6 +395,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
             miniOpen = xml->getIntAttribute("miniOpen", 1) != 0;
             editLock = xml->getIntAttribute("editLock", 0) != 0;
+            lockAutoTrim = xml->getIntAttribute("lockAutoTrim", 0) != 0;
             lockedEdit = ClipEdit();
             lockedEdit.octave = juce::jlimit(-3, 3, xml->getIntAttribute("lockOctave", 0));
             lockedEdit.fitScale = xml->getIntAttribute("lockFitScale", 0) != 0;

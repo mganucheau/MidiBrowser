@@ -16,11 +16,13 @@ enum class AccentId { Blue, Amber, Mint };
 enum class Density { Compact, Comfortable };
 enum class GridStyle { Lanes, Minimal, Blueprint };
 enum class ContentSize { Small, Medium, Large };
+enum class ScalePlacement { Top, Bottom };
 
 constexpr int kNumThemes = 3;
 constexpr int kNumAccents = 3;
 constexpr int kNumGridStyles = 3;
 constexpr int kNumContentSizes = 3;
+constexpr int kNumScalePlacements = 2;
 
 struct ThemeTokens
 {
@@ -53,6 +55,7 @@ struct Tweaks
     std::atomic<int> density { (int) Density::Compact };
     std::atomic<int> grid    { (int) GridStyle::Minimal };
     std::atomic<int> size    { (int) ContentSize::Medium };
+    std::atomic<int> scalePlacement { (int) ScalePlacement::Top };
 };
 
 Tweaks& tweaks();
@@ -170,7 +173,7 @@ namespace colours {
 namespace metrics {
     // Elevation ladder (dark UI — no shadows): bg < panel < panel2 < elev.
     // Surfaces communicate depth via lightness, not box-shadow.
-    constexpr int browserWidth      = 200;   // slim file list; meta sits tight to the name
+    constexpr int browserWidth      = 180;   // flush against piano-roll left edge
     constexpr int browserMinWidth   = 152;
     constexpr int browserMaxWidth   = 424;
     constexpr float uiScale         = 1.0f;
@@ -199,7 +202,8 @@ namespace metrics {
     // Density-scaled values (4/8pt grid)
     inline int transportH()  { return currentDensity() == Density::Comfortable ? 56 : 48; }
     inline int listRowH()    { return currentDensity() == Density::Comfortable ? 32 : 24; }
-    inline int listHeaderH() { return currentDensity() == Density::Comfortable ? 40 : 32; }
+    // Match PianoRollEditor::stripH (46) so folder + instrument headers are flush.
+    inline int listHeaderH() { return 46; }
     inline int padS()        { return currentDensity() == Density::Comfortable ? 12 : 8; }
     // Folded (editor closed) mini preview below the browser list.
     inline int miniRollH()   { return currentDensity() == Density::Comfortable ? 128 : 112; }

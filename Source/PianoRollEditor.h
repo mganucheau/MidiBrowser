@@ -37,6 +37,7 @@ class PianoRollMini : public juce::Component
 public:
     void setNotes(std::vector<RollNote> resolvedGrooved, int bars, const GrooveParams& groove);
     void setPlayheadStep(double step, bool playing);
+    void setTimeStretch(double stretch);
     void paint(juce::Graphics&) override;
 
 private:
@@ -45,6 +46,7 @@ private:
     int bars = 1;
     double playheadStep = 0.0;
     bool playing = false;
+    double timeStretch = 1.0;
 };
 
 // ── PianoRollEditorD ─────────────────────────────────────────────────────────
@@ -71,6 +73,8 @@ public:
     void clearClip();
     void setPlayheadStep(double step, bool playing);
     void setLockActive(bool locked);
+    void setTimeStretch(double stretch);   // 1/bpmMultiplier — stretches roll + export view
+    void setScalePlacement(ScalePlacement placement);
     bool hasSelection() const { return !selection.empty(); }
     void deleteSelectedNotes();   // non-destructive (edit.deleted)
 
@@ -93,10 +97,11 @@ private:
         PianoRollEditor& owner;
 
         // interaction state
-        enum class Drag { None, Note, Marquee };
+        enum class Drag { None, Note, Marquee, Pan };
         Drag drag = Drag::None;
         int dragNoteId = -1;
         juce::Point<float> dragStart;
+        juce::Point<int> panStartView;
         int dragDRows = 0, dragDStep = 0;       // live preview offsets
         juce::Rectangle<float> marquee;
         bool marqueeAdditive = false;
@@ -129,6 +134,24 @@ private:
         int dragNoteId = -1;
     };
 
+    /** Folding Scale section (Bottom placement): octave / key / mode / fit / map. */
+    class ScalePanel : public juce::Component
+    {
+    public:
+        explicit ScalePanel(PianoRollEditor& o) : owner(o) {}
+        void paint(juce::Graphics&) override;
+        void mouseDown(const juce::MouseEvent&) override;
+        void resized() override;
+        bool hitTest(int x, int y) override;
+        int idealHeight() const;
+        bool isOpen() const { return open; }
+        void setOpen(bool shouldOpen);
+        PianoRollEditor& owner;
+        static constexpr int headerH = 32;
+        static constexpr int bodyH = 44;
+        bool open = true;
+    };
+
     struct NotifyingViewport : juce::Viewport
     {
         std::function<void()> onScrolled;
@@ -141,6 +164,7 @@ private:
     friend class RollContent;
     friend class KeyGutter;
     friend class VelocityLane;
+    friend class ScalePanel;
 
     // ── model → view ──
     void rebuildResolved();
@@ -148,11 +172,16 @@ private:
     void refreshControls();
     void updateRollSize();
     void scrollToContent();
+    void layoutScaleControls(juce::Rectangle<int> area);
+    void nudgeSelection(int dPitch, int dStep);
 
     // ── row geometry ──
     float pxPerStep() const { return pxPerStepBase * zoomX; }
     float effRowH() const { return folded ? rowH * 2.0f : rowH; }   // folded rows are 2x tall
-    int totalSteps() const { return resolved.bars * kStepsPerBar; }
+    int totalSteps() const
+    {
+        return juce::jmax(1, (int) std::lround((double) resolved.bars * kStepsPerBar * timeStretch));
+    }
     int numRows() const { return folded ? juce::jmax(1, (int) foldPitches.size()) : 128; }
     int rowForPitch(int pitch) const;
     int pitchForRow(int row) const;
@@ -184,6 +213,8 @@ private:
     double playheadStep = 0.0;
     bool playing = false;
     bool lockActive = false;
+    double timeStretch = 1.0;               // 1 / bpmMultiplier
+    ScalePlacement scalePlacement = ScalePlacement::Top;
 
     static constexpr float kMinRowH = 5.0f;    // max notes on screen
     static constexpr float kMaxRowH = 26.0f;   // min notes on screen
@@ -208,6 +239,7 @@ private:
     RollContent rollContent { *this };
     VelocityLane velocityLane { *this };
     bool velocityOpen = false;
+    ScalePanel scalePanel { *this };
     KnobsPanel knobsPanel;
 
     static constexpr int stripH = 46;

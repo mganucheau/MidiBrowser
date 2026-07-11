@@ -108,14 +108,19 @@ TEST_CASE("swing at 1/16 base delays odd sixteenth slots", "[groove]")
     CHECK(g[3].start == Approx(6.0));    // slot 6 even
 }
 
-TEST_CASE("pocket shifts every note; ahead can go slightly negative", "[groove]")
+TEST_CASE("pocket shifts weak beats more than strong beats", "[groove]")
 {
     GrooveParams k;
-    k.pocket = -100;   // −1.5 steps
-    const auto g = applyGroove(testNotes(), k);
-    CHECK(g[0].start == Approx(-1.5));
-    CHECK(g[1].start == Approx(0.5));
-    CHECK(g[2].start == Approx(3.5));
+    k.pocket = 100;   // laid-back loose
+    // Downbeat (weight 1) vs 16th (weight 0.38) — weak moves further behind.
+    std::vector<RollNote> notes = {
+        { 0, 60, 0.0, 1.0 },
+        { 1, 62, 1.0, 1.0 },
+    };
+    const auto g = applyGroove(notes, k);
+    CHECK(g[0].start > notes[0].start);
+    CHECK(g[1].start > notes[1].start);
+    CHECK((g[1].start - notes[1].start) > (g[0].start - notes[0].start));
 }
 
 TEST_CASE("humanize applies deterministic per-id jitter", "[groove]")

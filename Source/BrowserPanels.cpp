@@ -267,6 +267,17 @@ bool FileListPanel::keyPressed(const juce::KeyPress& key)
     if (key == juce::KeyPress::upKey)   { selectAdjacent(-1); return true; }
     if (key == juce::KeyPress::downKey) { selectAdjacent(1); return true; }
 
+    if (key == juce::KeyPress::leftKey)
+    {
+        if (onEnterParent) onEnterParent();
+        return true;
+    }
+    if (key == juce::KeyPress::rightKey || key == juce::KeyPress::returnKey)
+    {
+        if (selected >= 0 && onEnterFolder) onEnterFolder(selected);
+        return true;
+    }
+
     // Page up/down jump by one visible page.
     const int pageRows = juce::jmax(1, viewport.getMaximumVisibleHeight() / metrics::listRowH());
     if (key == juce::KeyPress::pageUpKey)   { selectAdjacent(-pageRows); return true; }
@@ -293,8 +304,11 @@ void FileListPanel::ensureRowVisible(int index)
 
 void FileListPanel::updateContentSize()
 {
-    content.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()),
-                    juce::jmax(1, (int) entries.size() * metrics::listRowH()));
+    const int w = juce::jmax(1, viewport.getMaximumVisibleWidth());
+    if (entries.empty())
+        content.setSize(w, juce::jmax(1, viewport.getMaximumVisibleHeight()));
+    else
+        content.setSize(w, juce::jmax(1, (int) entries.size() * metrics::listRowH()));
 }
 
 void FileListPanel::resized()
@@ -345,7 +359,7 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
 {
     const auto& e = entries[(size_t) index];
     const bool isSelected = index == selected;
-    const bool showEq = isSelected && playing;
+    const bool showEq = isSelected && playing && !e.isDirectory;
 
     if (isSelected)
     {
@@ -362,11 +376,19 @@ void FileListPanel::paintRow(juce::Graphics& g, int index, juce::Rectangle<int> 
 
     auto row = r.reduced(8, 0);
 
-    // Kind icon
+    // Kind / folder icon
     auto iconArea = row.removeFromLeft(17).toFloat().withSizeKeepingCentre(15.0f, 15.0f);
-    drawIcon(g, kindIcon(e.kind), iconArea,
+    drawIcon(g, e.isDirectory ? icons::folder : kindIcon(e.kind), iconArea,
              isSelected ? colours::accent() : colours::text3(), 1.4f);
     row.removeFromLeft(6);
+
+    if (e.isDirectory)
+    {
+        g.setColour(isSelected ? colours::text() : colours::text2());
+        g.setFont(uiFont(14.0f, true));
+        g.drawText(e.name, row, juce::Justification::centredLeft, true);
+        return;
+    }
 
     // Fixed right zones: [ … name | star | meta | play/eq ]
     auto playZone = row.removeFromRight(kPlayZoneW);
@@ -453,10 +475,11 @@ void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
     const int rowH = metrics::listRowH();
     const int row = e.y / rowH;
     const bool valid = juce::isPositiveAndBelow(row, (int) owner.entries.size());
+    const bool isDir = valid && owner.entries[(size_t) row].isDirectory;
     const int newHover = valid ? row : -1;
-    const int fromRight = getWidth() - 8 - e.x;   // row is reduced(8) each side
-    const bool newHoverPlay = valid && fromRight >= 0 && fromRight < kPlayZoneW;
-    const bool newHoverStar = valid && fromRight >= kPlayZoneW + kMetaZoneW
+    const int fromRight = getWidth() - 8 - e.x;
+    const bool newHoverPlay = valid && !isDir && fromRight >= 0 && fromRight < kPlayZoneW;
+    const bool newHoverStar = valid && !isDir && fromRight >= kPlayZoneW + kMetaZoneW
                               && fromRight < kPlayZoneW + kMetaZoneW + kStarZoneW;
     if (newHover != hoverRow || newHoverPlay != hoverPlay || newHoverStar != hoverStar)
     {
@@ -477,10 +500,27 @@ void FileListPanel::ListContent::mouseExit(const juce::MouseEvent&)
 
 void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
 {
+    if (owner.entries.empty())
+    {
+        if (owner.onOpenFolder)
+            owner.onOpenFolder();
+        return;
+    }
+
     const int row = e.y / metrics::listRowH();
     if (!juce::isPositiveAndBelow(row, (int) owner.entries.size()))
         return;
     owner.grabKeyboardFocus();
+
+    const auto& entry = owner.entries[(size_t) row];
+    if (entry.isDirectory)
+    {
+        owner.setSelectedIndex(row);
+        if (owner.onEnterFolder)
+            owner.onEnterFolder(row);
+        return;
+    }
+
     if (hoverStar && owner.onToggleStar)
     {
         owner.onToggleStar(row);

@@ -85,7 +85,9 @@ public:
 
     // Browse-lock: when set, the locked pitch edits (octave / fit / map /
     // root / mode) are stamped onto every clip selected while browsing.
+    // lockAutoTrim also applies empty-edge-bar trim to each browsed clip.
     bool editLock = false;
+    bool lockAutoTrim = false;
     ClipEdit lockedEdit;
 
     // UI layout state (persisted)
