@@ -52,6 +52,9 @@ const std::array<int, 7>& modeIntervals(Mode m);
 
 juce::String pitchName(int midi);           // MIDI 60 = "C4"
 bool isBlackKeyPitch(int midi);
+
+/** True when midi pitch-class belongs to scale(rootPc, mode). */
+bool pitchInScale(int midi, int rootPc, Mode mode);
 int  noteNameIndex(const juce::String& name);   // "C"..."B" -> 0..11, else -1
 
 /** Snap a pitch to the nearest tone of scale(root, mode), preserving register.

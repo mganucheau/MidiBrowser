@@ -4,6 +4,7 @@ namespace pflow {
 
 namespace {
 constexpr int kTitlePad = 14;
+constexpr float kHeaderIconScale = 1.0f;
 }
 
 // ── StatusPill ───────────────────────────────────────────────────────────────
@@ -18,7 +19,6 @@ void TransportBar::StatusPill::setText(const juce::String& t)
 void TransportBar::StatusPill::paint(juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    // Prototype: white raised pill on gray toolbar.
     g.setColour(colours::panel());
     g.fillRoundedRectangle(r, r.getHeight() * 0.5f);
     g.setColour(colours::line());
@@ -33,7 +33,6 @@ void TransportBar::StatusPill::paint(juce::Graphics& g)
 
 void TransportBar::StatusPill::mouseDown(const juce::MouseEvent&)
 {
-    // Sync is a separate control; the pill only edits free BPM.
     if (editing || synced) return;
 }
 
@@ -99,11 +98,17 @@ bool TransportBar::StatusPill::keyPressed(const juce::KeyPress& key)
 
 TransportBar::TransportBar()
 {
-    btnPlay.ghost = true;
+    auto prep = [](IconBtn& b)
+    {
+        b.ghost = true;
+        b.iconScale = kHeaderIconScale;
+    };
+
+    prep(btnPlay);
     btnPlay.onClick = [this] { if (onPlayPause) onPlayPause(); };
     addAndMakeVisible(btnPlay);
 
-    btnStop.ghost = true;
+    prep(btnStop);
     btnStop.onClick = [this] { if (onStop) onStop(); };
     addAndMakeVisible(btnStop);
 
@@ -115,7 +120,7 @@ TransportBar::TransportBar()
     };
     addAndMakeVisible(statusPill);
 
-    btnSync.ghost = true;
+    prep(btnSync);
     btnSync.setTooltip("Sync to host tempo");
     btnSync.onClick = [this]
     {
@@ -132,30 +137,17 @@ TransportBar::TransportBar()
     btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
     addAndMakeVisible(btnDragToDaw);
 
-    btnAppearance.ghost = true;
-    btnAppearance.onClick = [this] { if (onToggleAppearance) onToggleAppearance(); };
-    addAndMakeVisible(btnAppearance);
-
-    btnEditor.ghost = true;
+    prep(btnEditor);
     btnEditor.setTooltip("Toggle editor (E)");
     btnEditor.onClick = [this] { if (onToggleEditor) onToggleEditor(); };
     addAndMakeVisible(btnEditor);
 
-    btnEffects.ghost = true;
+    prep(btnEffects);
     btnEffects.setTooltip("Toggle effects (F)");
     btnEffects.onClick = [this] { if (onToggleEffects) onToggleEffects(); };
     addAndMakeVisible(btnEffects);
 
-    refreshAppearanceIcon();
     refreshBpm();
-}
-
-void TransportBar::refreshAppearanceIcon()
-{
-    btnAppearance.icon = usesDarkAppearance() ? icons::sun : icons::moon;
-    btnAppearance.setTooltip(usesDarkAppearance() ? "Switch to light appearance"
-                                                  : "Switch to dark appearance");
-    btnAppearance.repaint();
 }
 
 void TransportBar::setPlaying(bool p)
@@ -249,15 +241,12 @@ void TransportBar::resized()
     };
 
     r.removeFromLeft(titleW);
-    // Mirror title inset on the trailing edge (effects icon ↔ window).
     r.removeFromRight(kTitlePad);
 
-    // Right cluster: appearance · editor · effects
+    // Right cluster: editor · effects
     btnEffects.setBounds(mid(r.removeFromRight(btn), btn));
     r.removeFromRight(gap);
     btnEditor.setBounds(mid(r.removeFromRight(btn), btn));
-    r.removeFromRight(gap);
-    btnAppearance.setBounds(mid(r.removeFromRight(btn), btn));
 
     btnDragToDaw.setVisible(editorOpen && hasClip);
     if (btnDragToDaw.isVisible())

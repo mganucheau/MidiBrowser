@@ -94,17 +94,6 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.onToggleEditor = [this] { toggleEditorFold(); };
     transport.onToggleEffects = [this] { toggleEffectsFold(); };
     transport.onDragToDaw = [this] { startDragExport(); };
-    transport.onToggleAppearance = [this]
-    {
-        auto& t = tweaks();
-        t.appearance.store(usesDarkAppearance() ? (int) Appearance::Light
-                                                : (int) Appearance::Dark);
-        lnf.refreshColours();
-        sendLookAndFeelChange();
-        transport.refreshAppearanceIcon();
-        resized();
-        repaint();
-    };
     transport.setSynced(processorRef.syncToHost.load());
     transport.setFreeBpm(processorRef.freeBpm.load());
     transport.setBpmMultiplier(processorRef.bpmMultiplier.load());
@@ -165,6 +154,17 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     };
     sidebar.onSaveCurrentSearch = [this] { saveCurrentSearch(); };
     sidebar.onOpenTweaks = [this] { showTweaksMenu(); };
+    sidebar.onToggleAppearance = [this]
+    {
+        auto& t = tweaks();
+        t.appearance.store(usesDarkAppearance() ? (int) Appearance::Light
+                                                : (int) Appearance::Dark);
+        lnf.refreshColours();
+        sendLookAndFeelChange();
+        sidebar.refreshAppearanceIcon();
+        resized();
+        repaint();
+    };
     sidebar.onCollapsedChanged = [this]
     {
         processorRef.sidebarCollapsed = sidebar.isCollapsed();
@@ -351,7 +351,7 @@ void MidiBrowserEditor::darkModeSettingChanged()
         return;
     lnf.refreshColours();
     sendLookAndFeelChange();
-    transport.refreshAppearanceIcon();
+    sidebar.refreshAppearanceIcon();
     repaint();
 }
 
@@ -889,7 +889,7 @@ void MidiBrowserEditor::updateMiniPreview()
 
 void MidiBrowserEditor::PreviewHeader::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::panel());
+    g.fillAll(inspectorTokens().panelBg);
     g.setColour(colours::line());
     g.fillRect(getLocalBounds().removeFromTop(1));
 
@@ -1060,8 +1060,9 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        g.fillAll(t.panelBg);
-        g.setColour(colours::line());
+        g.setColour(t.panelBg);
+        g.fillRoundedRectangle(getLocalBounds().toFloat(), 8.0f);
+        g.setColour(t.controlHairline);
         g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 8.0f, 0.5f);
 
         g.setFont(uiFont(13.0f, true));
@@ -1107,19 +1108,62 @@ private:
 
 void MidiBrowserEditor::showTweaksMenu()
 {
-    auto* panel = new SettingsPanel();
-    panel->onChanged = [this]
+    if (auto* existing = content.findChildWithID("settingsOverlay"))
+    {
+        content.removeChildComponent(existing);
+        delete existing;
+        return;
+    }
+
+    struct Overlay : juce::Component
+    {
+        SettingsPanel panel;
+        std::function<void()> onDismiss;
+
+        Overlay()
+        {
+            addAndMakeVisible(panel);
+            panel.setSize(280, 156);
+        }
+
+        void resized() override
+        {
+            panel.setBounds(getLocalBounds().withSizeKeepingCentre(panel.getWidth(), panel.getHeight()));
+        }
+
+        void paint(juce::Graphics& g) override
+        {
+            // Soft scrim, no drop shadow on the panel itself.
+            g.setColour(juce::Colours::black.withAlpha(0.18f));
+            g.fillAll();
+        }
+
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            if (!panel.getBounds().contains(e.getPosition()) && onDismiss)
+                onDismiss();
+        }
+    };
+
+    auto* overlay = new Overlay();
+    overlay->setComponentID("settingsOverlay");
+    overlay->panel.onChanged = [this]
     {
         lnf.refreshColours();
         sendLookAndFeelChange();
-        transport.refreshAppearanceIcon();
+        sidebar.refreshAppearanceIcon();
         applyLayoutState();
         resized();
         repaint();
     };
-    juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(panel),
-                                           content.getLocalArea(&sidebar, sidebar.getTweaksButtonBounds()),
-                                           &content);
+    overlay->onDismiss = [this, overlay]
+    {
+        content.removeChildComponent(overlay);
+        delete overlay;
+    };
+    overlay->setBounds(content.getLocalBounds());
+    content.addAndMakeVisible(overlay);
+    overlay->toFront(true);
 }
 
 void MidiBrowserEditor::refreshSidebar()

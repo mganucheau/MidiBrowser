@@ -1093,7 +1093,10 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
     const float pps = ed.pxPerStep();
     const auto clipB = g.getClipBounds().toFloat();
 
-    // Pitch rows: shade black-key rows; row lines.
+    // Pitch rows: shade black-key lanes; soft accent wash for pitches in the key.
+    const int rootPc = ed.edit.root >= 0 ? ed.edit.root
+                     : (ed.clip.root >= 0 ? ed.clip.root : 0);
+    const Mode mode = ed.edit.mode;
     const int firstRow = juce::jmax(0, (int) std::floor(clipB.getY() / ed.effRowH()));
     const int lastRow = juce::jmin(ed.numRows() - 1, (int) std::ceil(clipB.getBottom() / ed.effRowH()));
     for (int row = firstRow; row <= lastRow; ++row)
@@ -1105,7 +1108,23 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
             g.setColour(colours::rollShade());
             g.fillRect(clipB.getX(), y, clipB.getWidth(), ed.effRowH());
         }
+        if (pitchInScale(pitch, rootPc, mode))
+        {
+            g.setColour(colours::accent().withAlpha(usesDarkAppearance() ? 0.07f : 0.09f));
+            g.fillRect(clipB.getX(), y, clipB.getWidth(), ed.effRowH());
+        }
+        else if (!isBlackKeyPitch(pitch))
+        {
+            // Dim out-of-scale white rows slightly so in-key lanes stand out.
+            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.03f : 0.025f));
+            g.fillRect(clipB.getX(), y, clipB.getWidth(), ed.effRowH());
+        }
         if (pitch % 12 == 0)
+        {
+            g.setColour(colours::lineStrong().withAlpha(0.55f));
+            g.fillRect(clipB.getX(), y + ed.effRowH() - 0.6f, clipB.getWidth(), 0.6f);
+        }
+        else
         {
             g.setColour(colours::rollRowline());
             g.fillRect(clipB.getX(), y + ed.effRowH() - 0.5f, clipB.getWidth(), 0.5f);
@@ -1135,10 +1154,12 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
 
         const double v = effectiveVelocity(n, ed.groove);
         juce::Colour fill = (n.moved || inDrag) ? colours::accentBright() : colours::accent();
-        g.setColour(fill.withAlpha((float) (0.35 + 0.6 * v)));
-        g.fillRoundedRectangle(r, 3.0f);
+        const float baseA = usesDarkAppearance() ? 0.40f : 0.72f;
+        const float spanA = usesDarkAppearance() ? 0.55f : 0.28f;
+        g.setColour(fill.withAlpha(baseA + spanA * (float) v));
+        g.fillRoundedRectangle(r, 2.5f);
         g.setColour(colours::rollNoteEdge());
-        g.drawRoundedRectangle(r, 3.0f, 0.8f);
+        g.drawRoundedRectangle(r, 2.5f, usesDarkAppearance() ? 0.8f : 1.0f);
 
         if (isSelected)
         {
@@ -1384,7 +1405,9 @@ void PianoRollEditor::TimeRuler::mouseUp(const juce::MouseEvent&)
 void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
 {
     auto& ed = owner;
-    g.fillAll(colours::panel());
+    // Dark well behind the keys (matches classic piano-roll chrome).
+    g.setColour(usesDarkAppearance() ? juce::Colour(0xff1a1a1c) : juce::Colour(0xffd8dbe2));
+    g.fillAll();
     if (!ed.hasClip)
     {
         g.setColour(colours::line());
@@ -1393,45 +1416,121 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
     }
 
     const int viewY = ed.rollViewport.getViewPositionY();
+    const float rowH = ed.effRowH();
+    const float W = (float) getWidth() - 1.0f;
 
     std::set<int> selectedPitches;
     for (const auto& n : ed.resolved.notes)
         if (ed.selection.count(n.id) > 0)
             selectedPitches.insert(n.pitch);
 
-    const int firstRow = juce::jmax(0, (int) std::floor((float) viewY / ed.effRowH()));
-    const int lastRow = juce::jmin(ed.numRows() - 1,
-                                   (int) std::ceil((float) (viewY + getHeight()) / ed.effRowH()));
+    const int rootPc = ed.edit.root >= 0 ? ed.edit.root
+                     : (ed.clip.root >= 0 ? ed.clip.root : 0);
+    const Mode mode = ed.edit.mode;
 
+    const int firstRow = juce::jmax(0, (int) std::floor((float) viewY / rowH));
+    const int lastRow = juce::jmin(ed.numRows() - 1,
+                                   (int) std::ceil((float) (viewY + getHeight()) / rowH));
+
+    // Pass 1 — white keys (full width, soft bevel / texture).
     for (int row = firstRow; row <= lastRow; ++row)
     {
-        const float y = (float) row * ed.effRowH() - (float) viewY;
         const int pitch = ed.pitchForRow(row);
-        auto rowRect = juce::Rectangle<float>(0.0f, y, (float) getWidth() - 1.0f, ed.effRowH());
+        if (isBlackKeyPitch(pitch)) continue;
 
-        g.setColour(isBlackKeyPitch(pitch) ? colours::kbBlack() : colours::kbWhite());
-        g.fillRect(rowRect);
+        const float y = (float) row * rowH - (float) viewY;
+        auto key = juce::Rectangle<float>(0.0f, y, W, rowH);
+
+        juce::ColourGradient grad(colours::kbWhite().brighter(0.06f), 0.0f, y,
+                                  colours::kbWhite().darker(0.08f), W, y, false);
+        g.setGradientFill(grad);
+        g.fillRect(key);
+
+        // Right lip / front edge.
+        g.setColour(colours::kbWhite().darker(0.18f));
+        g.fillRect(W - 3.0f, y, 3.0f, rowH);
+        g.setColour(juce::Colours::white.withAlpha(usesDarkAppearance() ? 0.08f : 0.55f));
+        g.fillRect(0.0f, y, 2.0f, rowH);
+
+        if (pitchInScale(pitch, rootPc, mode))
+        {
+            g.setColour(colours::accent().withAlpha(usesDarkAppearance() ? 0.14f : 0.10f));
+            g.fillRect(key);
+        }
 
         if (selectedPitches.count(pitch) > 0)
         {
             g.setColour(colours::accentSoft());
-            g.fillRect(rowRect);
+            g.fillRect(key);
             g.setColour(colours::accent());
-            g.fillRect(rowRect.removeFromRight(2.0f));
+            g.fillRect(W - 2.5f, y, 2.5f, rowH);
         }
 
-        g.setColour(colours::rollRowline());
-        g.fillRect(0.0f, y, (float) getWidth(), 0.5f);
+        g.setColour(usesDarkAppearance() ? juce::Colours::black.withAlpha(0.55f)
+                                         : juce::Colours::black.withAlpha(0.18f));
+        g.fillRect(0.0f, y + rowH - 0.6f, W, 0.6f);
+    }
 
-        // Label C rows; when folded, label every row (Live-style).
-        if ((ed.folded || pitch % 12 == 0) && ed.effRowH() >= 8.0f)
+    // Pass 2 — black keys (shorter, raised).
+    for (int row = firstRow; row <= lastRow; ++row)
+    {
+        const int pitch = ed.pitchForRow(row);
+        if (!isBlackKeyPitch(pitch)) continue;
+
+        const float y = (float) row * rowH - (float) viewY;
+        const float keyW = W * 0.62f;
+        auto key = juce::Rectangle<float>(0.0f, y + 0.5f, keyW, rowH - 1.0f);
+
+        juce::ColourGradient grad(colours::kbBlack().brighter(0.25f), 0.0f, y,
+                                  colours::kbBlack().darker(0.15f), keyW, y, false);
+        g.setGradientFill(grad);
+        g.fillRoundedRectangle(key, juce::jmin(2.0f, rowH * 0.25f));
+
+        g.setColour(juce::Colours::white.withAlpha(0.12f));
+        g.fillRect(key.withHeight(1.0f).reduced(1.0f, 0.0f));
+
+        if (pitchInScale(pitch, rootPc, mode))
         {
-            g.setColour(colours::text3());
-            g.setFont(monoFont(juce::jmin(12.0f, ed.effRowH() - 1.5f), false));
-            g.drawText(pitchName(pitch), 4, (int) y, getWidth() - 8, (int) ed.effRowH(),
-                       juce::Justification::centredLeft);
+            g.setColour(colours::accent().withAlpha(0.22f));
+            g.fillRoundedRectangle(key, juce::jmin(2.0f, rowH * 0.25f));
+        }
+
+        if (selectedPitches.count(pitch) > 0)
+        {
+            g.setColour(colours::accent());
+            g.drawRoundedRectangle(key.reduced(0.5f), juce::jmin(2.0f, rowH * 0.25f), 1.2f);
         }
     }
+
+    // Pass 3 — rotated note labels (scale with row height).
+    for (int row = firstRow; row <= lastRow; ++row)
+    {
+        const int pitch = ed.pitchForRow(row);
+        const bool isC = (pitch % 12 == 0);
+        if (!(ed.folded || isC) || rowH < 7.0f) continue;
+
+        const float y = (float) row * rowH - (float) viewY;
+        const float fontPt = juce::jlimit(7.0f, 11.0f, rowH * 0.72f);
+        const bool black = isBlackKeyPitch(pitch);
+        const bool selected = selectedPitches.count(pitch) > 0;
+        const auto name = pitchName(pitch);
+
+        const float cx = black ? W * 0.32f : W - 8.0f;
+        const float cy = y + rowH * 0.5f;
+
+        g.saveState();
+        g.addTransform(juce::AffineTransform::rotation(-juce::MathConstants<float>::halfPi, cx, cy));
+        g.setFont(monoFont(fontPt, true));
+        g.setColour(selected ? colours::accent()
+                   : black ? juce::Colours::white.withAlpha(0.75f)
+                           : colours::text3());
+        g.drawText(name,
+                   juce::Rectangle<float>(cx - rowH * 0.5f, cy - fontPt * 0.55f,
+                                          rowH, fontPt * 1.2f).toNearestInt(),
+                   juce::Justification::centred, false);
+        g.restoreState();
+    }
+
     g.setColour(colours::line());
     g.fillRect(getLocalBounds().removeFromRight(1));
 }
@@ -1451,7 +1550,7 @@ void PianoRollEditor::KeyGutter::mouseDown(const juce::MouseEvent& e)
 void PianoRollEditor::VelocityLane::paint(juce::Graphics& g)
 {
     auto& ed = owner;
-    g.fillAll(colours::panel());
+    g.fillAll(inspectorTokens().panelBg);
     g.setColour(colours::line());
     g.fillRect(getLocalBounds().removeFromTop(1));
 
@@ -1459,7 +1558,7 @@ void PianoRollEditor::VelocityLane::paint(juce::Graphics& g)
     auto caret = header.removeFromLeft(12).toFloat().withSizeKeepingCentre(9.0f, 9.0f);
     drawIcon(g, ed.velocityOpen ? icons::caretDown : icons::caretUp, caret, colours::text3(), 1.5f);
     header.removeFromLeft(4);
-    g.setColour(colours::text3());
+    g.setColour(colours::text2());
     g.setFont(uiFont(9.5f, true));
     g.drawText("VELOCITY", header, juce::Justification::centredLeft);
 

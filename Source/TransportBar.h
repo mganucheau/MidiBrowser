@@ -22,7 +22,6 @@ public:
     void setEditorOpen(bool);
     void setEffectsOpen(bool);
     void setHasClip(bool has);
-    void refreshAppearanceIcon();
 
     std::function<void()> onPlayPause;
     std::function<void()> onStop;
@@ -31,7 +30,6 @@ public:
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
     std::function<void()> onDragToDaw;
-    std::function<void()> onToggleAppearance;
 
 private:
     void refreshBpm();
@@ -86,7 +84,6 @@ private:
     StatusPill statusPill;
     IconBtn btnSync { icons::infinity, "Sync to host tempo" };
     DragChip btnDragToDaw { "Drag to DAW" };
-    IconBtn btnAppearance { icons::moon, "Toggle light / dark" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
     IconBtn btnEffects { icons::sliders, "Toggle effects" };
 

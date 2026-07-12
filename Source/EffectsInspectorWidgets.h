@@ -135,15 +135,7 @@ public:
     void mouseDown(const juce::MouseEvent&) override
     {
         if (labels.isEmpty()) return;
-        juce::PopupMenu m;
-        for (int i = 0; i < labels.size(); ++i)
-            m.addItem(i + 1, labels[i], true, i == index);
-        m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
-                        [this](int r)
-                        {
-                            if (r > 0)
-                                setIndex(r - 1, juce::sendNotification);
-                        });
+        showMenu();
     }
 
     void setIndex(int i, juce::NotificationType notify)
@@ -196,6 +188,111 @@ public:
     }
 
 private:
+    class MenuList : public juce::Component
+    {
+    public:
+        MenuList(FlatPopup& o, juce::StringArray items, int selected)
+            : owner(o), labels(std::move(items)), index(selected)
+        {
+            const int rowH = 24;
+            setSize(juce::jmax(120, o.getWidth()), labels.size() * rowH + 8);
+        }
+
+        void paint(juce::Graphics& g) override
+        {
+            const auto& t = inspectorTokens();
+            auto bounds = getLocalBounds().toFloat();
+            g.setColour(t.panelBg);
+            g.fillRoundedRectangle(bounds, 6.0f);
+            g.setColour(t.controlHairline);
+            g.drawRoundedRectangle(bounds.reduced(0.5f), 6.0f, 0.5f);
+
+            const int rowH = 24;
+            auto body = getLocalBounds().reduced(4);
+            for (int i = 0; i < labels.size(); ++i)
+            {
+                auto row = body.removeFromTop(rowH).toFloat();
+                const bool hi = (i == hover);
+                const bool sel = (i == index);
+                if (hi || sel)
+                {
+                    g.setColour(hi ? t.accent : t.accent.withAlpha(0.18f));
+                    g.fillRoundedRectangle(row, 4.0f);
+                }
+                g.setFont(inspectorFont());
+                g.setColour(hi ? juce::Colours::white : t.rowLabel);
+                g.drawText(labels[i], row.reduced(8.0f, 0.0f).toNearestInt(),
+                           juce::Justification::centredLeft, true);
+            }
+        }
+
+        void mouseMove(const juce::MouseEvent& e) override
+        {
+            const int h = juce::jlimit(-1, labels.size() - 1, (e.y - 4) / 24);
+            if (h != hover) { hover = h; repaint(); }
+        }
+
+        void mouseExit(const juce::MouseEvent&) override { hover = -1; repaint(); }
+
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            const int i = (e.y - 4) / 24;
+            if (juce::isPositiveAndBelow(i, labels.size()))
+                owner.setIndex(i, juce::sendNotification);
+            if (auto* overlay = getParentComponent())
+            {
+                if (auto* host = overlay->getParentComponent())
+                    host->removeChildComponent(overlay);
+                delete overlay;
+            }
+        }
+
+        FlatPopup& owner;
+        juce::StringArray labels;
+        int index = 0;
+        int hover = -1;
+    };
+
+    void showMenu()
+    {
+        auto* host = getTopLevelComponent();
+        if (host == nullptr) return;
+
+        if (auto* existing = host->findChildWithID("flatPopupMenuHost"))
+        {
+            host->removeChildComponent(existing);
+            delete existing;
+        }
+
+        struct Veil : juce::Component
+        {
+            void mouseDown(const juce::MouseEvent&) override
+            {
+                if (auto* p = getParentComponent())
+                    p->removeChildComponent(this);
+                delete this;
+            }
+        };
+
+        auto* overlay = new Veil();
+        overlay->setComponentID("flatPopupMenuHost");
+        overlay->setBounds(host->getLocalBounds());
+        host->addAndMakeVisible(overlay);
+        overlay->toFront(true);
+
+        auto* menu = new MenuList(*this, labels, index);
+        const auto screen = localAreaToGlobal(getLocalBounds());
+        const auto hostScreen = host->getScreenBounds();
+        int x = screen.getX() - hostScreen.getX();
+        int y = screen.getBottom() - hostScreen.getY() + 2;
+        if (y + menu->getHeight() > host->getHeight())
+            y = screen.getY() - hostScreen.getY() - menu->getHeight() - 2;
+        x = juce::jlimit(4, host->getWidth() - menu->getWidth() - 4, x);
+        menu->setBounds(x, y, menu->getWidth(), menu->getHeight());
+        overlay->addAndMakeVisible(menu);
+        menu->toFront(false);
+    }
+
     juce::StringArray labels;
     int index = 0;
 };
@@ -242,7 +339,7 @@ public:
 
         g.setColour(t.rowLabel);
         g.setFont(inspectorFont());
-        g.drawFittedText("−", r.withWidth(seg).toNearestInt(), juce::Justification::centred, 1);
+        g.drawFittedText("-", r.withWidth(seg).toNearestInt(), juce::Justification::centred, 1);
         g.drawFittedText("+", r.withTrimmedLeft(seg * 2.0f).toNearestInt(), juce::Justification::centred, 1);
 
         const juce::String text = format ? format(value) : signedIntText(value);
@@ -324,7 +421,7 @@ public:
         g.setColour(textCol(Sel::Half));
         g.drawFittedText("/2", left.toNearestInt(), juce::Justification::centred, 1);
         g.setColour(textCol(Sel::Double));
-        g.drawFittedText("×2", right.toNearestInt(), juce::Justification::centred, 1);
+        g.drawFittedText("x2", right.toNearestInt(), juce::Justification::centred, 1);
     }
 
 private:

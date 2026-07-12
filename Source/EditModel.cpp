@@ -45,6 +45,14 @@ bool isBlackKeyPitch(int midi)
     return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
 }
 
+bool pitchInScale(int midi, int rootPc, Mode mode)
+{
+    bool inScale[12] = {};
+    for (int iv : modeIntervals(mode))
+        inScale[wrapPc(rootPc + iv)] = true;
+    return inScale[wrapPc(midi)];
+}
+
 int noteNameIndex(const juce::String& name)
 {
     for (int i = 0; i < 12; ++i)

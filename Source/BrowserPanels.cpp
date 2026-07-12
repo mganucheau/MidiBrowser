@@ -107,8 +107,19 @@ void FavoritesSidebar::SearchInlinePanel::resized()
 
 FavoritesSidebar::FavoritesSidebar()
 {
+    btnToggle.ghost = true;
+    btnToggle.iconScale = 1.0f;
     btnToggle.onClick = [this] { setCollapsed(!collapsed); };
     addAndMakeVisible(btnToggle);
+
+    btnAppearance.ghost = true;
+    btnAppearance.iconScale = 1.0f;
+    btnAppearance.onClick = [this] { if (onToggleAppearance) onToggleAppearance(); };
+    addAndMakeVisible(btnAppearance);
+    refreshAppearanceIcon();
+
+    btnTweaks.ghost = true;
+    btnTweaks.iconScale = 1.0f;
     btnTweaks.onClick = [this] { if (onOpenTweaks) onOpenTweaks(); };
     addAndMakeVisible(btnTweaks);
 
@@ -120,6 +131,14 @@ FavoritesSidebar::FavoritesSidebar()
     addChildComponent(searchForm);
 
     rebuildRows();
+}
+
+void FavoritesSidebar::refreshAppearanceIcon()
+{
+    btnAppearance.icon = usesDarkAppearance() ? icons::sun : icons::moon;
+    btnAppearance.setTooltip(usesDarkAppearance() ? "Switch to light appearance"
+                                                  : "Switch to dark appearance");
+    btnAppearance.repaint();
 }
 
 void FavoritesSidebar::setSavedDirs(const juce::StringArray& paths, const juce::String& activePath)
@@ -272,8 +291,15 @@ void FavoritesSidebar::resized()
 {
     btnToggle.setBounds(juce::Rectangle<int>(0, 0, metrics::sidebarRailW, kSidebarHeaderH)
                             .withSizeKeepingCentre(26, 26));
-    btnTweaks.setBounds(juce::Rectangle<int>(0, getHeight() - 34, metrics::sidebarRailW, 30)
-                            .withSizeKeepingCentre(24, 24));
+
+    // Appearance sits directly above Settings, same control size.
+    constexpr int railBtn = 26;
+    constexpr int railPad = 4;
+    auto rail = juce::Rectangle<int>(0, getHeight() - (railBtn * 2 + railPad + 8),
+                                     metrics::sidebarRailW, railBtn * 2 + railPad);
+    btnAppearance.setBounds(rail.removeFromTop(railBtn).withSizeKeepingCentre(railBtn, railBtn));
+    rail.removeFromTop(railPad);
+    btnTweaks.setBounds(rail.removeFromTop(railBtn).withSizeKeepingCentre(railBtn, railBtn));
 
     if (searchFormOpen && !collapsed)
     {

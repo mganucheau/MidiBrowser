@@ -50,13 +50,13 @@ const ThemeTokens& themeTokens()
         juce::Colour(0xff1d1d1f),   // text
         juce::Colour(0xff6e6e73),   // text2
         juce::Colour(0xffaeaeb2),   // text3
-        juce::Colour(0xfffbfaf9),   // rollBg
-        juce::Colour(0xfff4f2ef),   // rollShade
-        juce::Colour(0xffefedea),   // rollRowline
-        rgba(0, 0, 0, 0.12f),       // rollNoteEdge
-        rgba(0, 0, 0, 0.18f),       // rollGhost
-        juce::Colour(0xffffffff),   // kbWhite
-        juce::Colour(0xffece9e4),   // kbBlack
+        juce::Colour(0xffeef0f4),   // rollBg — cool gray so blue notes read clearly
+        juce::Colour(0xffe2e5eb),   // rollShade — black-key lanes
+        juce::Colour(0xffd0d4dc),   // rollRowline
+        rgba(0, 0, 0, 0.16f),       // rollNoteEdge
+        rgba(0, 0, 0, 0.22f),       // rollGhost
+        juce::Colour(0xfff7f8fa),   // kbWhite
+        juce::Colour(0xff2c2c30),   // kbBlack — real piano black
         juce::Colour(0xffece9e5),   // toolbarTop
         juce::Colour(0xffe3e0db),   // toolbarBot
         rgba(245, 245, 247, 0.94f), // sidebarTop
@@ -100,11 +100,11 @@ const ThemeTokens& themeTokens()
 const AccentTokens& accentTokens()
 {
     static const AccentTokens lightBlue {
-        juce::Colour(0xff007aff),           // accent (system blue light)
+        juce::Colour(0xff0a66e0),           // accent — slightly deeper for roll contrast
         juce::Colour(0xffffffff),           // ink
-        rgba(0, 122, 255, 0.14f),           // soft
-        rgba(0, 122, 255, 0.42f),           // line
-        juce::Colour(0xff409cff),           // bright
+        rgba(10, 102, 224, 0.16f),          // soft
+        rgba(10, 102, 224, 0.48f),          // line
+        juce::Colour(0xff2f86f5),           // bright
     };
     static const AccentTokens darkBlue {
         juce::Colour(0xff0a84ff),           // accent (system blue dark)

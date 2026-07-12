@@ -52,8 +52,10 @@ public:
     std::function<void()> onSaveCurrentSearch;
     std::function<void()> onCollapsedChanged;
     std::function<void()> onOpenTweaks;
+    std::function<void()> onToggleAppearance;
 
     juce::Rectangle<int> getTweaksButtonBounds() const { return btnTweaks.getBounds(); }
+    void refreshAppearanceIcon();
 
     void setSearchFormOpen(bool open);
     bool isSearchFormOpen() const { return searchFormOpen; }
@@ -74,6 +76,7 @@ private:
     void paintRow(juce::Graphics&, int rowIdx, const juce::Rectangle<int>& r, bool hovered, bool removeZone);
 
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
+    IconBtn btnAppearance { icons::moon, "Toggle light / dark" };
     IconBtn btnTweaks { icons::gear, "Settings" };
     juce::StringArray dirs;
     juce::String active;

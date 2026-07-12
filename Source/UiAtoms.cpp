@@ -229,22 +229,23 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
     }
     else if (name == icons::moon)
     {
-        // Crescent moon (appearance toggle).
+        // Typical site moon: solid crescent.
         juce::Path disc, cut;
-        disc.addEllipse(cx - s * 0.7f, cy - s * 0.7f, s * 1.4f, s * 1.4f);
-        cut.addEllipse(cx - s * 0.15f, cy - s * 0.85f, s * 1.35f, s * 1.35f);
+        disc.addEllipse(cx - s * 0.78f, cy - s * 0.78f, s * 1.56f, s * 1.56f);
+        cut.addEllipse(cx - s * 0.05f, cy - s * 0.95f, s * 1.45f, s * 1.45f);
         disc.setUsingNonZeroWinding(false);
         disc.addPath(cut);
         g.fillPath(disc);
     }
     else if (name == icons::sun)
     {
-        g.drawEllipse(cx - s * 0.4f, cy - s * 0.4f, s * 0.8f, s * 0.8f, px);
+        // Typical site sun: filled disc + rays.
+        g.fillEllipse(cx - s * 0.38f, cy - s * 0.38f, s * 0.76f, s * 0.76f);
         for (int i = 0; i < 8; ++i)
         {
             const float a = juce::MathConstants<float>::twoPi * (float) i / 8.0f;
-            g.drawLine(cx + s * 0.55f * std::cos(a), cy + s * 0.55f * std::sin(a),
-                       cx + s * 0.9f * std::cos(a), cy + s * 0.9f * std::sin(a), px);
+            g.drawLine(cx + s * 0.58f * std::cos(a), cy + s * 0.58f * std::sin(a),
+                       cx + s * 0.95f * std::cos(a), cy + s * 0.95f * std::sin(a), px * 1.15f);
         }
     }
     else if (name == icons::gear)

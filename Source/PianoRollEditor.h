@@ -267,7 +267,7 @@ private:
 
     static constexpr int stripH = 46;
     static constexpr int toolbarH = 36;
-    static constexpr int gutterW = 48;
+    static constexpr int gutterW = 56;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PianoRollEditor)
 };
