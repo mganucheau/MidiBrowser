@@ -2,6 +2,10 @@
 
 namespace pflow {
 
+namespace {
+constexpr int kTitlePad = 14;
+}
+
 // ── StatusPill ───────────────────────────────────────────────────────────────
 
 void TransportBar::StatusPill::setText(const juce::String& t)
@@ -29,15 +33,8 @@ void TransportBar::StatusPill::paint(juce::Graphics& g)
 
 void TransportBar::StatusPill::mouseDown(const juce::MouseEvent&)
 {
-    if (editing) return;
-    if (synced)
-    {
-        if (onToggleSync) onToggleSync();
-        return;
-    }
-    // Free: wait to distinguish single-click (re-sync) vs double-click (edit).
-    pendingSyncToggle = true;
-    startTimer(220);
+    // Sync is a separate control; the pill only edits free BPM.
+    if (editing || synced) return;
 }
 
 void TransportBar::StatusPill::mouseDoubleClick(const juce::MouseEvent&)
@@ -55,8 +52,6 @@ void TransportBar::StatusPill::mouseDoubleClick(const juce::MouseEvent&)
 void TransportBar::StatusPill::timerCallback()
 {
     stopTimer();
-    if (pendingSyncToggle && onToggleSync)
-        onToggleSync();
     pendingSyncToggle = false;
 }
 
@@ -112,13 +107,6 @@ TransportBar::TransportBar()
     btnStop.onClick = [this] { if (onStop) onStop(); };
     addAndMakeVisible(btnStop);
 
-    statusPill.onToggleSync = [this]
-    {
-        synced = !synced;
-        refreshBpm();
-        resized();
-        if (onSyncChanged) onSyncChanged(synced);
-    };
     statusPill.onCommitBpm = [this](double bpm)
     {
         freeBpm = bpm;
@@ -126,6 +114,17 @@ TransportBar::TransportBar()
         if (onFreeBpmChanged) onFreeBpmChanged(freeBpm);
     };
     addAndMakeVisible(statusPill);
+
+    btnSync.ghost = true;
+    btnSync.setTooltip("Sync to host tempo");
+    btnSync.onClick = [this]
+    {
+        synced = !synced;
+        refreshBpm();
+        resized();
+        if (onSyncChanged) onSyncChanged(synced);
+    };
+    addAndMakeVisible(btnSync);
 
     btnDragToDaw.accentText = false;
     btnDragToDaw.setTooltip("Drag edited clip onto a DAW track");
@@ -228,9 +227,13 @@ void TransportBar::setHasClip(bool has)
 void TransportBar::refreshBpm()
 {
     const double shown = synced ? hostBpm * multiplier : freeBpm;
-    const juce::String label = juce::String(shown, 1) + (synced ? " bpm · Synced" : " bpm · Free");
     statusPill.synced = synced;
-    statusPill.setText(label);
+    statusPill.editable = !synced;
+    statusPill.setText(juce::String(shown, 1) + " bpm");
+    btnSync.active = synced;
+    btnSync.setTooltip(synced ? "Synced to host — click for free tempo"
+                              : "Free tempo — click to sync to host");
+    btnSync.repaint();
 }
 
 void TransportBar::resized()
@@ -246,6 +249,8 @@ void TransportBar::resized()
     };
 
     r.removeFromLeft(titleW);
+    // Mirror title inset on the trailing edge (effects icon ↔ window).
+    r.removeFromRight(kTitlePad);
 
     // Right cluster: appearance · editor · effects
     btnEffects.setBounds(mid(r.removeFromRight(btn), btn));
@@ -261,15 +266,17 @@ void TransportBar::resized()
         btnDragToDaw.setBounds(mid(r.removeFromRight(btnDragToDaw.idealWidth()), 26));
     }
 
-    // Center transport: play · stop · status pill
-    const int pillW = 148;
-    const int transportW = btn + gap + btn + gap + pillW;
+    // Center transport: play · stop · bpm pill · sync
+    const int pillW = 88;
+    const int transportW = btn + gap + btn + gap + pillW + gap + btn;
     auto transport = r.withSizeKeepingCentre(transportW, getHeight());
     btnPlay.setBounds(mid(transport.removeFromLeft(btn), btn));
     transport.removeFromLeft(gap);
     btnStop.setBounds(mid(transport.removeFromLeft(btn), btn));
     transport.removeFromLeft(gap);
     statusPill.setBounds(mid(transport.removeFromLeft(pillW), 26));
+    transport.removeFromLeft(gap);
+    btnSync.setBounds(mid(transport.removeFromLeft(btn), btn));
 }
 
 void TransportBar::paint(juce::Graphics& g)
@@ -282,7 +289,7 @@ void TransportBar::paint(juce::Graphics& g)
 
     g.setColour(colours::text());
     g.setFont(uiFont(13.0f, true));
-    g.drawText("MidiBrowser", 14, 0, 100, getHeight(), juce::Justification::centredLeft);
+    g.drawText("MidiBrowser", kTitlePad, 0, 100, getHeight(), juce::Justification::centredLeft);
 }
 
 } // namespace pflow

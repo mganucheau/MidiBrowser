@@ -19,22 +19,27 @@ struct PitchRowMap
     {
         return height - (float) (pitch - minPitch + 1) * rowH;
     }
-    void fit(const std::vector<RollNote>& notes, float height, int minRange = 16);
+    /** Fit so the lowest visible row is the key root in the lowest note's octave,
+        and the highest is the key root at or above the highest note. */
+    void fit(const std::vector<RollNote>& notes, float height, int rootPc, int minRange = 16);
 };
 
 /** Read-only compact roll for the browser preview strip. */
 class PianoRollMini : public juce::Component
 {
 public:
-    void setNotes(std::vector<RollNote> resolvedGrooved, int bars, const GrooveParams& groove);
+    void setNotes(std::vector<RollNote> resolvedGrooved, int bars, const GrooveParams& groove,
+                  int rootPc = 0, std::vector<RollNote> frameNotes = {});
     void setPlayheadStep(double step, bool playing);
     void setTimeStretch(double stretch);
     void paint(juce::Graphics&) override;
 
 private:
     std::vector<RollNote> notes;
+    std::vector<RollNote> frameNotes; // stable pitch frame (usually source clip)
     GrooveParams knobs;
     int bars = 1;
+    int rootPc = 0;
     double playheadStep = 0.0;
     bool playing = false;
     double timeStretch = 1.0;

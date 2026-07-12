@@ -875,7 +875,11 @@ void MidiBrowserEditor::updateMiniPreview()
     const auto edit = selectedEdit();
     const auto groove = selectedGroove();
     const auto resolved = resolveClip(*clip, edit);
-    miniRoll.setNotes(applyGroove(resolved.notes, groove), resolved.bars, groove);
+    // Frame from source notes so pitch/octave edits stay visible in the strip
+    // (fitting to resolved notes would re-center and hide transposition).
+    const int rootPc = edit.root >= 0 ? edit.root : (clip->root >= 0 ? clip->root : 0);
+    miniRoll.setNotes(applyGroove(resolved.notes, groove), resolved.bars, groove,
+                      rootPc, clip->notes);
     const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
     miniRoll.setTimeStretch(stretch);
     previewHeader.repaint();
@@ -940,7 +944,7 @@ void MidiBrowserEditor::applyLayoutState()
     const int minW = juce::roundToInt((float) (side + metrics::browserMinWidth
                                                + (edOpen ? metrics::openRollMinW : 0)
                                                + (fxOpen ? metrics::effectsPaneW : 0)) * s);
-    setResizeLimits(minW, juce::roundToInt(420 * s), 2400, 2000);
+    setResizeLimits(minW, juce::roundToInt(420 * s), w, 2000);
 
     const int previewExtra = processorRef.previewOpen ? metrics::miniRollH() + 34 : 0;
     const int targetH = juce::jmax(juce::roundToInt((460 + previewExtra) * s), lastWindowH);
@@ -992,10 +996,8 @@ void MidiBrowserEditor::layoutContent()
     const int paneH = row.getHeight();
     if (edOpen)
     {
-        // Prototype: editor sits in a padded rounded card.
-        auto card = juce::Rectangle<int>(paneX, paneY, metrics::editorPaneW, paneH)
-                        .reduced(8, 8);
-        rollEditor.setBounds(card);
+        // Full-bleed piano roll — no card margins or rounded chrome.
+        rollEditor.setBounds(paneX, paneY, metrics::editorPaneW, paneH);
         paneX += metrics::editorPaneW;
     }
     if (fxOpen)
@@ -1025,52 +1027,99 @@ void MidiBrowserEditor::paint(juce::Graphics& g)
 
 // ── tweaks ───────────────────────────────────────────────────────────────────
 
+namespace {
+
+/** In-app settings popover — inspector-style rows with title + popup. */
+class SettingsPanel : public juce::Component
+{
+public:
+    std::function<void()> onChanged;
+
+    SettingsPanel()
+    {
+        appearancePopup.setItems({ "System", "Light", "Dark" }, tweaks().appearance.load());
+        spacingPopup.setItems({ "Compact", "Comfortable" }, tweaks().density.load());
+        sizePopup.setItems({ "Small", "Medium", "Large" }, tweaks().size.load());
+
+        auto wire = [this](fx::FlatPopup& p, std::function<void(int)> apply)
+        {
+            p.onChange = [this, apply](int idx)
+            {
+                apply(idx);
+                if (onChanged) onChanged();
+            };
+            addAndMakeVisible(p);
+        };
+        wire(appearancePopup, [](int i) { tweaks().appearance.store(i); });
+        wire(spacingPopup, [](int i) { tweaks().density.store(i); });
+        wire(sizePopup, [](int i) { tweaks().size.store(i); });
+
+        setSize(260, 148);
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& t = inspectorTokens();
+        g.fillAll(t.panelBg);
+        g.setColour(colours::line());
+        g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 8.0f, 0.5f);
+
+        g.setFont(uiFont(13.0f, true));
+        g.setColour(colours::text());
+        g.drawText("Settings", getLocalBounds().removeFromTop(34).reduced(14, 0),
+                   juce::Justification::centredLeft);
+
+        g.setFont(uiFont(11.5f, false));
+        g.setColour(t.rowLabel);
+        auto body = getLocalBounds().withTrimmedTop(34).reduced(14, 4);
+        const int rowH = 28;
+        const char* labels[] = { "Appearance", "Spacing", "Size" };
+        for (int i = 0; i < 3; ++i)
+        {
+            auto row = body.removeFromTop(rowH);
+            g.drawText(labels[i], row, juce::Justification::centredLeft);
+            body.removeFromTop(2);
+        }
+    }
+
+    void resized() override
+    {
+        auto body = getLocalBounds().withTrimmedTop(34).reduced(14, 4);
+        const int rowH = 28;
+        const int ctrlH = 22;
+        auto place = [&](fx::FlatPopup& p)
+        {
+            auto row = body.removeFromTop(rowH);
+            const int w = juce::jmin(p.idealWidth() + 8, 120);
+            p.setBounds(row.removeFromRight(w).withSizeKeepingCentre(w, ctrlH));
+            body.removeFromTop(2);
+        };
+        place(appearancePopup);
+        place(spacingPopup);
+        place(sizePopup);
+    }
+
+private:
+    fx::FlatPopup appearancePopup, spacingPopup, sizePopup;
+};
+
+} // namespace
+
 void MidiBrowserEditor::showTweaksMenu()
 {
-    juce::PopupMenu menu;
-    auto& tw = tweaks();
-
-    juce::PopupMenu appearanceMenu;
-    appearanceMenu.addItem(400, "System", true, tw.appearance.load() == (int) Appearance::System);
-    appearanceMenu.addItem(401, "Light", true, tw.appearance.load() == (int) Appearance::Light);
-    appearanceMenu.addItem(402, "Dark", true, tw.appearance.load() == (int) Appearance::Dark);
-    menu.addSubMenu("Appearance", appearanceMenu);
-
-    juce::PopupMenu densityMenu;
-    densityMenu.addItem(300, "Compact", true, tw.density.load() == 0);
-    densityMenu.addItem(301, "Comfortable", true, tw.density.load() == 1);
-    menu.addSubMenu("Spacing", densityMenu);
-
-    juce::PopupMenu sizeMenu;
-    const char* sizeNames[] = { "Small", "Medium", "Large" };
-    for (int i = 0; i < kNumContentSizes; ++i)
-        sizeMenu.addItem(500 + i, sizeNames[i], true, tw.size.load() == i);
-    menu.addSubMenu("Content size", sizeMenu);
-
-    menu.addSeparator();
-    const juce::String stamp = juce::String("Build ")
-        + build_info::kVersion + " · "
-        + juce::String(build_info::kGitHash).substring(0, 7) + " · "
-        + build_info::kGitDateIso;
-    menu.addItem(-1, stamp, false);
-
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&sidebar),
-        [this](int result)
-        {
-            if (result == 0 || result < 0) return;
-            auto& t = tweaks();
-            bool sizeChanged = false;
-            if (result >= 500) { t.size.store(result - 500); sizeChanged = true; }
-            else if (result >= 400) t.appearance.store(result - 400);
-            else if (result >= 300) t.density.store(result - 300);
-            lnf.refreshColours();
-            sendLookAndFeelChange();
-            transport.refreshAppearanceIcon();
-            if (sizeChanged)
-                applyLayoutState();
-            resized();
-            repaint();
-        });
+    auto* panel = new SettingsPanel();
+    panel->onChanged = [this]
+    {
+        lnf.refreshColours();
+        sendLookAndFeelChange();
+        transport.refreshAppearanceIcon();
+        applyLayoutState();
+        resized();
+        repaint();
+    };
+    juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(panel),
+                                           content.getLocalArea(&sidebar, sidebar.getTweaksButtonBounds()),
+                                           &content);
 }
 
 void MidiBrowserEditor::refreshSidebar()

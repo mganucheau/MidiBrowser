@@ -15,7 +15,7 @@ EffectsInspector::EffectsInspector()
     , lengthSl("Length", 25, 200, 100, false)
     , octaveRow("Octave", octaveStepper)
     , keyModeRow(keyPopup, modePopup)
-    , trimRow("Trim", btnTrim)
+    , trimRow({}, btnTrim)
     , fitRow("Fit to Scale", fitSwitch)
     , mapRow("Map to Root", mapSwitch)
 {
@@ -284,14 +284,14 @@ void EffectsInspector::resized()
     viewport.setBounds(r);
     body.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()), body.getHeight());
 
-    tempoToggle.setSize(tempoToggle.idealWidth(), kRowMinH);
+    tempoToggle.setSize(tempoToggle.idealWidth(), kControlH);
     tempoRow.setControlWidth(tempoToggle.idealWidth());
     trimRow.setControlWidth(btnTrim.idealWidth());
-    swingStylePopup.setSize(swingStylePopup.idealWidth(), kRowMinH);
+    swingStylePopup.setSize(swingStylePopup.idealWidth(), kControlH);
     swingStyleRow.setControlWidth(swingStylePopup.idealWidth());
-    octaveStepper.setSize(octaveStepper.idealWidth(), kRowMinH);
+    octaveStepper.setSize(octaveStepper.idealWidth(), kControlH);
     octaveRow.setControlWidth(octaveStepper.idealWidth());
-    pitchRow.stepper.setSize(pitchRow.stepper.idealWidth(), kRowMinH);
+    pitchRow.stepper.setSize(pitchRow.stepper.idealWidth(), kControlH);
     fitRow.setControlWidth(fitSwitch.idealWidth());
     mapRow.setControlWidth(mapSwitch.idealWidth());
     keyModeRow.setSize(keyPopup.idealWidth() + modePopup.idealWidth() + 7, kRowMinH);

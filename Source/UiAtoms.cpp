@@ -104,7 +104,8 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
             if (i == 0) p.startNewSubPath(x, y); else p.lineTo(x, y);
         }
         p.closeSubPath();
-        g.strokePath(p, st);
+        // Solid star — outline-only was hard to see when inactive.
+        g.fillPath(p);
     }
     else if (name == icons::plus)
     {
@@ -271,18 +272,16 @@ IconBtn::IconBtn(const juce::String& iconName, const juce::String& tip)
 void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
 {
     auto b = getLocalBounds().toFloat();
-    if (active && ghost)
+    if (ghost)
     {
-        // Toolbar toggles: soft accent wash + accent glyph (prototype style).
-        g.setColour(colours::accentSoft());
-        g.fillRoundedRectangle(b, metrics::chipRadius);
+        // Toolbar toggles: colour only — no pad, border, or wash.
     }
     else if (active)
     {
         g.setColour(colours::accent().withAlpha(down ? 0.85f : 1.0f));
         g.fillRoundedRectangle(b, metrics::chipRadius);
     }
-    else if (down || (over && !ghost) || (over && ghost))
+    else if (down || over)
     {
         g.setColour(down ? colours::elev().brighter(0.08f) : colours::elev());
         g.fillRoundedRectangle(b, metrics::chipRadius);
@@ -298,7 +297,7 @@ void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
         g.setColour(colours::elev().withAlpha(0.35f));
         g.fillRoundedRectangle(b, metrics::chipRadius);
     }
-    if (hasKeyboardFocus(true))
+    if (hasKeyboardFocus(true) && !ghost)
         drawFocusRing(g, b, metrics::chipRadius);
 }
 

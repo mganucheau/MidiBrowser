@@ -230,7 +230,7 @@ namespace metrics {
     constexpr int previewControlsH  = 32;
     constexpr int editorHeaderH     = 48;
     constexpr int iconButtonSize    = 28;
-    constexpr int comboTextPadding  = 8;
+    constexpr int comboTextPadding  = 6;
 
     constexpr int sidebarW          = 176;
     constexpr int sidebarRailW      = 48;

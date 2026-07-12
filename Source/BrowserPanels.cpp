@@ -687,11 +687,9 @@ juce::Rectangle<int> FileListPanel::headerColumnBounds(SortColumn col) const
     auto h = getLocalBounds().removeFromTop(metrics::listHeaderH()).reduced(8, 0);
     FileListPanel::ColumnRects cols;
     auto row = h;
-    cols.play = row.removeFromRight(kPlayZoneW);
     cols.bars = row.removeFromRight(kBarsW);
     cols.tempo = row.removeFromRight(kTempoW);
     cols.key = row.removeFromRight(kKeyW);
-    cols.star = row.removeFromRight(kStarZoneW);
     cols.name = row;
     switch (col)
     {
@@ -707,11 +705,9 @@ FileListPanel::ColumnRects FileListPanel::splitRowColumns(juce::Rectangle<int> r
 {
     ColumnRects cols;
     row = row.reduced(8, 0);
-    cols.play = row.removeFromRight(kPlayZoneW);
     cols.bars = row.removeFromRight(kBarsW);
     cols.tempo = row.removeFromRight(kTempoW);
     cols.key = row.removeFromRight(kKeyW);
-    cols.star = row.removeFromRight(kStarZoneW);
     cols.name = row;
     return cols;
 }
@@ -798,7 +794,7 @@ void FileListPanel::paintColumnHeader(juce::Graphics& g)
 }
 
 void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<int> r,
-                             bool hovered, bool hoverPlay, bool hoverStar)
+                             bool hovered, bool hoverStar)
 {
     const int entryIdx = displayToEntry(displayIdx);
     if (entryIdx < 0) return;
@@ -823,18 +819,27 @@ void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<
 
     const auto textCol = isSelected ? juce::Colours::white : colours::text2();
     const auto metaCol = isSelected ? juce::Colours::white.withAlpha(0.8f) : colours::text3();
-    const auto iconCol = isSelected ? juce::Colours::white : colours::text3();
 
     auto cols = splitRowColumns(r);
     auto row = cols.name;
-    auto playZone = cols.play;
     auto barsZone = cols.bars;
     auto tempoZone = cols.tempo;
     auto keyZone = cols.key;
-    auto starZone = cols.star;
 
-    auto iconArea = row.removeFromLeft(17).toFloat().withSizeKeepingCentre(15.0f, 15.0f);
-    drawIcon(g, e.isDirectory ? icons::folder : kindIcon(e.kind), iconArea, iconCol, 1.4f);
+    // Leading star (files) or folder icon — solid star for both states.
+    auto iconArea = row.removeFromLeft(17).toFloat().withSizeKeepingCentre(14.0f, 14.0f);
+    if (e.isDirectory)
+    {
+        drawIcon(g, icons::folder, iconArea,
+                 isSelected ? juce::Colours::white : colours::accent(), 1.4f);
+    }
+    else
+    {
+        const auto starCol = e.starred
+            ? (isSelected ? juce::Colours::white : colours::accent())
+            : (hoverStar ? textCol : metaCol.withAlpha(isSelected ? 0.55f : 0.45f));
+        drawIcon(g, icons::star, iconArea, starCol, 1.55f);
+    }
     row.removeFromLeft(6);
 
     if (e.isDirectory)
@@ -845,21 +850,6 @@ void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<
         return;
     }
 
-    if (hovered)
-    {
-        auto pb = playZone.toFloat().withSizeKeepingCentre(16.0f, 16.0f);
-        if (hoverPlay)
-        {
-            g.setColour(colours::accent());
-            g.fillEllipse(pb.expanded(3.0f));
-            drawIcon(g, icons::play, pb.reduced(2.0f), colours::accentInk(), 1.4f);
-        }
-        else
-        {
-            drawIcon(g, icons::play, pb.reduced(2.0f), textCol, 1.4f);
-        }
-    }
-
     g.setFont(monoFont(11.0f, false));
     g.setColour(metaCol);
     if (e.rootName.isNotEmpty())
@@ -868,13 +858,6 @@ void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<
         g.drawText(juce::String((int) std::lround(e.bpm)), tempoZone, juce::Justification::centredRight);
     if (e.bars > 0)
         g.drawText(juce::String(e.bars), barsZone, juce::Justification::centredRight);
-
-    {
-        auto st = starZone.toFloat().withSizeKeepingCentre(14.0f, 14.0f);
-        const auto col = e.starred ? (isSelected ? juce::Colours::white : colours::accent())
-                       : hoverStar ? textCol : metaCol;
-        drawIcon(g, icons::star, st, col, e.starred ? 1.9f : 1.25f);
-    }
 
     if (e.edited)
     {
@@ -897,7 +880,7 @@ void FileListPanel::ListContent::paint(juce::Graphics& g)
     const int last = juce::jmin((int) owner.sortOrder.size() - 1, clip.getBottom() / rowH);
     for (int i = first; i <= last; ++i)
         owner.paintRow(g, i, { 0, i * rowH, getWidth(), rowH }, i == hoverRow,
-                       i == hoverRow && hoverPlay, i == hoverRow && hoverStar);
+                       i == hoverRow && hoverStar);
 }
 
 void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
@@ -907,16 +890,14 @@ void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
     const bool valid = juce::isPositiveAndBelow(disp, (int) owner.sortOrder.size());
     const int entryIdx = valid ? owner.displayToEntry(disp) : -1;
     const bool isDir = entryIdx >= 0 && owner.entries[(size_t) entryIdx].isDirectory;
+    // Star sits in the leading icon slot of the name column.
     const auto cols = owner.splitRowColumns({ 0, 0, getWidth(), rowH });
-    const int playLeft = cols.play.getX();
-    const int starLeft = cols.star.getX();
-    const bool newHoverPlay = valid && !isDir && e.x >= playLeft && e.x < playLeft + kPlayZoneW;
-    const bool newHoverStar = valid && !isDir && e.x >= starLeft && e.x < starLeft + kStarZoneW;
+    const int starLeft = cols.name.getX();
+    const bool newHoverStar = valid && !isDir && e.x >= starLeft && e.x < starLeft + 20;
 
-    if (disp != hoverRow || newHoverPlay != hoverPlay || newHoverStar != hoverStar)
+    if (disp != hoverRow || newHoverStar != hoverStar)
     {
         hoverRow = valid ? disp : -1;
-        hoverPlay = newHoverPlay;
         hoverStar = newHoverStar;
         repaint();
     }
@@ -925,7 +906,7 @@ void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
 void FileListPanel::ListContent::mouseExit(const juce::MouseEvent&)
 {
     hoverRow = -1;
-    hoverPlay = hoverStar = false;
+    hoverStar = false;
     repaint();
 }
 
@@ -943,18 +924,10 @@ void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
     const int entryIdx = owner.displayToEntry(disp);
     if (entryIdx < 0) return;
     const auto& entry = owner.entries[(size_t) entryIdx];
-    const int fromRight = getWidth() - 8 - e.x;
     const auto cols = owner.splitRowColumns({ 0, 0, getWidth(), metrics::listRowH() });
-    const int starLeft = cols.star.getX();
-    const int keyLeft = cols.key.getX();
-    const int playLeft = cols.play.getX();
+    const int starLeft = cols.name.getX();
 
-    if (!entry.isDirectory && e.x >= playLeft && e.x < playLeft + kPlayZoneW)
-    {
-        if (owner.onPlayRow) owner.onPlayRow(owner.entryToDisplay(entryIdx));
-        return;
-    }
-    if (!entry.isDirectory && e.x >= starLeft && e.x < starLeft + kStarZoneW)
+    if (!entry.isDirectory && e.x >= starLeft && e.x < starLeft + 20)
     {
         if (owner.onToggleStar) owner.onToggleStar(owner.entryToDisplay(entryIdx));
         return;

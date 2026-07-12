@@ -3,25 +3,31 @@
 
 namespace pflow {
 
-void PitchRowMap::fit(const std::vector<RollNote>& notes, float height, int minRange)
+void PitchRowMap::fit(const std::vector<RollNote>& notes, float height, int rootPc, int minRange)
 {
-    int lo = 127, hi = 0;
+    rootPc = juce::jlimit(0, 11, rootPc);
+    int loN = 127, hiN = 0;
     for (const auto& n : notes)
     {
-        lo = juce::jmin(lo, n.pitch);
-        hi = juce::jmax(hi, n.pitch);
+        loN = juce::jmin(loN, n.pitch);
+        hiN = juce::jmax(hiN, n.pitch);
     }
-    if (notes.empty()) { lo = 57; hi = 74; }
-    lo -= 1; hi += 1;
+    if (notes.empty()) { loN = 60 + rootPc; hiN = loN + 12; }
+
+    // Root in the octave of the lowest note (at or below), and root at or above the highest.
+    int lo = loN - ((loN - rootPc + 1200) % 12);
+    int hi = hiN + ((rootPc - (hiN % 12) + 12) % 12);
+    if (hi < lo) hi = lo + 12;
+
     while (hi - lo + 1 < minRange)
     {
-        if (lo > 0) --lo;
-        if (hi - lo + 1 < minRange && hi < 127) ++hi;
-        if (lo == 0 && hi == 127) break;
+        if (lo >= 12) lo -= 12;
+        else if (hi <= 115) hi += 12;
+        else break;
     }
     minPitch = juce::jlimit(0, 127, lo);
     maxPitch = juce::jlimit(minPitch, 127, hi);
-    rowH = height / (float) numRows();
+    rowH = height / (float) juce::jmax(1, numRows());
 }
 
 double effectiveVelocity(const RollNote& n, const GrooveParams& k)
@@ -30,11 +36,14 @@ double effectiveVelocity(const RollNote& n, const GrooveParams& k)
 }
 
 void PianoRollMini::setNotes(std::vector<RollNote> resolvedGrooved, int numBars,
-                             const GrooveParams& groove)
+                             const GrooveParams& groove, int root,
+                             std::vector<RollNote> frame)
 {
     notes = std::move(resolvedGrooved);
+    frameNotes = frame.empty() ? notes : std::move(frame);
     bars = juce::jmax(1, numBars);
     knobs = groove;
+    rootPc = juce::jlimit(0, 11, root);
     repaint();
 }
 
@@ -68,7 +77,7 @@ void PianoRollMini::paint(juce::Graphics& g)
     }
 
     PitchRowMap map;
-    map.fit(notes, b.getHeight(), 14);
+    map.fit(frameNotes.empty() ? notes : frameNotes, b.getHeight(), rootPc, 14);
     const double totalSteps = (double) bars * kStepsPerBar * timeStretch;
     const float pps = b.getWidth() / (float) juce::jmax(1.0, totalSteps);
     auto inner = b;
@@ -384,7 +393,7 @@ void PianoRollEditor::refreshTrimButtonState()
                                && emptyBarIndices != edit.removedBars;
     const bool showRestore = isTrimmed && !hasNewEmpties;
     const bool enabled = hasNewEmpties || isTrimmed;
-    const juce::String label = showRestore ? "Restore" : "Trim";
+    const juce::String label = showRestore ? "Restore" : "Trim empty measures";
     btnTrim.setEnabled(enabled);
     btnTrim.active = isTrimmed;
     btnTrim.label = label;
@@ -843,18 +852,37 @@ void PianoRollEditor::updateRollSize()
 
 void PianoRollEditor::scrollToContent()
 {
+    if (folded)
+    {
+        rollViewport.setViewPosition(0, 0);
+        return;
+    }
+
     if (resolved.notes.empty())
     {
         rollViewport.setViewPosition(0, juce::jmax(0, (int) (rowForPitch(66) * effRowH())
                                                           - rollViewport.getMaximumVisibleHeight() / 2));
         return;
     }
-    long sum = 0;
+
+    // Default vertical zoom: key-root in the lowest note's octave → key-root
+    // at or above the highest note (e.g. key C, notes around E → C..C).
+    const int rootPc = edit.root >= 0 ? edit.root : (clip.root >= 0 ? clip.root : 0);
+    int loN = 127, hiN = 0;
     for (const auto& n : resolved.notes)
-        sum += n.pitch;
-    const int meanPitch = (int) (sum / (long) resolved.notes.size());
-    const int y = (int) ((float) rowForPitch(meanPitch) * effRowH())
-                  - rollViewport.getMaximumVisibleHeight() / 2;
+    {
+        loN = juce::jmin(loN, n.pitch);
+        hiN = juce::jmax(hiN, n.pitch);
+    }
+    const int lo = loN - ((loN - rootPc + 1200) % 12);
+    const int hi = hiN + ((rootPc - (hiN % 12) + 12) % 12);
+    const int span = juce::jmax(1, hi - lo + 1);
+    const int visH = juce::jmax(1, rollViewport.getMaximumVisibleHeight());
+    rowH = juce::jlimit(kMinRowH, kMaxRowH, (float) visH / (float) span);
+    updateRollSize();
+
+    // Align the highest root row to the top of the viewport.
+    const int y = (int) ((float) rowForPitch(hi) * effRowH());
     rollViewport.setViewPosition(0, juce::jmax(0, y));
 }
 
@@ -943,18 +971,18 @@ void PianoRollEditor::resized()
     scalePanel.setVisible(false);
 
     // Toolbar
-    auto bar = r.removeFromTop(toolbarH).reduced(8, 5);
-    barsZoomPicker.setBounds(bar.removeFromLeft(52).withSizeKeepingCentre(52, 24));
+    auto bar = r.removeFromTop(toolbarH).reduced(8, 4);
+    barsZoomPicker.setBounds(bar.removeFromLeft(52).withSizeKeepingCentre(52, 20));
     bar.removeFromLeft(6);
     btnFold.setBounds(bar.removeFromLeft(juce::jmin(btnFold.idealWidth(), 78))
-                          .withSizeKeepingCentre(juce::jmin(btnFold.idealWidth(), 78), 22));
+                          .withSizeKeepingCentre(juce::jmin(btnFold.idealWidth(), 78), 20));
     bar.removeFromLeft(8);
     for (auto& chip : badgeChips)
     {
         const int w = juce::jmin(chip->idealWidth(), 130);
         if (bar.getWidth() < w + 160) { chip->setVisible(false); continue; }
         chip->setVisible(true);
-        chip->setBounds(bar.removeFromLeft(w).withSizeKeepingCentre(w, 22));
+        chip->setBounds(bar.removeFromLeft(w).withSizeKeepingCentre(w, 20));
         bar.removeFromLeft(4);
     }
 
@@ -962,13 +990,13 @@ void PianoRollEditor::resized()
     if (selBadge.isVisible())
     {
         selBadge.setBounds(right.removeFromRight(juce::jmin(selBadge.idealWidth(), 84))
-                               .withSizeKeepingCentre(juce::jmin(selBadge.idealWidth(), 84), 22));
+                               .withSizeKeepingCentre(juce::jmin(selBadge.idealWidth(), 84), 20));
         right.removeFromRight(6);
     }
-    btnZoomIn.setBounds(right.removeFromRight(24).withSizeKeepingCentre(22, 22));
-    btnZoomOut.setBounds(right.removeFromRight(24).withSizeKeepingCentre(22, 22));
+    btnZoomIn.setBounds(right.removeFromRight(24).withSizeKeepingCentre(20, 20));
+    btnZoomOut.setBounds(right.removeFromRight(24).withSizeKeepingCentre(20, 20));
     right.removeFromRight(6);
-    divisionPicker.setBounds(right.removeFromRight(74).withSizeKeepingCentre(74, 24));
+    divisionPicker.setBounds(right.removeFromRight(74).withSizeKeepingCentre(74, 20));
 
     const int laneH = velocityOpen ? VelocityLane::headerH + VelocityLane::laneH
                                    : VelocityLane::headerH;
@@ -1043,8 +1071,8 @@ void PianoRollEditor::paint(juce::Graphics& g)
 void PianoRollEditor::paintOverChildren(juce::Graphics& g)
 {
     g.setColour(colours::line());
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f),
-                           metrics::cornerRadius, 0.5f);
+    g.fillRect(0, 0, 1, getHeight());
+    g.fillRect(getWidth() - 1, 0, 1, getHeight());
 }
 
 // ── RollContent ──────────────────────────────────────────────────────────────

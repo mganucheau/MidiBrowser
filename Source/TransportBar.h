@@ -84,6 +84,7 @@ private:
     IconBtn btnPlay { icons::play, "Play preview" };
     IconBtn btnStop { icons::stop, "Stop preview" };
     StatusPill statusPill;
+    IconBtn btnSync { icons::infinity, "Sync to host tempo" };
     DragChip btnDragToDaw { "Drag to DAW" };
     IconBtn btnAppearance { icons::moon, "Toggle light / dark" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };

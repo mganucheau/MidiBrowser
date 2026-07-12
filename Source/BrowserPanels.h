@@ -53,6 +53,8 @@ public:
     std::function<void()> onCollapsedChanged;
     std::function<void()> onOpenTweaks;
 
+    juce::Rectangle<int> getTweaksButtonBounds() const { return btnTweaks.getBounds(); }
+
     void setSearchFormOpen(bool open);
     bool isSearchFormOpen() const { return searchFormOpen; }
 
@@ -178,27 +180,24 @@ private:
         void clearDragState();
         FileListPanel& owner;
         int hoverRow = -1;
-        bool hoverPlay = false;
         bool hoverStar = false;
         juce::String dragSourcePath;
     };
 
     struct ColumnRects
     {
-        juce::Rectangle<int> name, key, tempo, bars, star, play;
+        juce::Rectangle<int> name, key, tempo, bars;
     };
 
     static constexpr int kKeyW = 40;
     static constexpr int kTempoW = 48;
     static constexpr int kBarsW = 40;
-    static constexpr int kPlayZoneW = 20;
-    static constexpr int kStarZoneW = 18;
     static constexpr int kIconW = 23;
 
     void timerCallback() override;
     void ensureRowVisible(int index);
     void paintRow(juce::Graphics&, int index, juce::Rectangle<int> r,
-                  bool hovered, bool hoverPlay, bool hoverStar);
+                  bool hovered, bool hoverStar);
     void paintColumnHeader(juce::Graphics&);
     void updateContentSize();
     void rebuildSortOrder();

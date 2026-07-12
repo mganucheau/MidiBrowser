@@ -11,10 +11,12 @@ constexpr float kAnnotPt = 10.5f;
 constexpr int kSectionPadT = 9;
 constexpr int kSectionPadH = 14;
 constexpr int kSectionPadB = 11;
-constexpr int kRowMinH = 25;
+constexpr int kRowMinH = 22;
+constexpr int kControlH = 20;
 constexpr int kRowGap = 3;
 constexpr int kSectionHeaderH = 18;
-constexpr int kSliderRowH = 30;
+constexpr int kSliderRowH = 28;
+constexpr float kSliderThumbR = 4.5f;
 
 inline juce::Font inspectorFont(bool semibold = false) { return uiFont(kFontPt, semibold); }
 inline juce::Font inspectorMono(bool semibold = false) { return monoFont(kFontPt, semibold); }
@@ -70,7 +72,7 @@ public:
             g.setColour(t.rowLabel);
         }
         g.setFont(inspectorFont());
-        g.drawFittedText(label, getLocalBounds().reduced(12, 0), juce::Justification::centred, 1);
+        g.drawFittedText(label, getLocalBounds().reduced(8, 0), juce::Justification::centred, 1);
         if (!isEnabled())
         {
             g.setColour(t.panelBg.withAlpha(0.45f));
@@ -80,7 +82,7 @@ public:
 
     int idealWidth() const
     {
-        return (int) std::ceil(juce::GlyphArrangement::getStringWidth(inspectorFont(), label)) + 24;
+        return (int) std::ceil(juce::GlyphArrangement::getStringWidth(inspectorFont(), label)) + 16;
     }
 
     juce::String label;
@@ -354,7 +356,10 @@ public:
 
     void resized() override
     {
-        track = getLocalBounds().toFloat().withTrimmedTop(16.0f).withHeight(4.0f);
+        // Inset track by thumb radius so the knob stays fully inside bounds at min/max.
+        track = getLocalBounds().toFloat()
+                    .withTrimmedTop(14.0f).withHeight(3.0f)
+                    .reduced(kSliderThumbR, 0.0f);
     }
 
     void mouseDown(const juce::MouseEvent& e) override { setFromX(e.position.x); }
@@ -364,7 +369,7 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto top = getLocalBounds().removeFromTop(14);
+        auto top = getLocalBounds().removeFromTop(13);
         g.setFont(inspectorFont());
         g.setColour(t.rowLabel);
         g.drawText(label, top, juce::Justification::centredLeft);
@@ -394,12 +399,14 @@ public:
             g.fillRoundedRectangle(track.withWidth(juce::jmax(0.0f, thumbX - track.getX())), 2.0f);
         }
 
+        // Draw thumb last so it sits above the track fill at the ends.
+        const float d = kSliderThumbR * 2.0f;
         g.setColour(t.sliderKnob);
-        g.fillEllipse(thumbX - 6.5f, track.getCentreY() - 6.5f, 13.0f, 13.0f);
+        g.fillEllipse(thumbX - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d);
         if (!t.dark)
         {
             g.setColour(t.controlHairline);
-            g.drawEllipse(thumbX - 6.5f, track.getCentreY() - 6.5f, 13.0f, 13.0f, 0.5f);
+            g.drawEllipse(thumbX - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d, 0.5f);
         }
     }
 
@@ -432,7 +439,7 @@ public:
         const int w = controlW > 0 ? controlW
                     : (control.getWidth() > 0 ? control.getWidth() : 80);
         auto ctrl = r.removeFromRight(w);
-        control.setBounds(ctrl.withSizeKeepingCentre(w, kRowMinH));
+        control.setBounds(ctrl.withSizeKeepingCentre(w, kControlH));
     }
 
     void setControlWidth(int w)
@@ -471,9 +478,9 @@ public:
         auto r = getLocalBounds();
         const int modeW = modePopup.idealWidth();
         const int keyW = keyPopup.idealWidth();
-        modePopup.setBounds(r.removeFromRight(modeW).withSizeKeepingCentre(modeW, kRowMinH));
+        modePopup.setBounds(r.removeFromRight(modeW).withSizeKeepingCentre(modeW, kControlH));
         r.removeFromRight(7);
-        keyPopup.setBounds(r.removeFromRight(keyW).withSizeKeepingCentre(keyW, kRowMinH));
+        keyPopup.setBounds(r.removeFromRight(keyW).withSizeKeepingCentre(keyW, kControlH));
     }
 
     void paint(juce::Graphics& g) override
@@ -508,7 +515,7 @@ public:
     {
         auto r = getLocalBounds();
         const int stepW = stepper.idealWidth();
-        stepper.setBounds(r.removeFromRight(stepW).withSizeKeepingCentre(stepW, kRowMinH));
+        stepper.setBounds(r.removeFromRight(stepW).withSizeKeepingCentre(stepW, kControlH));
         r.removeFromRight(8);
         // Leave room for the "Pitch" label on the left.
         r.removeFromLeft(42);
@@ -590,11 +597,8 @@ public:
         auto header = getLocalBounds().withTrimmedTop(kSectionPadT).removeFromTop(kSectionHeaderH);
         header = header.reduced(kSectionPadH, 0);
 
-        g.setFont(inspectorFont(true));
-        g.setColour(t.headerText);
-        g.drawText(title, header, juce::Justification::centredLeft);
-
-        auto chev = header.removeFromRight(12).toFloat();
+        auto chev = header.removeFromLeft(12).toFloat();
+        header.removeFromLeft(4);
         if (open)
             drawCaretDown(g, chev, t.chevron);
         else
@@ -605,6 +609,10 @@ public:
             g.setColour(t.chevron);
             g.fillPath(p);
         }
+
+        g.setFont(inspectorFont(true));
+        g.setColour(t.headerText);
+        g.drawText(title, header, juce::Justification::centredLeft);
 
         drawInspectorDivider(g, getLocalBounds());
     }
