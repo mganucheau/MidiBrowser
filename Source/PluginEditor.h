@@ -60,6 +60,9 @@ private:
     bool clipMatchesSearch(const StepClip& clip, const juce::File& file,
                            const BrowserSearch& criteria) const;
 
+    enum class KeyNavTarget { Browser, Editor, Effects };
+    void claimKeyNav(KeyNavTarget target);
+
     const StepClip* selectedClip() const;
     ClipEdit selectedEdit() const;
     GrooveParams selectedGroove() const;
@@ -106,6 +109,7 @@ private:
     BrowserSearch activeSearch;
     int activeSavedSearchIdx = -1;
     int selectedIdx = -1;
+    KeyNavTarget keyNavTarget = KeyNavTarget::Browser;
     int lastWindowH = 560;
     int browserColW = metrics::fileTableW;
     int layoutTargetW = 0;

@@ -19,6 +19,9 @@ EffectsInspector::EffectsInspector()
     , fitRow("Fit to Scale", fitSwitch)
     , mapRow("Map to Root", mapSwitch)
 {
+    // Capture slider/toggle clicks so sticky key-nav can leave the browser.
+    addMouseListener(this, true);
+
     viewport.setViewedComponent(&body, false);
     viewport.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport);
@@ -314,6 +317,12 @@ void EffectsInspector::paint(juce::Graphics& g)
     g.setColour(t.headerText);
     g.setFont(inspectorFont(true));
     g.drawText("Effects", 14, 8, 120, 18, juce::Justification::centredLeft);
+}
+
+void EffectsInspector::mouseDown(const juce::MouseEvent&)
+{
+    if (onActivated)
+        onActivated();
 }
 
 } // namespace pflow

@@ -53,7 +53,14 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     midi.clear();
 
     const bool synced = syncToHost.load();
-    const bool sounding = previewArmed.load() && (!synced || hostPlaying.load());
+    const bool hostIsPlaying = hostPlaying.load();
+    // Sync mode: DAW transport arms preview on play so host start/stop drives
+    // the plugin without a separate Play click in the UI.
+    if (synced && hostIsPlaying && !wasHostPlaying_)
+        previewArmed.store(true);
+    wasHostPlaying_ = hostIsPlaying;
+
+    const bool sounding = previewArmed.load() && (!synced || hostIsPlaying);
 
     if (!sounding)
     {
@@ -80,6 +87,8 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     juce::MidiBuffer generated;
 
+    // Only flush on unexpected seeks. Free-run stores a wrapped clock in
+    // freerunBeat / lastBeatPos_, so loop wraps must not look like jumps.
     if (lastBeatPos_ >= 0.0 && std::abs(beatPos - lastBeatPos_) > beatsPerSample * 2.0)
         flushActiveNotes(generated, 0);
 
@@ -126,28 +135,59 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             if (local < loopStart) local += loopLen;
             pStart = local;
             pEnd = pStart + blockBeats;
+
+            // If this block crosses the loop end, render the tail then the head
+            // so the last note gets a natural note-off before the wrap.
+            if (pEnd > loopEnd + 1.0e-12)
+            {
+                const double firstLen = loopEnd - pStart;
+                const int firstSamples = juce::jlimit(1, numSamples,
+                    (int) std::lround(firstLen / blockBeats * (double) numSamples));
+                generatePreviewMidi(previewClip, pStart, loopEnd, generated, firstSamples, 0);
+                const double remain = pEnd - loopEnd;
+                const int secondSamples = numSamples - firstSamples;
+                if (secondSamples > 0 && remain > 1.0e-12)
+                    generatePreviewMidi(previewClip, loopStart, loopStart + remain,
+                                        generated, secondSamples, firstSamples);
+            }
+            else
+            {
+                generatePreviewMidi(previewClip, pStart, pEnd, generated, numSamples);
+            }
+
             double next = pStart + blockBeats;
             if (next >= loopEnd)
                 next = loopStart + std::fmod(next - loopStart, loopLen);
             freerunBeat.store(next);
+            // Continuity for the next block uses the wrapped clock.
+            lastBeatPos_ = next;
         }
-        else if (mult != 1.0)
+        else
         {
-            // Speed-shifted sync: wrap the scaled position over the clip.
-            const double clipLen = juce::jmax(0.25, previewClip.lengthBeats);
-            pStart = std::fmod(beatPos, clipLen);
-            if (pStart < 0.0) pStart += clipLen;
-            pEnd = pStart + blockBeats;
-        }
-        else if (hostLoopActive.load())
-        {
-            const double ls = hostLoopPpqStart.load();
-            const double le = hostLoopPpqEnd.load();
-            const double loopLen = le - ls;
-            if (loopLen > 1.0e-6 && beatPos + 1.0e-9 >= ls)
+            if (mult != 1.0)
             {
-                pStart = ls + std::fmod(beatPos - ls, loopLen);
+                // Speed-shifted sync: wrap the scaled position over the clip.
+                const double clipLen = juce::jmax(0.25, previewClip.lengthBeats);
+                pStart = std::fmod(beatPos, clipLen);
+                if (pStart < 0.0) pStart += clipLen;
                 pEnd = pStart + blockBeats;
+            }
+            else if (hostLoopActive.load())
+            {
+                const double ls = hostLoopPpqStart.load();
+                const double le = hostLoopPpqEnd.load();
+                const double loopLen = le - ls;
+                if (loopLen > 1.0e-6 && beatPos + 1.0e-9 >= ls)
+                {
+                    pStart = ls + std::fmod(beatPos - ls, loopLen);
+                    pEnd = pStart + blockBeats;
+                }
+                else if (sessionLenBeats > 1.0e-9)
+                {
+                    pStart = std::fmod(beatPos, sessionLenBeats);
+                    if (pStart < 0.0) pStart += sessionLenBeats;
+                    pEnd = pStart + blockBeats;
+                }
             }
             else if (sessionLenBeats > 1.0e-9)
             {
@@ -155,18 +195,15 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 if (pStart < 0.0) pStart += sessionLenBeats;
                 pEnd = pStart + blockBeats;
             }
-        }
-        else if (sessionLenBeats > 1.0e-9)
-        {
-            pStart = std::fmod(beatPos, sessionLenBeats);
-            if (pStart < 0.0) pStart += sessionLenBeats;
-            pEnd = pStart + blockBeats;
-        }
 
-        generatePreviewMidi(previewClip, pStart, pEnd, generated, numSamples);
+            generatePreviewMidi(previewClip, pStart, pEnd, generated, numSamples);
+            lastBeatPos_ = endBeat;
+        }
     }
-
-    lastBeatPos_ = endBeat;
+    else if (synced)
+    {
+        lastBeatPos_ = endBeat;
+    }
 
     for (const auto metadata : generated)
         midi.addEvent(metadata.getMessage(), metadata.samplePosition);
@@ -237,9 +274,9 @@ void MidiBrowserProcessor::generatePreviewMidi(const MidiClip& clip, double star
                                 sampleOffset);
                 activeNotes_[juce::jlimit(1, 16, note.channel) - 1][pitch] = true;
             }
-            if (globalEnd >= startBeat && globalEnd < endBeat)
+            if (globalEnd >= startBeat && globalEnd <= endBeat + 1.0e-12)
             {
-                const double fraction = (globalEnd - startBeat) / blockLen;
+                const double fraction = juce::jlimit(0.0, 1.0, (globalEnd - startBeat) / blockLen);
                 const int sampleOffset = sampleOffsetBase
                     + juce::jlimit(0, numSamples - 1, (int) (fraction * (double) numSamples));
                 const int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);

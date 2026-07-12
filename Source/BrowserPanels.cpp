@@ -561,6 +561,11 @@ FileListPanel::FileListPanel()
 
 void FileListPanel::grabBrowseFocus()
 {
+    // Prefer the panel itself over combos/sliders/viewports so arrow keys
+    // reach browse navigation after the user clicks a file row.
+    if (auto* focused = juce::Component::getCurrentlyFocusedComponent())
+        if (focused != this && !isParentOf(focused))
+            focused->giveAwayKeyboardFocus();
     grabKeyboardFocus();
 }
 
@@ -827,6 +832,8 @@ void FileListPanel::paint(juce::Graphics& g)
 void FileListPanel::mouseDown(const juce::MouseEvent& e)
 {
     grabBrowseFocus();
+    if (onActivated)
+        onActivated();
 
     if (e.y >= metrics::listHeaderH())
         return;
@@ -1010,6 +1017,8 @@ void FileListPanel::ListContent::mouseExit(const juce::MouseEvent&)
 void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
 {
     owner.grabBrowseFocus();
+    if (owner.onActivated)
+        owner.onActivated();
 
     if (owner.entries.empty())
     {

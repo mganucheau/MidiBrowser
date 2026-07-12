@@ -162,6 +162,8 @@ public:
     std::function<void(int)> onEnterFolder;  // entry index
     std::function<void(const juce::File&)> onDragFile;
     std::function<void()> onEmptyOpenFolder;
+    /** Fired when the user clicks the file list (sticky browser key-nav). */
+    std::function<void()> onActivated;
 
     void setSort(SortColumn column, bool ascending);
 

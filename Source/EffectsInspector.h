@@ -15,6 +15,7 @@ public:
 
     void resized() override;
     void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
 
     void setGroove(const GrooveParams&, juce::NotificationType notify = juce::dontSendNotification);
     GrooveParams getGroove() const { return groove; }
@@ -38,6 +39,8 @@ public:
     std::function<void(bool)> onPitchLockToggled;
     std::function<void()> onResetGroove;
     std::function<void()> onTrimClicked;
+    /** Fired when the user clicks into the effects pane (sticky key-nav). */
+    std::function<void()> onActivated;
 
 private:
     void notifyGroove();

@@ -129,6 +129,52 @@ TEST_CASE("Processor stays silent when preview is not armed", "[Processor][qa]")
     REQUIRE(test::hasAllNotesOff(midi));   // released once on disarm
 }
 
+TEST_CASE("Free-run loop wrap does not flush the last note", "[Processor][qa]")
+{
+    ProcessorTestHarness harness;
+    // Long note that starts near the end and should sustain across the wrap
+    // until its natural note-off — not get all-notes-off'd by the discontinuity guard.
+    auto clip = test::makeClipWithNotes({ { 60, 100, 3.5, 1.0, 1 } }, 4.0);
+    harness.processor.setPreviewState(clip, true, false, false);
+    harness.processor.syncToHost.store(false);
+    harness.processor.hostPlaying.store(false);
+    harness.processor.freeBpm.store(120.0);
+    harness.processor.previewLoopStartBeat.store(0.0);
+    harness.processor.previewLoopEndBeat.store(4.0);
+    harness.processor.freerunBeat.store(3.5);
+
+    bool sawWrap = false;
+    for (int i = 0; i < 2000; ++i)
+    {
+        const double before = harness.processor.freerunBeat.load();
+        const auto midi = harness.runBlock(0.0);
+        const double after = harness.processor.freerunBeat.load();
+        if (after + 1.0e-9 < before)
+        {
+            REQUIRE_FALSE(test::hasAllNotesOff(midi));
+            sawWrap = true;
+            break;
+        }
+    }
+    REQUIRE(sawWrap);
+}
+
+TEST_CASE("Synced preview auto-arms when host transport starts", "[Processor][qa]")
+{
+    ProcessorTestHarness harness;
+    auto clip = previewClipWithNoteAt(0.0);
+    harness.processor.setPreviewState(clip, true, false, false);
+    harness.processor.syncToHost.store(true);
+    harness.processor.previewArmed.store(false);
+    harness.processor.hostPlaying.store(false);
+    harness.runBlock(0.0);   // establish stopped state
+
+    harness.processor.hostPlaying.store(true);
+    const auto midi = harness.runBlock(0.0);
+    REQUIRE(harness.processor.previewArmed.load());
+    REQUIRE(test::countNoteOns(midi) >= 1);
+}
+
 TEST_CASE("Free-run preview plays and advances without host transport", "[Processor][qa]")
 {
     ProcessorTestHarness harness;

@@ -89,6 +89,9 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     {
         processorRef.syncToHost.store(synced);
         processorRef.freerunBeat.store(0.0);
+        // Enabling sync while the DAW is already playing should start preview.
+        if (synced && processorRef.hostPlaying.load())
+            processorRef.previewArmed.store(true);
     };
     transport.onFreeBpmChanged = [this](double bpm) { processorRef.freeBpm.store(bpm); };
     transport.onToggleEditor = [this] { toggleEditorFold(); };
@@ -235,6 +238,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     fileList.onEnterFolder = [this](int entryIdx) { enterFolderAtDisplay(entryIdx); };
     fileList.onDragFile = [this](const juce::File& f) { startDragOriginalFile(f); };
     fileList.onEmptyOpenFolder = [this] { chooseFolder(); };
+    fileList.onActivated = [this] { claimKeyNav(KeyNavTarget::Browser); };
     content.addAndMakeVisible(fileList);
 
     content.addAndMakeVisible(previewHeader);
@@ -266,6 +270,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         processorRef.previewLoopStartBeat.store(startStep * stretch / 4.0);
         processorRef.previewLoopEndBeat.store(endStep * stretch / 4.0);
     };
+    rollEditor.onActivated = [this] { claimKeyNav(KeyNavTarget::Editor); };
     applyTimeStretchFromMultiplier();
     content.addAndMakeVisible(rollEditor);
 
@@ -354,6 +359,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     effectsInspector.setEffectsLocked(processorRef.effectsLock);
     juce::ignoreUnused(processorRef.editLock);
     effectsInspector.setBpmMultiplier(processorRef.bpmMultiplier.load());
+    effectsInspector.onActivated = [this] { claimKeyNav(KeyNavTarget::Effects); };
     content.addAndMakeVisible(effectsInspector);
 
     if (processorRef.lastBrowserDir.isNotEmpty())
@@ -1249,29 +1255,57 @@ bool MidiBrowserEditor::keyPressed(const juce::KeyPress& key)
         return true;
     }
 
-    // Map page/arrow keys through the file list before the piano roll, so
-    // browsing keeps working after interacting with effects/combos.
-    if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey
+    const bool arrowNav = key == juce::KeyPress::upKey || key == juce::KeyPress::downKey
         || key == juce::KeyPress::pageUpKey || key == juce::KeyPress::pageDownKey
         || key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey
-        || key == juce::KeyPress::returnKey)
+        || key == juce::KeyPress::returnKey;
+
+    if (arrowNav)
     {
-        // Shift+arrows nudge selected notes in the open editor.
-        if (rollEditor.isVisible() && rollEditor.hasSelection() && key.getModifiers().isShiftDown())
+        // Sticky pane: arrows stay with the last clicked window.
+        if (keyNavTarget == KeyNavTarget::Editor)
         {
-            if (rollEditor.keyPressed(key))
-                return true;
+            if (rollEditor.isVisible() && rollEditor.hasSelection() && key.getModifiers().isShiftDown())
+            {
+                if (rollEditor.keyPressed(key))
+                    return true;
+            }
+            // Consume arrows in the editor so they don't cycle focus elsewhere.
+            return true;
         }
+        if (keyNavTarget == KeyNavTarget::Effects)
+            return true;   // effects are mouse-driven; don't steal browser rows
+
         fileList.grabBrowseFocus();
         return fileList.keyPressed(key);
     }
 
-    if (rollEditor.isVisible() && rollEditor.keyPressed(key))
+    if (keyNavTarget == KeyNavTarget::Editor && rollEditor.isVisible() && rollEditor.keyPressed(key))
         return true;
 
-    if (!fileList.hasKeyboardFocus(true))
-        fileList.grabBrowseFocus();
-    return fileList.keyPressed(key);
+    if (keyNavTarget == KeyNavTarget::Browser)
+    {
+        if (!fileList.hasKeyboardFocus(true))
+            fileList.grabBrowseFocus();
+        return fileList.keyPressed(key);
+    }
+
+    return false;
+}
+
+void MidiBrowserEditor::claimKeyNav(KeyNavTarget target)
+{
+    keyNavTarget = target;
+    // Hosts often only deliver keys to the focused plugin component. Hold focus
+    // on the editor shell and route by sticky target instead of child focus.
+    if (auto* focused = juce::Component::getCurrentlyFocusedComponent())
+        if (focused != this && !isParentOf(focused))
+            focused->giveAwayKeyboardFocus();
+    grabKeyboardFocus();
+    if (target == KeyNavTarget::Browser)
+        fileList.grabKeyboardFocus();
+    else if (target == KeyNavTarget::Editor && rollEditor.isVisible())
+        rollEditor.grabKeyboardFocus();
 }
 
 void MidiBrowserEditor::timerCallback()

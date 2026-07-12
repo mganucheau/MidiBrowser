@@ -141,6 +141,7 @@ private:
     double sampleRate_ = 44100.0;
     double lastBeatPos_ = -1.0;
     bool wasSounding_ = false;
+    bool wasHostPlaying_ = false;
     bool activeNotes_[16][128] = {};   // audio-thread ledger of held note-ons
 
     juce::CriticalSection previewLock_;

@@ -415,7 +415,8 @@ public:
         const auto f = inspectorFont();
         const float w = juce::jmax(juce::GlyphArrangement::getStringWidth(f, "Half"),
                                    juce::GlyphArrangement::getStringWidth(f, "Double"));
-        return (int) std::ceil(w) + 20;
+        // Two segments + divider: give each word comfortable padding.
+        return (int) std::ceil(w) * 2 + 28;
     }
 
     void paint(juce::Graphics& g) override

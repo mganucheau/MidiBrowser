@@ -178,6 +178,8 @@ void PianoRollMini::paint(juce::Graphics& g)
 PianoRollEditor::PianoRollEditor()
 {
     setWantsKeyboardFocus(true);
+    // Capture clicks on nested roll/toolbar controls for sticky key-nav.
+    addMouseListener(this, true);
 
     // Instrument strip
     octaveStepper.minValue = -3;
@@ -188,6 +190,7 @@ PianoRollEditor::PianoRollEditor()
     for (int i = 0; i < 12; ++i)
         rootPicker.addItem(kNoteNames[(size_t) i], i + 1);
     rootPicker.setTextWhenNothingSelected("-");
+    rootPicker.setWantsKeyboardFocus(false);
     rootPicker.onChange = [this]
     {
         const int id = rootPicker.getSelectedId();
@@ -203,6 +206,7 @@ PianoRollEditor::PianoRollEditor()
     };
     for (auto m : kModeOrder)
         modePicker.addItem(modeName(m), (int) m + 1);
+    modePicker.setWantsKeyboardFocus(false);
     modePicker.onChange = [this]
     {
         const int id = modePicker.getSelectedId();
@@ -268,6 +272,7 @@ PianoRollEditor::PianoRollEditor()
     divisionPicker.addItem("1/8", 2);
     divisionPicker.addItem("1/16", 1);
     divisionPicker.setSelectedId(divisionSteps, juce::dontSendNotification);
+    divisionPicker.setWantsKeyboardFocus(false);
     divisionPicker.onChange = [this]
     {
         if (divisionPicker.getSelectedId() > 0)
@@ -282,6 +287,7 @@ PianoRollEditor::PianoRollEditor()
     for (int b : { 2, 4, 8, 16 })
         barsZoomPicker.addItem(juce::String(b) + " bars", b);
     barsZoomPicker.setSelectedId(visibleBarsZoom, juce::dontSendNotification);
+    barsZoomPicker.setWantsKeyboardFocus(false);
     barsZoomPicker.onChange = [this]
     {
         const int id = barsZoomPicker.getSelectedId();
@@ -524,6 +530,12 @@ bool PianoRollEditor::keyPressed(const juce::KeyPress& key)
         if (key.isKeyCode(juce::KeyPress::rightKey)) { nudgeSelection(0, divisionSteps); return true; }
     }
     return false;
+}
+
+void PianoRollEditor::mouseDown(const juce::MouseEvent&)
+{
+    if (onActivated)
+        onActivated();
 }
 
 void PianoRollEditor::nudgeSelection(int dPitch, int dStep)

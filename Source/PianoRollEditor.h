@@ -61,6 +61,7 @@ public:
     void resized() override;
     void paint(juce::Graphics&) override;
     void paintOverChildren(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
 
     /** Feed the selected clip + its edit + groove. The editor never mutates
@@ -79,6 +80,8 @@ public:
     std::function<void(bool active, bool enabled, const juce::String& label)> onTrimStateChanged;
     /** Loop region in unstretched steps [start, end); end exclusive. */
     std::function<void(double startStep, double endStep)> onLoopChanged;
+    /** Fired when the user clicks into the piano roll (sticky key-nav). */
+    std::function<void()> onActivated;
 
 private:
     // ── inner surfaces ──
