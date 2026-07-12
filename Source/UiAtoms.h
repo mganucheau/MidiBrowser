@@ -32,6 +32,7 @@ namespace icons {
     inline constexpr const char* noteDrums     = "drum";        // drum clips
     inline constexpr const char* sidebar       = "sidebar";
     inline constexpr const char* gear          = "gear";
+    inline constexpr const char* more          = "more";
     inline constexpr const char* lockOpen      = "lock-open";
     inline constexpr const char* lockClosed    = "lock-closed";
     inline constexpr const char* foldRows      = "fold-rows";

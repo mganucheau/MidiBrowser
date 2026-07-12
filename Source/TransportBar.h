@@ -4,7 +4,7 @@
 
 namespace pflow {
 
-/** Prototype toolbar: MidiBrowser · play/stop · bpm pill · moon / editor / effects. */
+/** Toolbar: ⋯ Midi Browser · play/stop · bpm · editor / effects. */
 class TransportBar : public juce::Component
 {
 public:
@@ -30,6 +30,7 @@ public:
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
     std::function<void()> onDragToDaw;
+    std::function<void()> onOpenSettings;
 
 private:
     void refreshBpm();
@@ -79,13 +80,16 @@ private:
         bool dragging = false;
     };
 
+    IconBtn btnMore { icons::more, "Settings" };
     IconBtn btnPlay { icons::play, "Play preview" };
     IconBtn btnStop { icons::stop, "Stop preview" };
     StatusPill statusPill;
     IconBtn btnSync { icons::infinity, "Sync to host tempo" };
-    DragChip btnDragToDaw { "Drag to DAW" };
+    DragChip btnDragToDaw { "Drag Me" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
     IconBtn btnEffects { icons::sliders, "Toggle effects" };
+
+    juce::Rectangle<int> titleBounds;
 
     bool playing = false;
     bool synced = true;

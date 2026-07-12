@@ -2,6 +2,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "EditModel.h"
 #include "UiAtoms.h"
+#include "EffectsInspectorWidgets.h"
 
 namespace pflow {
 
@@ -35,10 +36,12 @@ public:
 
     void setSavedDirs(const juce::StringArray& paths, const juce::String& activePath);
     void setSavedSearches(const std::vector<SavedSearchEntry>& searches, int activeSearchIdx);
-    void setBrowseMode(int mode); // 0 folder, 1 starred, 2 search
+    void setBrowseMode(int mode); // 0 folder, 2 search
+    void setStarredFilter(bool on);
+    bool isStarredFilter() const { return starredFilter; }
     bool isCollapsed() const { return collapsed; }
     void setCollapsed(bool shouldCollapse);
-    int idealWidth() const { return collapsed ? metrics::sidebarRailW : metrics::sidebarExpandedW; }
+    int idealWidth() const { return collapsed ? metrics::sidebarRailWidth() : metrics::sidebarExpandedWidth(); }
 
     std::function<void()> onOpenFolder;
     std::function<void(const juce::String&)> onPickDir;
@@ -51,11 +54,6 @@ public:
     std::function<void(int)> onRemoveSavedSearch;
     std::function<void()> onSaveCurrentSearch;
     std::function<void()> onCollapsedChanged;
-    std::function<void()> onOpenTweaks;
-    std::function<void()> onToggleAppearance;
-
-    juce::Rectangle<int> getTweaksButtonBounds() const { return btnTweaks.getBounds(); }
-    void refreshAppearanceIcon();
 
     void setSearchFormOpen(bool open);
     bool isSearchFormOpen() const { return searchFormOpen; }
@@ -74,15 +72,15 @@ private:
     RowHit rowHitAt(juce::Point<int> pos) const;
     juce::Rectangle<int> rowBounds(int rowIdx) const;
     void paintRow(juce::Graphics&, int rowIdx, const juce::Rectangle<int>& r, bool hovered, bool removeZone);
+    int searchFormOccupiedHeight() const;
 
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
-    IconBtn btnAppearance { icons::moon, "Toggle light / dark" };
-    IconBtn btnTweaks { icons::gear, "Settings" };
     juce::StringArray dirs;
     juce::String active;
     std::vector<SavedSearchEntry> savedSearches;
     int activeSearchIdx = -1;
     int browseMode = 0;
+    bool starredFilter = false;
     bool collapsed = true;
     int hoverRow = -1;
     bool hoverRemove = false;
@@ -100,15 +98,18 @@ private:
         void paint(juce::Graphics&) override;
         BrowserSearch getCriteria() const;
         void setCriteria(const BrowserSearch&);
-        static constexpr int kHeight = 148;
+        void lookAndFeelChanged() override;
+        static constexpr int kHeight = 188;
         std::function<void(const BrowserSearch&)> onSearch;
     private:
+        void styleEditors();
         juce::TextEditor queryField;
         juce::TextEditor bpmField;
-        juce::ComboBox keyPicker;
+        fx::FlatPopup keyPicker;
         juce::TextEditor barsField;
-        ChipBtn btnSearch { "Search" };
-        juce::Rectangle<int> bpmRow, keyRow, barsRow;
+        fx::FlatSwitch subdirsSwitch;
+        fx::FlatTextButton btnSearch { "Search" };
+        juce::Rectangle<int> bpmRow, keyRow, barsRow, subdirsRow;
     };
     SearchInlinePanel searchForm;
 
@@ -154,12 +155,13 @@ public:
     void selectAdjacent(int direction);
     void grabBrowseFocus();
 
-    std::function<void(int)> onSelect;
-    std::function<void(int)> onPlayRow;
-    std::function<void(int)> onToggleStar;
+    std::function<void(int)> onSelect;       // entry index
+    std::function<void(int)> onPlayRow;      // entry index
+    std::function<void(int)> onToggleStar;   // entry index
     std::function<void()> onEnterParent;
-    std::function<void(int)> onEnterFolder;
+    std::function<void(int)> onEnterFolder;  // entry index
     std::function<void(const juce::File&)> onDragFile;
+    std::function<void()> onEmptyOpenFolder;
 
     void setSort(SortColumn column, bool ascending);
 
@@ -192,9 +194,11 @@ private:
         juce::Rectangle<int> name, key, tempo, bars;
     };
 
-    static constexpr int kKeyW = 40;
-    static constexpr int kTempoW = 48;
-    static constexpr int kBarsW = 40;
+    static constexpr int kNameW = 148;
+    static constexpr int kKeyW = 44;
+    static constexpr int kTempoW = 52;
+    static constexpr int kBarsW = 44;
+    static constexpr int kSortArrowW = 12;
     static constexpr int kIconW = 23;
 
     void timerCallback() override;

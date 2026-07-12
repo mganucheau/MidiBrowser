@@ -77,8 +77,8 @@ void drawInspectorDivider(juce::Graphics& g, juce::Rectangle<int> bounds);
 struct Tweaks
 {
     std::atomic<int> density { (int) Density::Compact };
-    std::atomic<int> size    { (int) ContentSize::Medium };
-    std::atomic<int> appearance { (int) Appearance::System };
+    std::atomic<int> size    { (int) ContentSize::Large };
+    std::atomic<int> appearance { (int) Appearance::Light };
 };
 
 Tweaks& tweaks();
@@ -209,9 +209,11 @@ namespace colours {
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 namespace metrics {
-    constexpr int browserWidth      = 356;   // file table when other panes open
-    constexpr int browserMinWidth   = 280;
-    constexpr int browserMaxWidth   = 520;
+    inline int scaled(int px)
+    {
+        return juce::roundToInt((float) px * contentScale());
+    }
+
     constexpr float uiScale         = 1.0f;
 
     constexpr float cornerRadius    = 10.0f;
@@ -232,10 +234,14 @@ namespace metrics {
     constexpr int iconButtonSize    = 28;
     constexpr int comboTextPadding  = 6;
 
+    // Logical (unscaled) layout widths — use the function forms for layout.
+    constexpr int browserWidth      = 300;
+    constexpr int browserMinWidth   = 260;
+    constexpr int browserMaxWidth   = 420;
     constexpr int sidebarW          = 176;
     constexpr int sidebarRailW      = 48;
     constexpr int sidebarExpandedW  = 176;
-    constexpr int fileTableW        = 356;
+    constexpr int fileTableW        = 300;
     constexpr int editorPaneW       = 470;
     constexpr int effectsPaneW      = 244;
     constexpr int openRollW         = editorPaneW;
@@ -243,11 +249,18 @@ namespace metrics {
     constexpr int foldedWindowW     = sidebarW + fileTableW;
     constexpr int openWindowW       = sidebarW + fileTableW + editorPaneW;
 
-    inline int transportH()  { return toolbarH; }
-    inline int listRowH()    { return currentDensity() == Density::Comfortable ? 28 : 24; }
-    inline int listHeaderH() { return 28; }
-    inline int padS()        { return currentDensity() == Density::Comfortable ? 12 : 8; }
-    inline int miniRollH()   { return 112; }   // unused after mini-preview removal
+    inline int transportH()       { return scaled(toolbarH); }
+    inline int listRowH()         { return scaled(currentDensity() == Density::Comfortable ? 28 : 24); }
+    inline int listHeaderH()      { return scaled(28); }
+    inline int padS()             { return scaled(currentDensity() == Density::Comfortable ? 12 : 8); }
+    inline int miniRollH()        { return scaled(112); }
+    inline int sidebarRailWidth() { return scaled(sidebarRailW); }
+    inline int sidebarExpandedWidth() { return scaled(sidebarExpandedW); }
+    inline int fileTableWidth()   { return scaled(fileTableW); }
+    inline int editorPaneWidth()  { return scaled(editorPaneW); }
+    inline int effectsPaneWidth() { return scaled(effectsPaneW); }
+    inline int browserMinWidthScaled() { return scaled(browserMinWidth); }
+    inline int openRollMinWidth() { return scaled(openRollMinW); }
 }
 
 inline void styleSectionLabel(juce::Label& lbl, const juce::String& text)

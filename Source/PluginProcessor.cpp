@@ -438,9 +438,9 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             tweaks().density.store(juce::jlimit(0, 1,
                 xml->getIntAttribute("tweakDensity", (int) Density::Compact)));
             tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1,
-                xml->getIntAttribute("tweakSize", (int) ContentSize::Medium)));
+                xml->getIntAttribute("tweakSize", (int) ContentSize::Large)));
             tweaks().appearance.store(juce::jlimit(0, kNumAppearances - 1,
-                xml->getIntAttribute("tweakAppearance", (int) Appearance::System)));
+                xml->getIntAttribute("tweakAppearance", (int) Appearance::Light)));
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");

@@ -15,7 +15,7 @@ EffectsInspector::EffectsInspector()
     , lengthSl("Length", 25, 200, 100, false)
     , octaveRow("Octave", octaveStepper)
     , keyModeRow(keyPopup, modePopup)
-    , trimRow({}, btnTrim)
+    , trimRow("Trim empty measures", trimSwitch)
     , fitRow("Fit to Scale", fitSwitch)
     , mapRow("Map to Root", mapSwitch)
 {
@@ -24,6 +24,7 @@ EffectsInspector::EffectsInspector()
     addAndMakeVisible(viewport);
 
     btnReset.setComponentID("btnEffectsReset");
+    btnReset.setWantsKeyboardFocus(false);
     btnReset.onClick = [this]
     {
         groove = GrooveParams();
@@ -36,6 +37,7 @@ EffectsInspector::EffectsInspector()
     addAndMakeVisible(btnReset);
 
     btnEffectsLock.setComponentID("btnLock");
+    btnEffectsLock.setWantsKeyboardFocus(false);
     btnEffectsLock.onClick = [this]
     {
         effectsLocked = !effectsLocked;
@@ -44,8 +46,8 @@ EffectsInspector::EffectsInspector()
     };
     addAndMakeVisible(btnEffectsLock);
 
-    btnTrim.setComponentID("btnTrim");
-    btnTrim.onClick = [this] { if (onTrimClicked) onTrimClicked(); };
+    trimSwitch.setComponentID("btnTrim");
+    trimSwitch.onClick = [this] { if (onTrimClicked) onTrimClicked(); };
 
     tempoToggle.onChange = [this](double m)
     {
@@ -198,12 +200,11 @@ void EffectsInspector::setClipRoot(int rootPc)
     refreshPitchAnnotation();
 }
 
-void EffectsInspector::setTrimState(bool active, bool enabled, const juce::String& label)
+void EffectsInspector::setTrimState(bool active, bool enabled, const juce::String&)
 {
-    btnTrim.active = active;
-    btnTrim.setEnabled(enabled);
-    btnTrim.label = label;
-    btnTrim.repaint();
+    trimSwitch.setToggleState(active, juce::dontSendNotification);
+    trimSwitch.setEnabled(enabled);
+    trimSwitch.repaint();
 }
 
 void EffectsInspector::setBpmMultiplier(double mult, juce::NotificationType)
@@ -286,7 +287,7 @@ void EffectsInspector::resized()
 
     tempoToggle.setSize(tempoToggle.idealWidth(), kControlH);
     tempoRow.setControlWidth(tempoToggle.idealWidth());
-    trimRow.setControlWidth(btnTrim.idealWidth());
+    trimRow.setControlWidth(trimSwitch.idealWidth());
     swingStylePopup.setSize(swingStylePopup.idealWidth(), kControlH);
     swingStyleRow.setControlWidth(swingStylePopup.idealWidth());
     octaveStepper.setSize(octaveStepper.idealWidth(), kControlH);

@@ -12,7 +12,29 @@ void PitchRowMap::fit(const std::vector<RollNote>& notes, float height, int root
         loN = juce::jmin(loN, n.pitch);
         hiN = juce::jmax(hiN, n.pitch);
     }
-    if (notes.empty()) { loN = 60 + rootPc; hiN = loN + 12; }
+    if (notes.empty()) { loN = 60 + rootPc; hiN = loN; }
+
+    // One-octave key window (prefer octave of highest note).
+    if (minRange <= 13)
+    {
+        int lo = hiN - ((hiN - rootPc + 1200) % 12);
+        if (lo > loN)
+            lo -= 12;
+        lo = juce::jlimit(0, 115, lo);
+        int hi = juce::jlimit(lo + 12, 127, lo + 12);
+        if (hiN - loN > 12)
+        {
+            lo = loN - ((loN - rootPc + 1200) % 12);
+            hi = hiN + ((rootPc - (hiN % 12) + 12) % 12);
+            if (hi < lo + 12) hi = lo + 12;
+            lo = juce::jlimit(0, 127, lo);
+            hi = juce::jlimit(lo, 127, hi);
+        }
+        minPitch = lo;
+        maxPitch = hi;
+        rowH = height / (float) juce::jmax(1, numRows());
+        return;
+    }
 
     // Root in the octave of the lowest note (at or below), and root at or above the highest.
     int lo = loN - ((loN - rootPc + 1200) % 12);
@@ -37,13 +59,15 @@ double effectiveVelocity(const RollNote& n, const GrooveParams& k)
 
 void PianoRollMini::setNotes(std::vector<RollNote> resolvedGrooved, int numBars,
                              const GrooveParams& groove, int root,
-                             std::vector<RollNote> frame)
+                             std::vector<RollNote> frame, Mode m, int div)
 {
     notes = std::move(resolvedGrooved);
     frameNotes = frame.empty() ? notes : std::move(frame);
     bars = juce::jmax(1, numBars);
     knobs = groove;
     rootPc = juce::jlimit(0, 11, root);
+    mode = m;
+    divisionSteps = juce::jmax(1, div);
     repaint();
 }
 
@@ -76,35 +100,76 @@ void PianoRollMini::paint(juce::Graphics& g)
         return;
     }
 
+    auto gutter = b.removeFromLeft(kGutterW);
+    g.setColour(colours::panel());
+    g.fillRect(gutter);
+    g.setColour(colours::line());
+    g.fillRect(gutter.getRight() - 1.0f, gutter.getY(), 1.0f, gutter.getHeight());
+
     PitchRowMap map;
-    map.fit(frameNotes.empty() ? notes : frameNotes, b.getHeight(), rootPc, 14);
+    map.fit(frameNotes.empty() ? notes : frameNotes, b.getHeight(), rootPc, 13);
     const double totalSteps = (double) bars * kStepsPerBar * timeStretch;
     const float pps = b.getWidth() / (float) juce::jmax(1.0, totalSteps);
-    auto inner = b;
 
-    g.setColour(colours::rollRowline());
+    // Pitch lanes + mini keyboard (mirror of the editor roll).
+    for (int p = map.minPitch; p <= map.maxPitch; ++p)
+    {
+        const float y = b.getY() + map.yForPitchTop(p, b.getHeight());
+        const float h = map.rowH;
+        if (isBlackKeyPitch(p))
+        {
+            g.setColour(colours::rollShade());
+            g.fillRect(b.getX(), y, b.getWidth(), h);
+            g.setColour(colours::kbBlack());
+            g.fillRect(gutter.getX() + gutter.getWidth() * 0.35f, y, gutter.getWidth() * 0.65f, h);
+        }
+        else
+        {
+            g.setColour(colours::kbWhite());
+            g.fillRect(gutter.getX(), y, gutter.getWidth() - 1.0f, h);
+        }
+        if (pitchInScale(p, rootPc, mode))
+        {
+            g.setColour(colours::accent().withAlpha(usesDarkAppearance() ? 0.07f : 0.09f));
+            g.fillRect(b.getX(), y, b.getWidth(), h);
+        }
+        g.setColour(colours::rollRowline().withAlpha(0.55f));
+        g.fillRect(b.getX(), y + h - 0.5f, b.getWidth(), 0.5f);
+        g.fillRect(gutter.getX(), y + h - 0.5f, gutter.getWidth(), 0.5f);
+    }
+
+    // Beat + bar grid.
     const int displayBars = juce::jmax(1, (int) std::lround((double) bars * timeStretch));
-    for (int bar = 1; bar < displayBars; ++bar)
-        g.fillRect(inner.getX() + (float) (bar * kStepsPerBar) * pps, inner.getY(),
-                   1.0f, inner.getHeight());
+    const int stepsPerBar = kStepsPerBar;
+    for (int bar = 0; bar < displayBars; ++bar)
+    {
+        for (int s = 0; s < stepsPerBar; s += divisionSteps)
+        {
+            const float x = b.getX() + (float) (bar * stepsPerBar + s) * pps;
+            g.setColour(s == 0 ? colours::lineStrong() : colours::rollRowline());
+            g.fillRect(x, b.getY(), s == 0 ? 1.2f : 0.6f, b.getHeight());
+        }
+    }
 
     for (const auto& n : notes)
     {
         const double v = effectiveVelocity(n, knobs);
         auto r = juce::Rectangle<float>(
-            inner.getX() + (float) (n.start * timeStretch) * pps,
-            inner.getY() + map.yForPitchTop(n.pitch, inner.getHeight()),
+            b.getX() + (float) (n.start * timeStretch) * pps,
+            b.getY() + map.yForPitchTop(n.pitch, b.getHeight()),
             juce::jmax(2.0f, (float) (n.len * timeStretch) * pps - 0.5f),
             juce::jmax(2.0f, map.rowH - 0.8f));
-        g.setColour(colours::accent().withAlpha((float) (0.35 + 0.6 * v)));
+        g.setColour(colours::accent().withAlpha((float) (0.40 + 0.55 * v)));
         g.fillRoundedRectangle(r, 1.5f);
+        g.setColour(colours::rollNoteEdge());
+        g.drawRoundedRectangle(r, 1.5f, 0.7f);
     }
 
     if (playing)
     {
         g.setColour(colours::playhead());
-        g.fillRect(inner.getX() + (float) (playheadStep * timeStretch) * pps,
-                   inner.getY(), 1.5f, inner.getHeight());
+        g.fillRect(b.getX() + (float) (playheadStep * timeStretch) * pps,
+                   b.getY(), 1.5f, b.getHeight());
     }
 }
 
@@ -176,18 +241,15 @@ PianoRollEditor::PianoRollEditor()
     addChildComponent(btnLock);
 
     // Toolbar
-    btnRevert.onClick = [this]
-    {
-        selection.clear();
-        applyEdit([](ClipEdit& e) { e = ClipEdit(); });
-    };
-    addAndMakeVisible(btnRevert);
+    btnRevert.setVisible(false);
 
     btnTrim.onClick = [this] { toggleTrim(); };
     addChildComponent(btnTrim);
     btnTrim.setVisible(false);
 
     btnFold.setComponentID("btnFold");
+    btnFold.accentText = true;
+    btnFold.setTooltip("Show only notes in the current key");
     btnFold.onClick = [this]
     {
         folded = !folded;
@@ -218,7 +280,7 @@ PianoRollEditor::PianoRollEditor()
     addAndMakeVisible(divisionPicker);
 
     for (int b : { 2, 4, 8, 16 })
-        barsZoomPicker.addItem(juce::String(b), b);
+        barsZoomPicker.addItem(juce::String(b) + " bars", b);
     barsZoomPicker.setSelectedId(visibleBarsZoom, juce::dontSendNotification);
     barsZoomPicker.onChange = [this]
     {
@@ -235,28 +297,9 @@ PianoRollEditor::PianoRollEditor()
     };
     addAndMakeVisible(barsZoomPicker);
 
-    btnZoomOut.onClick = [this]
-    {
-        zoomXAround(1.0f / 1.3f, (float) rollViewport.getViewPositionX()
-                                     + (float) rollViewport.getMaximumVisibleWidth() * 0.5f);
-    };
-    btnZoomIn.onClick = [this]
-    {
-        zoomXAround(1.3f, (float) rollViewport.getViewPositionX()
-                              + (float) rollViewport.getMaximumVisibleWidth() * 0.5f);
-    };
-    addAndMakeVisible(btnZoomOut);
-    addAndMakeVisible(btnZoomIn);
-
-    selBadge.trailingIcon = icons::x;
-    selBadge.accentText = true;
-    selBadge.onClick = [this]
-    {
-        selection.clear();
-        refreshControls();
-        repaint();
-    };
-    addChildComponent(selBadge);
+    btnZoomOut.setVisible(false);
+    btnZoomIn.setVisible(false);
+    selBadge.setVisible(false);
 
     // Roll
     addAndMakeVisible(gutter);
@@ -299,6 +342,7 @@ void PianoRollEditor::setClip(const StepClip& c, const ClipEdit& e, const Groove
         barsZoomPicker.setSelectedId(visibleBarsZoom, juce::dontSendNotification);
         computePxPerStepBase();
         updateRollSize();
+        pendingScrollToContent = true;
         scrollToContent();
     }
     else
@@ -425,23 +469,11 @@ void PianoRollEditor::refreshControls()
     btnFold.active = folded;
     btnFold.repaint();
 
-    // Selection badge
-    selBadge.label = juce::String((int) selection.size()) + " sel";
-    selBadge.setVisible(!selection.empty());
-    selBadge.repaint();
-
-    // Badges
+    // Edit badges / selection chip removed from the toolbar chrome.
+    selBadge.setVisible(false);
+    for (auto& chip : badgeChips)
+        chip->setVisible(false);
     badgeChips.clear();
-    for (const auto& b : editBadges(clip, edit))
-    {
-        auto chip = std::make_unique<ChipBtn>(b.label);
-        chip->trailingIcon = icons::x;
-        chip->accentText = true;
-        const juce::String key = b.key;
-        chip->onClick = [this, key] { removeBadge(key); };
-        addAndMakeVisible(*chip);
-        badgeChips.push_back(std::move(chip));
-    }
     resized();
 }
 
@@ -485,10 +517,11 @@ bool PianoRollEditor::keyPressed(const juce::KeyPress& key)
 
     if (!selection.empty() && key.getModifiers().isShiftDown())
     {
-        if (key == juce::KeyPress::upKey)    { nudgeSelection(1, 0); return true; }
-        if (key == juce::KeyPress::downKey)  { nudgeSelection(-1, 0); return true; }
-        if (key == juce::KeyPress::leftKey)  { nudgeSelection(0, -divisionSteps); return true; }
-        if (key == juce::KeyPress::rightKey) { nudgeSelection(0, divisionSteps); return true; }
+        // Compare key codes only — operator== also requires matching modifiers.
+        if (key.isKeyCode(juce::KeyPress::upKey))    { nudgeSelection(1, 0); return true; }
+        if (key.isKeyCode(juce::KeyPress::downKey))  { nudgeSelection(-1, 0); return true; }
+        if (key.isKeyCode(juce::KeyPress::leftKey))  { nudgeSelection(0, -divisionSteps); return true; }
+        if (key.isKeyCode(juce::KeyPress::rightKey)) { nudgeSelection(0, divisionSteps); return true; }
     }
     return false;
 }
@@ -737,6 +770,7 @@ void PianoRollEditor::selectPitch(int pitch, bool additive)
     rollContent.repaint();
     gutter.repaint();
     velocityLane.repaint();
+    grabKeyboardFocus();
 }
 
 // ── row geometry ─────────────────────────────────────────────────────────────
@@ -855,35 +889,65 @@ void PianoRollEditor::scrollToContent()
     if (folded)
     {
         rollViewport.setViewPosition(0, 0);
+        pendingScrollToContent = false;
         return;
     }
 
-    if (resolved.notes.empty())
+    const int visH = rollViewport.getMaximumVisibleHeight();
+    // Viewport often has no height yet on first setClip — retry from resized().
+    if (visH < 32)
     {
-        rollViewport.setViewPosition(0, juce::jmax(0, (int) (rowForPitch(66) * effRowH())
-                                                          - rollViewport.getMaximumVisibleHeight() / 2));
+        pendingScrollToContent = true;
         return;
     }
 
-    // Default vertical zoom: key-root in the lowest note's octave → key-root
-    // at or above the highest note (e.g. key C, notes around E → C..C).
     const int rootPc = edit.root >= 0 ? edit.root : (clip.root >= 0 ? clip.root : 0);
+
     int loN = 127, hiN = 0;
     for (const auto& n : resolved.notes)
     {
         loN = juce::jmin(loN, n.pitch);
         hiN = juce::jmax(hiN, n.pitch);
     }
-    const int lo = loN - ((loN - rootPc + 1200) % 12);
-    const int hi = hiN + ((rootPc - (hiN % 12) + 12) % 12);
-    const int span = juce::jmax(1, hi - lo + 1);
-    const int visH = juce::jmax(1, rollViewport.getMaximumVisibleHeight());
-    rowH = juce::jlimit(kMinRowH, kMaxRowH, (float) visH / (float) span);
+    if (resolved.notes.empty())
+    {
+        loN = 60 + rootPc;
+        hiN = loN;
+    }
+
+    // Key-root-aligned pitch window.
+    // ≤1 octave of content → exactly one key octave fills the viewport.
+    // >1 octave → expand to cover all notes (highest note's octave stays in view).
+    int lo, hi;
+    if (hiN - loN <= 12)
+    {
+        // Octave of the highest note, aligned to key root, covering the cluster.
+        lo = hiN - ((hiN - rootPc + 1200) % 12);
+        if (lo > loN)
+            lo -= 12;
+        lo = juce::jlimit(0, 115, lo);
+        hi = juce::jlimit(lo + 12, 127, lo + 12);
+    }
+    else
+    {
+        lo = loN - ((loN - rootPc + 1200) % 12);
+        hi = hiN + ((rootPc - (hiN % 12) + 12) % 12);
+        if (hi < lo + 12)
+            hi = lo + 12;
+        lo = juce::jlimit(0, 127, lo);
+        hi = juce::jlimit(lo + 12, 127, hi);
+    }
+
+    const int span = juce::jmax(13, hi - lo + 1);
+    // Autofit fills the viewport with exactly `span` rows (one octave minimum).
+    rowH = juce::jmax(kMinRowH, (float) visH / (float) span);
     updateRollSize();
 
-    // Align the highest root row to the top of the viewport.
-    const int y = (int) ((float) rowForPitch(hi) * effRowH());
-    rollViewport.setViewPosition(0, juce::jmax(0, y));
+    // Align so the top of the window is `hi` (highest root / note octave).
+    const int y = (int) std::lround((float) rowForPitch(hi) * effRowH());
+    const int maxY = juce::jmax(0, rollContent.getHeight() - visH);
+    rollViewport.setViewPosition(0, juce::jlimit(0, maxY, y));
+    pendingScrollToContent = false;
 }
 
 void PianoRollEditor::zoomXAround(float factor, float contentX)
@@ -959,9 +1023,7 @@ void PianoRollEditor::resized()
 {
     auto r = getLocalBounds();
 
-    // Clip header: name + meta + revert
-    auto strip = r.removeFromTop(stripH).reduced(10, 4);
-    btnRevert.setBounds(strip.removeFromRight(26).withSizeKeepingCentre(24, 24));
+    btnRevert.setVisible(false);
     btnLock.setVisible(false);
     octaveStepper.setVisible(false);
     rootPicker.setVisible(false);
@@ -969,40 +1031,42 @@ void PianoRollEditor::resized()
     fitSwitch.setVisible(false);
     mapSwitch.setVisible(false);
     scalePanel.setVisible(false);
+    btnZoomIn.setVisible(false);
+    btnZoomOut.setVisible(false);
+    selBadge.setVisible(false);
 
-    // Toolbar
+    // Toolbar: Notes in Key | ………… | Zoom [n bars] · Grid Size [div]
     auto bar = r.removeFromTop(toolbarH).reduced(8, 4);
-    barsZoomPicker.setBounds(bar.removeFromLeft(52).withSizeKeepingCentre(52, 20));
-    bar.removeFromLeft(6);
-    btnFold.setBounds(bar.removeFromLeft(juce::jmin(btnFold.idealWidth(), 78))
-                          .withSizeKeepingCentre(juce::jmin(btnFold.idealWidth(), 78), 20));
-    bar.removeFromLeft(8);
-    for (auto& chip : badgeChips)
-    {
-        const int w = juce::jmin(chip->idealWidth(), 130);
-        if (bar.getWidth() < w + 160) { chip->setVisible(false); continue; }
-        chip->setVisible(true);
-        chip->setBounds(bar.removeFromLeft(w).withSizeKeepingCentre(w, 20));
-        bar.removeFromLeft(4);
-    }
+    const int ctrlH = 20;
+    const int foldW = juce::jmin(btnFold.idealWidth(), bar.getWidth() / 2);
+    btnFold.setBounds(bar.removeFromLeft(foldW).withSizeKeepingCentre(foldW, ctrlH));
 
-    auto right = bar;
-    if (selBadge.isVisible())
+    // Content-sized combo boxes — padding matches Theme combo LnF.
+    auto comboW = [](juce::ComboBox& c) -> int
     {
-        selBadge.setBounds(right.removeFromRight(juce::jmin(selBadge.idealWidth(), 84))
-                               .withSizeKeepingCentre(juce::jmin(selBadge.idealWidth(), 84), 20));
-        right.removeFromRight(6);
-    }
-    btnZoomIn.setBounds(right.removeFromRight(24).withSizeKeepingCentre(20, 20));
-    btnZoomOut.setBounds(right.removeFromRight(24).withSizeKeepingCentre(20, 20));
-    right.removeFromRight(6);
-    divisionPicker.setBounds(right.removeFromRight(74).withSizeKeepingCentre(74, 20));
+        auto f = fontFor(TextStyle::Body);
+        float w = 0.0f;
+        for (int i = 0; i < c.getNumItems(); ++i)
+            w = juce::jmax(w, juce::GlyphArrangement::getStringWidth(f, c.getItemText(i)));
+        return (int) std::ceil(w) + metrics::comboTextPadding + 18;
+    };
+    const int zoomW = comboW(barsZoomPicker);
+    const int gridW = comboW(divisionPicker);
+    const int zoomLabelW = 38;
+    const int gridLabelW = 62;
+
+    divisionPicker.setBounds(bar.removeFromRight(gridW).withSizeKeepingCentre(gridW, ctrlH));
+    bar.removeFromRight(6);
+    gridLabelBounds = bar.removeFromRight(gridLabelW);
+    bar.removeFromRight(10);
+    barsZoomPicker.setBounds(bar.removeFromRight(zoomW).withSizeKeepingCentre(zoomW, ctrlH));
+    bar.removeFromRight(6);
+    zoomLabelBounds = bar.removeFromRight(zoomLabelW);
 
     const int laneH = velocityOpen ? VelocityLane::headerH + VelocityLane::laneH
                                    : VelocityLane::headerH;
     velocityLane.setBounds(r.removeFromBottom(laneH));
 
-    // Ruler + gutter + roll
     auto rollArea = r;
     auto rulerRow = rollArea.removeFromTop(rulerH);
     gutter.setBounds(rollArea.removeFromLeft(gutterW));
@@ -1010,6 +1074,8 @@ void PianoRollEditor::resized()
     rollViewport.setBounds(rollArea);
     computePxPerStepBase();
     updateRollSize();
+    if (pendingScrollToContent)
+        scrollToContent();
 }
 
 void PianoRollEditor::layoutScaleControls(juce::Rectangle<int> strip)
@@ -1035,37 +1101,15 @@ void PianoRollEditor::layoutScaleControls(juce::Rectangle<int> strip)
 
 void PianoRollEditor::paint(juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat();
-    juce::Path roundClip;
-    roundClip.addRoundedRectangle(bounds, metrics::cornerRadius);
-    g.reduceClipRegion(roundClip);
-
     g.setColour(colours::panel());
     g.fillRect(getLocalBounds());
     g.setColour(colours::line());
-    g.fillRect(juce::Rectangle<int>(0, stripH - 1, getWidth(), 1));
-    g.fillRect(juce::Rectangle<int>(0, stripH + toolbarH - 1, getWidth(), 1));
+    g.fillRect(0, toolbarH - 1, getWidth(), 1);
 
-    if (hasClip)
-    {
-        // Prototype: single compact title line — "Name · Key · N bars"
-        juce::String line = clip.name;
-        juce::String meta;
-        if (edit.root >= 0)
-            meta << kNoteNames[(size_t) edit.root] << " " << modeName(edit.mode);
-        else if (clip.root >= 0)
-            meta << kNoteNames[(size_t) clip.root];
-        if (meta.isNotEmpty())
-            line << "  ·  " << meta;
-        line << "  ·  " << resolved.bars << " bars";
-        if (!editIsClean(edit))
-            line << "  ·  edited";
-
-        g.setColour(colours::text());
-        g.setFont(uiFont(12.5f, true));
-        g.drawText(line, juce::Rectangle<int>(12, 0, getWidth() - 52, stripH),
-                   juce::Justification::centredLeft, true);
-    }
+    g.setFont(uiFont(11.5f, false));
+    g.setColour(colours::text2());
+    g.drawText("Zoom", zoomLabelBounds, juce::Justification::centredRight, false);
+    g.drawText("Grid Size", gridLabelBounds, juce::Justification::centredRight, false);
 }
 
 void PianoRollEditor::paintOverChildren(juce::Graphics& g)

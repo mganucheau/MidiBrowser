@@ -258,6 +258,14 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
                        cx + s * 0.95f * std::cos(a), cy + s * 0.95f * std::sin(a), px);
         }
     }
+    else if (name == icons::more)
+    {
+        // Horizontal ellipsis — three equal dots.
+        const float d = s * 0.28f;
+        const float gap = s * 0.55f;
+        for (int i = -1; i <= 1; ++i)
+            g.fillEllipse(cx + (float) i * gap - d * 0.5f, cy - d * 0.5f, d, d);
+    }
 }
 
 // ── IconBtn ──────────────────────────────────────────────────────────────────

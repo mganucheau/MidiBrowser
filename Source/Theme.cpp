@@ -222,10 +222,11 @@ static bool systemFontIsSF()
 juce::Font uiFont(float pt, bool semibold)
 {
     // SF Pro Display for large text, SF Pro Text for body (HIG threshold 20pt).
-    const auto& family = systemFontFamily(pt >= 20.0f);
+    const float scaledPt = pt * contentScale();
+    const auto& family = systemFontFamily(scaledPt >= 20.0f);
     const char* style = semibold ? (systemFontIsSF() ? "Semibold" : "Medium")
                                  : "Regular";
-    return juce::Font(juce::FontOptions(pt).withName(family).withStyle(style));
+    return juce::Font(juce::FontOptions(scaledPt).withName(family).withStyle(style));
 }
 
 juce::Font monoFont(float pt, bool semibold)
@@ -641,6 +642,19 @@ void PatternFlowLookAndFeel::drawFileBrowserRow(juce::Graphics& g, int width, in
 
 void PatternFlowLookAndFeel::drawTextEditorOutline(juce::Graphics& g, int width, int height, juce::TextEditor& ed)
 {
+    // Transparent-background editors (search form) only need a soft focus ring;
+    // the parent paints the control surface.
+    if (ed.findColour(juce::TextEditor::backgroundColourId).getAlpha() < 8)
+    {
+        if (ed.hasKeyboardFocus(true))
+        {
+            auto bounds = juce::Rectangle<float>(0, 0, (float) width, (float) height).reduced(0.5f);
+            g.setColour(colours::accent());
+            g.drawRoundedRectangle(bounds, metrics::controlRadius, 1.2f);
+        }
+        return;
+    }
+
     auto bounds = juce::Rectangle<float>(0, 0, (float) width, (float) height).reduced(0.5f);
     const bool focused = ed.hasKeyboardFocus(true);
     g.setColour(focused ? colours::accent() : colours::separator());

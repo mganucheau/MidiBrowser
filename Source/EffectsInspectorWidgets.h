@@ -11,11 +11,11 @@ constexpr float kAnnotPt = 10.5f;
 constexpr int kSectionPadT = 9;
 constexpr int kSectionPadH = 14;
 constexpr int kSectionPadB = 11;
-constexpr int kRowMinH = 22;
+constexpr int kRowMinH = 24;
 constexpr int kControlH = 20;
-constexpr int kRowGap = 3;
+constexpr int kRowGap = 8;
 constexpr int kSectionHeaderH = 18;
-constexpr int kSliderRowH = 28;
+constexpr int kSliderRowH = 36;
 constexpr float kSliderThumbR = 4.5f;
 
 inline juce::Font inspectorFont(bool semibold = false) { return uiFont(kFontPt, semibold); }
@@ -25,8 +25,18 @@ inline void drawCaretDown(juce::Graphics& g, juce::Rectangle<float> area, juce::
 {
     juce::Path p;
     const float cx = area.getCentreX(), cy = area.getCentreY();
-    const float s = 4.5f;
-    p.addTriangle(cx - s, cy - s * 0.35f, cx + s, cy - s * 0.35f, cx, cy + s * 0.65f);
+    const float s = 4.0f;
+    p.addTriangle(cx - s, cy - s * 0.55f, cx + s, cy - s * 0.55f, cx, cy + s * 0.7f);
+    g.setColour(colour);
+    g.fillPath(p);
+}
+
+inline void drawCaretRight(juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour)
+{
+    juce::Path p;
+    const float cx = area.getCentreX(), cy = area.getCentreY();
+    const float s = 4.0f;
+    p.addTriangle(cx - s * 0.55f, cy - s, cx + s * 0.7f, cy, cx - s * 0.55f, cy + s);
     g.setColour(colour);
     g.fillPath(p);
 }
@@ -51,7 +61,10 @@ inline juce::String signedIntText(int v)
 class FlatTextButton : public juce::Button
 {
 public:
-    explicit FlatTextButton(const juce::String& text) : juce::Button(text), label(text) {}
+    explicit FlatTextButton(const juce::String& text) : juce::Button(text), label(text)
+    {
+        setWantsKeyboardFocus(false);
+    }
 
     void paintButton(juce::Graphics& g, bool over, bool down) override
     {
@@ -94,7 +107,11 @@ public:
 class FlatSwitch : public juce::Button
 {
 public:
-    FlatSwitch() : juce::Button({}) { setClickingTogglesState(true); }
+    FlatSwitch() : juce::Button({})
+    {
+        setClickingTogglesState(true);
+        setWantsKeyboardFocus(false);
+    }
 
     void paintButton(juce::Graphics& g, bool, bool) override
     {
@@ -121,6 +138,7 @@ public:
 class FlatPopup : public juce::Component
 {
 public:
+    FlatPopup() { setWantsKeyboardFocus(false); }
     std::function<void(int)> onChange;
 
     void setItems(const juce::StringArray& items, int selected)
@@ -302,6 +320,7 @@ private:
 class FlatStepper : public juce::Component
 {
 public:
+    FlatStepper() { setWantsKeyboardFocus(false); }
     int minV = -3, maxV = 3, value = 0;
     std::function<void(int)> onChange;
     std::function<juce::String(int)> format;
@@ -354,6 +373,7 @@ public:
 class TempoToggle : public juce::Component
 {
 public:
+    TempoToggle() { setWantsKeyboardFocus(false); }
     enum class Sel { None, Half, Double };
     std::function<void(double)> onChange;
 
@@ -390,7 +410,13 @@ public:
         if (onChange) onChange(multiplier());
     }
 
-    int idealWidth() const { return 76; }
+    int idealWidth() const
+    {
+        const auto f = inspectorFont();
+        const float w = juce::jmax(juce::GlyphArrangement::getStringWidth(f, "Half"),
+                                   juce::GlyphArrangement::getStringWidth(f, "Double"));
+        return (int) std::ceil(w) + 20;
+    }
 
     void paint(juce::Graphics& g) override
     {
@@ -419,9 +445,9 @@ public:
             return selected == s ? juce::Colours::white : t.segmentText;
         };
         g.setColour(textCol(Sel::Half));
-        g.drawFittedText("/2", left.toNearestInt(), juce::Justification::centred, 1);
+        g.drawFittedText("Half", left.toNearestInt(), juce::Justification::centred, 1);
         g.setColour(textCol(Sel::Double));
-        g.drawFittedText("x2", right.toNearestInt(), juce::Justification::centred, 1);
+        g.drawFittedText("Double", right.toNearestInt(), juce::Justification::centred, 1);
     }
 
 private:
@@ -434,7 +460,10 @@ class FlatSliderRow : public juce::Component
 {
 public:
     FlatSliderRow(const juce::String& l, int mn, int mx, int d, bool bi)
-        : label(l), minV(mn), maxV(mx), defV(d), value(d), bipolar(bi) {}
+        : label(l), minV(mn), maxV(mx), defV(d), value(d), bipolar(bi)
+    {
+        setWantsKeyboardFocus(false);
+    }
 
     std::function<void(int)> onChange;
     juce::String valueText;
@@ -453,9 +482,9 @@ public:
 
     void resized() override
     {
-        // Inset track by thumb radius so the knob stays fully inside bounds at min/max.
+        // Label row (~15), gap (~5), then track — uniform title-to-slider spacing.
         track = getLocalBounds().toFloat()
-                    .withTrimmedTop(14.0f).withHeight(3.0f)
+                    .withTrimmedTop(20.0f).withHeight(3.0f)
                     .reduced(kSliderThumbR, 0.0f);
     }
 
@@ -466,7 +495,7 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto top = getLocalBounds().removeFromTop(13);
+        auto top = getLocalBounds().removeFromTop(15);
         g.setFont(inspectorFont());
         g.setColour(t.rowLabel);
         g.drawText(label, top, juce::Justification::centredLeft);
@@ -643,7 +672,8 @@ public:
     void addRow(juce::Component* c, int h = kRowMinH)
     {
         rows.push_back({ c, h });
-        addAndMakeVisible(c);
+        addChildComponent(c);
+        c->setVisible(open);
     }
 
     void setOpen(bool o)
@@ -694,18 +724,12 @@ public:
         auto header = getLocalBounds().withTrimmedTop(kSectionPadT).removeFromTop(kSectionHeaderH);
         header = header.reduced(kSectionPadH, 0);
 
-        auto chev = header.removeFromLeft(12).toFloat();
+        auto chev = header.removeFromLeft(14).toFloat().withSizeKeepingCentre(12.0f, 12.0f);
         header.removeFromLeft(4);
         if (open)
             drawCaretDown(g, chev, t.chevron);
         else
-        {
-            juce::Path p;
-            const float cx = chev.getCentreX(), cy = chev.getCentreY();
-            p.addTriangle(cx - 3.5f, cy - 2.0f, cx + 3.5f, cy, cx - 3.5f, cy + 2.0f);
-            g.setColour(t.chevron);
-            g.fillPath(p);
-        }
+            drawCaretRight(g, chev, t.chevron);
 
         g.setFont(inspectorFont(true));
         g.setColour(t.headerText);
@@ -715,7 +739,7 @@ public:
     }
 
     juce::String title;
-    bool open = true;
+    bool open = false;
     std::function<void()> onToggle;
 
     struct Row { juce::Component* comp; int h; };

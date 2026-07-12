@@ -101,7 +101,8 @@ private:
         juce::File file;
     };
     std::vector<DisplayRow> displayRows;
-    int browseMode = 0;   // 0 folder, 1 starred, 2 search
+    int browseMode = 0;   // 0 folder, 2 search
+    bool starredFilter = false;
     BrowserSearch activeSearch;
     int activeSavedSearchIdx = -1;
     int selectedIdx = -1;

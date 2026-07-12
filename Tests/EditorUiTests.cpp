@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "BrowserPanels.h"
+#include "EffectsInspectorWidgets.h"
 #include "TestHelpers.h"
 #include <catch2/catch_approx.hpp>
 
@@ -16,6 +17,18 @@ juce::Component* findById(juce::Component* root, const juce::String& id)
         if (auto* found = findById(root->getChildComponent(i), id))
             return found;
     return nullptr;
+}
+
+void openAncestorSection(juce::Component* c)
+{
+    for (auto* p = c; p != nullptr; p = p->getParentComponent())
+        if (auto* sec = dynamic_cast<fx::Section*>(p))
+        {
+            sec->setOpen(true);
+            if (auto* parent = sec->getParentComponent())
+                parent->resized();
+            return;
+        }
 }
 
 juce::File makeLeadBarFolder(const juce::String& name)
@@ -36,6 +49,11 @@ TEST_CASE("Trim button trims and restores through the real editor UI", "[editoru
 {
     juce::ScopedJuceInitialiser_GUI gui;
 
+    // Keep content scale at 1.0 so hit-testing matches component bounds.
+    tweaks().size.store((int) ContentSize::Medium);
+    tweaks().appearance.store((int) Appearance::Light);
+    tweaks().density.store((int) Density::Compact);
+
     const auto dir = makeLeadBarFolder("MidiBrowserUiTest");
     const auto path = dir.getChildFile("lead.mid").getFullPathName();
 
@@ -51,6 +69,9 @@ TEST_CASE("Trim button trims and restores through the real editor UI", "[editoru
 
     auto* trimComp = findById(ed.get(), "btnTrim");
     REQUIRE(trimComp != nullptr);
+    openAncestorSection(trimComp);
+    ed->resized();
+
     auto* trim = dynamic_cast<juce::Button*>(trimComp);
     REQUIRE(trim != nullptr);
     REQUIRE(trim->isVisible());

@@ -29,7 +29,7 @@ public:
     void setPitchLocked(bool locked);
     void setHasClip(bool has);
     void setClipRoot(int rootPc);
-    void setTrimState(bool active, bool enabled, const juce::String& label);
+    void setTrimState(bool active, bool enabled, const juce::String& label = {});
 
     std::function<void(const GrooveParams&)> onGrooveChanged;
     std::function<void(const ClipEdit&)> onEditChanged;
@@ -64,7 +64,7 @@ private:
 
     fx::TempoToggle tempoToggle;
     fx::InlineRow tempoRow;
-    fx::FlatTextButton btnTrim { "Trim" };
+    fx::FlatSwitch trimSwitch;
 
     fx::FlatSliderRow swing;
     fx::FlatPopup swingStylePopup;

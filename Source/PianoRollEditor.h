@@ -24,12 +24,14 @@ struct PitchRowMap
     void fit(const std::vector<RollNote>& notes, float height, int rootPc, int minRange = 16);
 };
 
-/** Read-only compact roll for the browser preview strip. */
+/** Read-only compact roll for the browser preview strip — mirrors the editor
+    piano-roll look (keyboard gutter, scale shading, beat grid, notes). */
 class PianoRollMini : public juce::Component
 {
 public:
     void setNotes(std::vector<RollNote> resolvedGrooved, int bars, const GrooveParams& groove,
-                  int rootPc = 0, std::vector<RollNote> frameNotes = {});
+                  int rootPc = 0, std::vector<RollNote> frameNotes = {},
+                  Mode mode = Mode::Ionian, int divisionSteps = 4);
     void setPlayheadStep(double step, bool playing);
     void setTimeStretch(double stretch);
     void paint(juce::Graphics&) override;
@@ -40,9 +42,12 @@ private:
     GrooveParams knobs;
     int bars = 1;
     int rootPc = 0;
+    Mode mode = Mode::Ionian;
+    int divisionSteps = 4;
     double playheadStep = 0.0;
     bool playing = false;
     double timeStretch = 1.0;
+    static constexpr float kGutterW = 28.0f;
 };
 
 // Cupertino editor: clip header · toolbar · roll · velocity lane.
@@ -216,6 +221,7 @@ private:
 
     // ── state ──
     bool hasClip = false;
+    bool pendingScrollToContent = false;
     StepClip clip;
     ClipEdit edit;
     GrooveParams groove;
@@ -251,7 +257,7 @@ private:
     IconBtn btnLock { icons::lockOpen, "Lock pitch edits while browsing" };
     IconBtn btnRevert { icons::undo, "Revert all edits" };
     ChipBtn btnTrim { "Trim", icons::scissors };
-    ChipBtn btnFold { "Fold", icons::foldRows };
+    ChipBtn btnFold { "Notes in Key", icons::foldRows };
     IconBtn btnZoomOut { icons::zoomOut, "Zoom out" };
     IconBtn btnZoomIn { icons::zoomIn, "Zoom in" };
     ChipBtn selBadge { "0 sel" };
@@ -265,9 +271,11 @@ private:
     bool velocityOpen = false;
     ScalePanel scalePanel { *this };
 
-    static constexpr int stripH = 46;
-    static constexpr int toolbarH = 36;
+    static constexpr int stripH = 0;
+    static constexpr int toolbarH = 32;
     static constexpr int gutterW = 56;
+
+    juce::Rectangle<int> zoomLabelBounds, gridLabelBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PianoRollEditor)
 };

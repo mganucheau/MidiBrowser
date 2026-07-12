@@ -102,7 +102,13 @@ TransportBar::TransportBar()
     {
         b.ghost = true;
         b.iconScale = kHeaderIconScale;
+        b.setWantsKeyboardFocus(false);
     };
+
+    prep(btnMore);
+    btnMore.setTooltip("Settings");
+    btnMore.onClick = [this] { if (onOpenSettings) onOpenSettings(); };
+    addAndMakeVisible(btnMore);
 
     prep(btnPlay);
     btnPlay.onClick = [this] { if (onPlayPause) onPlayPause(); };
@@ -233,14 +239,20 @@ void TransportBar::resized()
     auto r = getLocalBounds().reduced(0, 8);
     const int btn = 28;
     const int gap = 6;
-    const int titleW = 108;
+    const int brandPad = 10;
 
     auto mid = [&](juce::Rectangle<int> a, int h)
     {
         return a.withSizeKeepingCentre(a.getWidth(), h);
     };
 
-    r.removeFromLeft(titleW);
+    // Brand cluster: ⋯ Midi Browser
+    auto brand = r.removeFromLeft(148);
+    brand.removeFromLeft(brandPad);
+    btnMore.setBounds(mid(brand.removeFromLeft(btn), btn));
+    brand.removeFromLeft(2);
+    titleBounds = brand;
+
     r.removeFromRight(kTitlePad);
 
     // Right cluster: editor · effects
@@ -278,7 +290,7 @@ void TransportBar::paint(juce::Graphics& g)
 
     g.setColour(colours::text());
     g.setFont(uiFont(13.0f, true));
-    g.drawText("MidiBrowser", kTitlePad, 0, 100, getHeight(), juce::Justification::centredLeft);
+    g.drawText("Midi Browser", titleBounds, juce::Justification::centredLeft, false);
 }
 
 } // namespace pflow

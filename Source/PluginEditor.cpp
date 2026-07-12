@@ -94,6 +94,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.onToggleEditor = [this] { toggleEditorFold(); };
     transport.onToggleEffects = [this] { toggleEffectsFold(); };
     transport.onDragToDaw = [this] { startDragExport(); };
+    transport.onOpenSettings = [this] { showTweaksMenu(); };
     transport.setSynced(processorRef.syncToHost.load());
     transport.setFreeBpm(processorRef.freeBpm.load());
     transport.setBpmMultiplier(processorRef.bpmMultiplier.load());
@@ -115,11 +116,16 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     };
     sidebar.onAddCurrent = [this]
     {
-        if (rootDir.isDirectory())
-        {
-            processorRef.addSavedBrowserDir(rootDir.getFullPathName());
-            refreshSidebar();
-        }
+        juce::File dir = rootDir;
+        if (!dir.isDirectory() && processorRef.lastBrowserDir.isNotEmpty())
+            dir = juce::File(processorRef.lastBrowserDir);
+        if (!dir.isDirectory())
+            return;
+        processorRef.addSavedBrowserDir(dir.getFullPathName());
+        refreshSidebar();
+        // Keep the saved list visible.
+        if (sidebar.isCollapsed())
+            sidebar.setCollapsed(false);
     };
     sidebar.onRemoveDir = [this](const juce::String& path)
     {
@@ -128,8 +134,38 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     };
     sidebar.onShowStarred = [this]
     {
-        setBrowseMode(1);
-        loadStarredClips();
+        starredFilter = !starredFilter;
+        sidebar.setStarredFilter(starredFilter);
+        // Stay in the current folder; only filter which files are listed.
+        if (browseMode == 1)
+        {
+            setBrowseMode(0);
+            if (rootDir.isDirectory())
+                rescanFolder(true);
+            else
+                rebuildEntries();
+            return;
+        }
+        rebuildEntries();
+        if (selectedIdx >= 0 && displayForClip(selectedIdx) < 0)
+        {
+            int nextSel = -1;
+            for (const auto& row : displayRows)
+                if (!row.isDirectory) { nextSel = row.clipIndex; break; }
+            selectedIdx = -1;
+            if (nextSel >= 0)
+                selectIndex(nextSel);
+            else
+            {
+                rollEditor.clearClip();
+                syncEffectsInspector();
+                processorRef.setPreviewState({}, false, false, false);
+            }
+        }
+        else if (const int d = displayForClip(selectedIdx); d >= 0)
+        {
+            fileList.setSelectedIndex(d, juce::dontSendNotification);
+        }
     };
     sidebar.onShowSearch = [this] { sidebar.setSearchFormOpen(!sidebar.isSearchFormOpen()); };
     sidebar.onRunSearch = [this](const BrowserSearch& s) { runSearchAsync(s); };
@@ -153,18 +189,6 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         refreshSidebar();
     };
     sidebar.onSaveCurrentSearch = [this] { saveCurrentSearch(); };
-    sidebar.onOpenTweaks = [this] { showTweaksMenu(); };
-    sidebar.onToggleAppearance = [this]
-    {
-        auto& t = tweaks();
-        t.appearance.store(usesDarkAppearance() ? (int) Appearance::Light
-                                                : (int) Appearance::Dark);
-        lnf.refreshColours();
-        sendLookAndFeelChange();
-        sidebar.refreshAppearanceIcon();
-        resized();
-        repaint();
-    };
     sidebar.onCollapsedChanged = [this]
     {
         processorRef.sidebarCollapsed = sidebar.isCollapsed();
@@ -174,29 +198,29 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     content.addAndMakeVisible(sidebar);
 
     // ── File list ──
-    fileList.onSelect = [this](int displayIdx)
+    fileList.onSelect = [this](int entryIdx)
     {
-        if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
+        if (!juce::isPositiveAndBelow(entryIdx, (int) displayRows.size()))
             return;
-        const auto& row = displayRows[(size_t) displayIdx];
+        const auto& row = displayRows[(size_t) entryIdx];
         if (row.isDirectory)
             return;   // highlight only; enter via Right / click
         selectIndex(row.clipIndex);
     };
-    fileList.onPlayRow = [this](int displayIdx)
+    fileList.onPlayRow = [this](int entryIdx)
     {
-        if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
+        if (!juce::isPositiveAndBelow(entryIdx, (int) displayRows.size()))
             return;
-        const auto& row = displayRows[(size_t) displayIdx];
+        const auto& row = displayRows[(size_t) entryIdx];
         if (row.isDirectory) return;
         selectIndex(row.clipIndex);
         processorRef.previewArmed.store(true);
     };
-    fileList.onToggleStar = [this](int displayIdx)
+    fileList.onToggleStar = [this](int entryIdx)
     {
-        if (!juce::isPositiveAndBelow(displayIdx, (int) displayRows.size()))
+        if (!juce::isPositiveAndBelow(entryIdx, (int) displayRows.size()))
             return;
-        const auto& row = displayRows[(size_t) displayIdx];
+        const auto& row = displayRows[(size_t) entryIdx];
         if (row.isDirectory || row.clipIndex < 0) return;
         processorRef.toggleStarred(clips[(size_t) row.clipIndex].filePath);
         rebuildEntries();
@@ -208,8 +232,9 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (browseMode == 0)
             enterParentFolder();
     };
-    fileList.onEnterFolder = [this](int displayIdx) { enterFolderAtDisplay(displayIdx); };
+    fileList.onEnterFolder = [this](int entryIdx) { enterFolderAtDisplay(entryIdx); };
     fileList.onDragFile = [this](const juce::File& f) { startDragOriginalFile(f); };
+    fileList.onEmptyOpenFolder = [this] { chooseFolder(); };
     content.addAndMakeVisible(fileList);
 
     content.addAndMakeVisible(previewHeader);
@@ -221,7 +246,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (const auto* clip = selectedClip())
         {
             processorRef.editFor(clip->filePath) = e;
-            if (processorRef.editLock)
+            if (processorRef.effectsLock || processorRef.editLock)
             {
                 applyPitchLock(e, processorRef.lockedEdit);
                 processorRef.lockAutoTrim = e.hasTrim();
@@ -262,8 +287,11 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (const auto* clip = selectedClip())
         {
             processorRef.editFor(clip->filePath) = e;
-            if (processorRef.editLock)
+            if (processorRef.effectsLock || processorRef.editLock)
+            {
                 applyPitchLock(e, processorRef.lockedEdit);
+                processorRef.lockAutoTrim = e.hasTrim();
+            }
             rollEditor.setClip(*clip, e, selectedGroove());
             refreshEntryMeta(selectedIdx);
             pushPreviewToProcessor();
@@ -273,13 +301,18 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     effectsInspector.onEffectsLockToggled = [this](bool locked)
     {
         processorRef.effectsLock = locked;
+        processorRef.editLock = locked;
         if (locked)
         {
             processorRef.lockedGroove = selectedGroove();
+            applyPitchLock(selectedEdit(), processorRef.lockedEdit);
+            processorRef.lockAutoTrim = selectedEdit().hasTrim();
         }
         else
         {
             processorRef.lockedGroove = GrooveParams();
+            processorRef.lockedEdit = ClipEdit();
+            processorRef.lockAutoTrim = false;
             processorRef.clipGrooves.clear();
             if (const auto* clip = selectedClip())
             {
@@ -351,7 +384,6 @@ void MidiBrowserEditor::darkModeSettingChanged()
         return;
     lnf.refreshColours();
     sendLookAndFeelChange();
-    sidebar.refreshAppearanceIcon();
     repaint();
 }
 
@@ -557,26 +589,23 @@ void MidiBrowserEditor::saveCurrentSearch()
     if (browseMode != 2)
         return;
 
-    auto dialog = std::make_shared<juce::AlertWindow>("Save search",
-        "Name this search:", juce::AlertWindow::NoIcon);
-    dialog->addTextEditor("name",
-        activeSearch.query.isNotEmpty() ? activeSearch.query : "Search", "Name");
-    dialog->addButton("Save", 1);
-    dialog->addButton("Cancel", 0);
+    SavedSearchEntry entry;
+    entry.search = activeSearch;
 
-    dialog->enterModalState(true, juce::ModalCallbackFunction::create(
-        [this, dialog](int result)
-        {
-            if (result != 1) return;
-            SavedSearchEntry entry;
-            entry.name = dialog->getTextEditorContents("name").trim();
-            if (entry.name.isEmpty())
-                entry.name = "Search";
-            entry.search = activeSearch;
-            processorRef.addSavedSearch(entry);
-            activeSavedSearchIdx = (int) processorRef.savedSearches.size() - 1;
-            refreshSidebar();
-        }));
+    juce::StringArray parts;
+    if (activeSearch.query.isNotEmpty())
+        parts.add(activeSearch.query);
+    if (activeSearch.bpm > 0.0)
+        parts.add(juce::String(activeSearch.bpm, 0) + " BPM");
+    if (activeSearch.keyRoot >= 0 && activeSearch.keyRoot < 12)
+        parts.add(kNoteNames[(size_t) activeSearch.keyRoot]);
+    if (activeSearch.bars > 0)
+        parts.add(juce::String(activeSearch.bars) + " bars");
+    entry.name = parts.isEmpty() ? "Search" : parts.joinIntoString(" · ");
+
+    processorRef.addSavedSearch(entry);
+    activeSavedSearchIdx = (int) processorRef.savedSearches.size() - 1;
+    refreshSidebar();
 }
 
 void MidiBrowserEditor::rebuildEntries()
@@ -604,6 +633,8 @@ void MidiBrowserEditor::rebuildEntries()
     {
         const auto& clip = clips[(size_t) i];
         const bool starred = processorRef.isStarred(clip.filePath);
+        if (starredFilter && !starred)
+            continue;
         const bool edited = processorRef.editLock
                                 && !editIsClean(processorRef.editFor(clip.filePath));
         entries.push_back(entryForClip(clip, juce::File(clip.filePath), edited, starred));
@@ -708,7 +739,8 @@ void MidiBrowserEditor::selectIndex(int index)
         return;
 
     // Unlocked pitch edits are ephemeral when leaving a file.
-    if (selectedIdx >= 0 && selectedIdx != index && !processorRef.editLock
+    if (selectedIdx >= 0 && selectedIdx != index
+        && !(processorRef.editLock || processorRef.effectsLock)
         && juce::isPositiveAndBelow(selectedIdx, (int) clips.size()))
     {
         const auto& prev = clips[(size_t) selectedIdx];
@@ -730,7 +762,7 @@ void MidiBrowserEditor::selectIndex(int index)
 
     const auto& clip = clips[(size_t) index];
 
-    if (processorRef.editLock)
+    if (processorRef.editLock || processorRef.effectsLock)
     {
         auto& e = processorRef.editFor(clip.filePath);
         applyPitchLock(processorRef.lockedEdit, e);
@@ -786,7 +818,7 @@ void MidiBrowserEditor::refreshEntryMeta(int index)
 
     const auto& clip = clips[(size_t) index];
     // Only show the edited dot for locked (persisted) pitch edits.
-    const bool edited = processorRef.editLock
+    const bool edited = (processorRef.editLock || processorRef.effectsLock)
                             && !editIsClean(processorRef.editFor(clip.filePath));
     fileList.updateEntry(displayIdx,
                          entryForClip(clip, juce::File(clip.filePath), edited,
@@ -879,7 +911,7 @@ void MidiBrowserEditor::updateMiniPreview()
     // (fitting to resolved notes would re-center and hide transposition).
     const int rootPc = edit.root >= 0 ? edit.root : (clip->root >= 0 ? clip->root : 0);
     miniRoll.setNotes(applyGroove(resolved.notes, groove), resolved.bars, groove,
-                      rootPc, clip->notes);
+                      rootPc, clip->notes, edit.mode, 4);
     const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
     miniRoll.setTimeStretch(stretch);
     previewHeader.repaint();
@@ -929,25 +961,25 @@ void MidiBrowserEditor::applyLayoutState()
 {
     const bool edOpen = processorRef.editorOpen;
     const bool fxOpen = processorRef.effectsOpen;
-    const float s = contentScale();
     transport.setEditorOpen(edOpen);
     transport.setEffectsOpen(fxOpen);
     if (getHeight() > 0)
         lastWindowH = getHeight();
 
+    // Layout sizes already include contentScale() — no AffineTransform (breaks hit-testing).
     const int side = sidebar.idealWidth();
-    const int table = metrics::fileTableW;
-    const int logicalW = side + table
-                         + (edOpen ? metrics::editorPaneW : 0)
-                         + (fxOpen ? metrics::effectsPaneW : 0);
-    const int w = juce::roundToInt((float) logicalW * s);
-    const int minW = juce::roundToInt((float) (side + metrics::browserMinWidth
-                                               + (edOpen ? metrics::openRollMinW : 0)
-                                               + (fxOpen ? metrics::effectsPaneW : 0)) * s);
-    setResizeLimits(minW, juce::roundToInt(420 * s), w, 2000);
+    const int table = metrics::fileTableWidth();
+    const int w = side + table
+                  + (edOpen ? metrics::editorPaneWidth() : 0)
+                  + (fxOpen ? metrics::effectsPaneWidth() : 0);
+    const int minW = side + metrics::browserMinWidthScaled()
+                     + (edOpen ? metrics::openRollMinWidth() : 0)
+                     + (fxOpen ? metrics::effectsPaneWidth() : 0);
+    setResizeLimits(minW, metrics::scaled(420), w, 2000);
 
-    const int previewExtra = processorRef.previewOpen ? metrics::miniRollH() + 34 : 0;
-    const int targetH = juce::jmax(juce::roundToInt((460 + previewExtra) * s), lastWindowH);
+    const int previewExtra = processorRef.previewOpen
+                                 ? metrics::miniRollH() + metrics::scaled(34) : 0;
+    const int targetH = juce::jmax(metrics::scaled(460) + previewExtra, lastWindowH);
 
     layoutAnimFromW = getWidth() > 0 ? getWidth() : w;
     layoutTargetW = w;
@@ -961,12 +993,8 @@ void MidiBrowserEditor::applyLayoutState()
 
 void MidiBrowserEditor::resized()
 {
-    const float s = contentScale();
     content.setTransform({});
-    content.setBounds(0, 0, juce::roundToInt((float) getWidth() / s),
-                      juce::roundToInt((float) getHeight() / s));
-    if (std::abs(s - 1.0f) > 1.0e-4f)
-        content.setTransform(juce::AffineTransform::scale(s));
+    content.setBounds(getLocalBounds());
     layoutContent();
 }
 
@@ -988,7 +1016,7 @@ void MidiBrowserEditor::layoutContent()
     auto row = r;
     sidebar.setBounds(row.removeFromLeft(sidebar.idealWidth()));
 
-    const int browserW = metrics::fileTableW;
+    const int browserW = metrics::fileTableWidth();
     auto browserCol = row.removeFromLeft(browserW);
 
     int paneX = sidebar.getWidth() + browserW;
@@ -997,12 +1025,12 @@ void MidiBrowserEditor::layoutContent()
     if (edOpen)
     {
         // Full-bleed piano roll — no card margins or rounded chrome.
-        rollEditor.setBounds(paneX, paneY, metrics::editorPaneW, paneH);
-        paneX += metrics::editorPaneW;
+        rollEditor.setBounds(paneX, paneY, metrics::editorPaneWidth(), paneH);
+        paneX += metrics::editorPaneWidth();
     }
     if (fxOpen)
-        effectsInspector.setBounds(paneX, paneY, metrics::effectsPaneW, paneH);
-    const int previewHeaderH = 26;
+        effectsInspector.setBounds(paneX, paneY, metrics::effectsPaneWidth(), paneH);
+    const int previewHeaderH = metrics::scaled(26);
 
     if (showPreview && previewOpen)
     {
@@ -1151,7 +1179,6 @@ void MidiBrowserEditor::showTweaksMenu()
     {
         lnf.refreshColours();
         sendLookAndFeelChange();
-        sidebar.refreshAppearanceIcon();
         applyLayoutState();
         resized();
         repaint();
@@ -1172,6 +1199,7 @@ void MidiBrowserEditor::refreshSidebar()
                          rootDir.isDirectory() ? rootDir.getFullPathName() : juce::String());
     sidebar.setSavedSearches(processorRef.savedSearches, activeSavedSearchIdx);
     sidebar.setBrowseMode(browseMode);
+    sidebar.setStarredFilter(starredFilter);
 }
 
 // ── ticking ──────────────────────────────────────────────────────────────────
@@ -1221,19 +1249,25 @@ bool MidiBrowserEditor::keyPressed(const juce::KeyPress& key)
         return true;
     }
 
-    if (rollEditor.isVisible() && rollEditor.keyPressed(key))
-        return true;
-
-    // Map page/arrow keys through the display list → clip indices.
+    // Map page/arrow keys through the file list before the piano roll, so
+    // browsing keeps working after interacting with effects/combos.
     if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey
         || key == juce::KeyPress::pageUpKey || key == juce::KeyPress::pageDownKey
         || key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey
         || key == juce::KeyPress::returnKey)
     {
-        if (!fileList.hasKeyboardFocus(true))
-            fileList.grabBrowseFocus();
+        // Shift+arrows nudge selected notes in the open editor.
+        if (rollEditor.isVisible() && rollEditor.hasSelection() && key.getModifiers().isShiftDown())
+        {
+            if (rollEditor.keyPressed(key))
+                return true;
+        }
+        fileList.grabBrowseFocus();
         return fileList.keyPressed(key);
     }
+
+    if (rollEditor.isVisible() && rollEditor.keyPressed(key))
+        return true;
 
     if (!fileList.hasKeyboardFocus(true))
         fileList.grabBrowseFocus();
