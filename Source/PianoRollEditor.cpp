@@ -1007,17 +1007,22 @@ void PianoRollEditor::layoutScaleControls(juce::Rectangle<int> strip)
 
 void PianoRollEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::panel());
+    auto bounds = getLocalBounds().toFloat();
+    juce::Path roundClip;
+    roundClip.addRoundedRectangle(bounds, metrics::cornerRadius);
+    g.reduceClipRegion(roundClip);
+
+    g.setColour(colours::panel());
+    g.fillRect(getLocalBounds());
     g.setColour(colours::line());
-    g.fillRect(getLocalBounds().removeFromLeft(1));
     g.fillRect(juce::Rectangle<int>(0, stripH - 1, getWidth(), 1));
     g.fillRect(juce::Rectangle<int>(0, stripH + toolbarH - 1, getWidth(), 1));
 
     if (hasClip)
     {
-        auto header = juce::Rectangle<int>(10, 0, getWidth() - 50, stripH);
+        auto header = juce::Rectangle<int>(12, 0, getWidth() - 52, stripH);
         g.setColour(colours::text());
-        g.setFont(uiFont(14.5f, true));
+        g.setFont(uiFont(13.0f, true));
         g.drawText(clip.name, header.removeFromTop(22), juce::Justification::centredLeft, true);
 
         juce::String meta;
@@ -1029,9 +1034,16 @@ void PianoRollEditor::paint(juce::Graphics& g)
         meta << resolved.bars << " bars";
         if (!editIsClean(edit)) meta << " · edited";
         g.setColour(colours::text3());
-        g.setFont(uiFont(11.5f, false));
+        g.setFont(uiFont(11.0f, false));
         g.drawText(meta, header, juce::Justification::centredLeft, true);
     }
+}
+
+void PianoRollEditor::paintOverChildren(juce::Graphics& g)
+{
+    g.setColour(colours::line());
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f),
+                           metrics::cornerRadius, 0.5f);
 }
 
 // ── RollContent ──────────────────────────────────────────────────────────────

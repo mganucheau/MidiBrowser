@@ -58,6 +58,12 @@ int  noteNameIndex(const juce::String& name);   // "C"..."B" -> 0..11, else -1
     Searches ±6 semitones; on distance ties the lower candidate wins. */
 int fitToScale(int midi, int rootPc, Mode mode);
 
+/** Scale degree label for a pitch class in key/mode, e.g. "3rd". Empty if out of scale. */
+juce::String scaleDegreeLabel(int midi, int rootPc, Mode mode);
+
+/** Note + degree annotation for the inspector, e.g. "B4 (3rd)". */
+juce::String pitchScaleAnnotation(int midi, int rootPc, Mode mode);
+
 // ── Edit record (one per clip; the clip itself is never touched) ─────────────
 
 struct NoteMove { int dPitch = 0; int dStep = 0; };

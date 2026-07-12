@@ -74,6 +74,26 @@ int fitToScale(int midi, int rootPc, Mode mode)
     return best;
 }
 
+juce::String scaleDegreeLabel(int midi, int rootPc, Mode mode)
+{
+    if (rootPc < 0) return {};
+    static const char* kOrd[] { "1st", "2nd", "3rd", "4th", "5th", "6th", "7th" };
+    const int pc = wrapPc(midi);
+    const auto& iv = modeIntervals(mode);
+    for (int deg = 0; deg < 7; ++deg)
+        if (wrapPc(rootPc + iv[(size_t) deg]) == pc)
+            return kOrd[deg];
+    return {};
+}
+
+juce::String pitchScaleAnnotation(int midi, int rootPc, Mode mode)
+{
+    const auto note = pitchName(midi);
+    if (rootPc < 0) return note;
+    const auto deg = scaleDegreeLabel(midi, rootPc, mode);
+    return deg.isNotEmpty() ? note + " (" + deg + ")" : note;
+}
+
 void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
 {
     target.octave = locked.octave;

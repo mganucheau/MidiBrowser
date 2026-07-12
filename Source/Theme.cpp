@@ -21,59 +21,211 @@ juce::Colour rgba(juce::uint8 r, juce::uint8 g, juce::uint8 b, float a)
 
 } // namespace
 
+bool usesDarkAppearance()
+{
+    switch (currentAppearance())
+    {
+        case Appearance::Light: return false;
+        case Appearance::Dark:  return true;
+        default: break;
+    }
+#if JUCE_MAC
+    return juce::Desktop::getInstance().isDarkModeActive();
+#else
+    return false;
+#endif
+}
+
 const ThemeTokens& themeTokens()
 {
-    // Cupertino light palette (handoff §2).
-    static const ThemeTokens cupertino {
-        juce::Colour(0xfff5f4f2),   // bg (window)
+    // macOS light — independently tuned (not an invert of dark).
+    static const ThemeTokens light {
+        juce::Colour(0xfff5f5f7),   // bg (window)
         juce::Colour(0xffffffff),   // panel (content)
-        juce::Colour(0xfffbfaf9),   // panel2
-        juce::Colour(0xffece9e5),   // elev
-        juce::Colour(0xffd8d5d0),   // line
-        juce::Colour(0xffcfccc6),   // lineStrong
-        juce::Colour(0xffe5e2dd),   // lineSoft
+        juce::Colour(0xfff5f5f7),   // panel2
+        juce::Colour(0xffe8e8ed),   // elev
+        rgba(0, 0, 0, 0.08f),       // line
+        rgba(0, 0, 0, 0.15f),       // lineStrong
+        rgba(0, 0, 0, 0.06f),       // lineSoft
         juce::Colour(0xff1d1d1f),   // text
-        juce::Colour(0xff58585c),   // text2
-        juce::Colour(0xff8e8e93),   // text3
+        juce::Colour(0xff6e6e73),   // text2
+        juce::Colour(0xffaeaeb2),   // text3
         juce::Colour(0xfffbfaf9),   // rollBg
-        juce::Colour(0xfff4f2ef),   // rollShade (horizontal)
-        juce::Colour(0xffefedea),   // rollRowline (vertical grid)
+        juce::Colour(0xfff4f2ef),   // rollShade
+        juce::Colour(0xffefedea),   // rollRowline
         rgba(0, 0, 0, 0.12f),       // rollNoteEdge
         rgba(0, 0, 0, 0.18f),       // rollGhost
         juce::Colour(0xffffffff),   // kbWhite
         juce::Colour(0xffece9e4),   // kbBlack
         juce::Colour(0xffece9e5),   // toolbarTop
         juce::Colour(0xffe3e0db),   // toolbarBot
-        rgba(236, 233, 229, 0.92f), // sidebarTop
-        rgba(226, 223, 218, 0.92f), // sidebarBot
+        rgba(245, 245, 247, 0.94f), // sidebarTop
+        rgba(232, 232, 237, 0.94f), // sidebarBot
         juce::Colour(0xfff7f6f4),   // tableAlt
         juce::Colour(0xffc9cfd8),   // desktopTop
         juce::Colour(0xffaeb6c2),   // desktopBot
-        rgba(0, 0, 0, 0.22f),       // windowBorder
+        rgba(0, 0, 0, 0.18f),       // windowBorder
     };
-    return cupertino;
+    // macOS dark — more separation between surface levels (HIG / SwiftUI).
+    static const ThemeTokens dark {
+        juce::Colour(0xff1c1c1e),   // bg
+        juce::Colour(0xff2c2c2e),   // panel
+        juce::Colour(0xff3a3a3c),   // panel2
+        juce::Colour(0xff48484a),   // elev
+        rgba(255, 255, 255, 0.08f),
+        rgba(255, 255, 255, 0.14f),
+        rgba(255, 255, 255, 0.05f),
+        juce::Colour(0xfff5f5f7),   // text
+        juce::Colour(0xff98989d),   // text2
+        juce::Colour(0xff636366),   // text3
+        juce::Colour(0xff2c2c2e),   // rollBg
+        juce::Colour(0xff333335),   // rollShade
+        rgba(255, 255, 255, 0.06f), // rollRowline
+        rgba(255, 255, 255, 0.14f),
+        rgba(255, 255, 255, 0.22f),
+        juce::Colour(0xffe8e8ed),   // kbWhite
+        juce::Colour(0xff48484a),   // kbBlack
+        juce::Colour(0xff323234),   // toolbarTop
+        juce::Colour(0xff2a2a2c),   // toolbarBot
+        rgba(44, 44, 46, 0.96f),    // sidebarTop
+        rgba(36, 36, 38, 0.96f),    // sidebarBot
+        juce::Colour(0xff333335),   // tableAlt
+        juce::Colour(0xff1c1c1e),   // desktopTop
+        juce::Colour(0xff0d0d0f),   // desktopBot
+        rgba(255, 255, 255, 0.12f),
+    };
+    return usesDarkAppearance() ? dark : light;
 }
 
 const AccentTokens& accentTokens()
 {
-    static const AccentTokens blue {
-        juce::Colour(0xff0a63d8),           // accent
+    static const AccentTokens lightBlue {
+        juce::Colour(0xff007aff),           // accent (system blue light)
         juce::Colour(0xffffffff),           // ink
-        rgba(10, 99, 216, 0.14f),           // soft
-        rgba(10, 99, 216, 0.42f),           // line
-        juce::Colour(0xff4d8fff),           // bright
+        rgba(0, 122, 255, 0.14f),           // soft
+        rgba(0, 122, 255, 0.42f),           // line
+        juce::Colour(0xff409cff),           // bright
     };
-    return blue;
+    static const AccentTokens darkBlue {
+        juce::Colour(0xff0a84ff),           // accent (system blue dark)
+        juce::Colour(0xffffffff),
+        rgba(10, 132, 255, 0.18f),
+        rgba(10, 132, 255, 0.45f),
+        juce::Colour(0xff64b5ff),
+    };
+    return usesDarkAppearance() ? darkBlue : lightBlue;
+}
+
+const InspectorTokens& inspectorTokens()
+{
+    static const InspectorTokens light {
+        juce::Colour(0xfff6f5f3),   // panelBg — secondary grouped background
+        juce::Colour(0xff007aff),   // accent
+        juce::Colour(0xff1d1d1f),   // headerText
+        juce::Colour(0xff3c3c3e),   // rowLabel
+        juce::Colour(0xff8e8e93),   // valueText
+        juce::Colour(0xffe5e2dd),   // divider
+        juce::Colour(0xffd8d5cf),   // sliderTrack
+        juce::Colours::white,       // sliderKnob
+        juce::Colours::white,       // controlSurface (raised)
+        juce::Colour(0xfffbfbfa),   // controlSurfaceHi
+        juce::Colour(0xffe5e2dd),   // controlSeparator
+        juce::Colour(0xffd1cdc7),   // switchOffTrack
+        juce::Colour(0xffa3a29e),   // chevron
+        juce::Colour(0xff58585c),   // segmentText
+        rgba(0, 0, 0, 0.14f),       // controlHairline
+        false,
+    };
+    static const InspectorTokens dark {
+        juce::Colour(0xff2c2c2e),   // panelBg — matches SwiftUI Form sidebar
+        juce::Colour(0xff0a84ff),
+        juce::Colour(0xfff2f2f4),
+        rgba(255, 255, 255, 0.78f),
+        rgba(255, 255, 255, 0.45f),
+        rgba(255, 255, 255, 0.08f),
+        rgba(255, 255, 255, 0.14f),
+        juce::Colour(0xffd4d4d8),
+        rgba(255, 255, 255, 0.11f), // controlSurface (inset translucent)
+        rgba(255, 255, 255, 0.15f),
+        rgba(255, 255, 255, 0.10f),
+        rgba(255, 255, 255, 0.18f),
+        rgba(255, 255, 255, 0.35f),
+        rgba(255, 255, 255, 0.60f),
+        rgba(255, 255, 255, 0.10f),
+        true,
+    };
+    return usesDarkAppearance() ? dark : light;
+}
+
+void drawInspectorControlSurface(juce::Graphics& g, juce::Rectangle<float> r,
+                                 bool over, bool down)
+{
+    const auto& t = inspectorTokens();
+    auto fill = t.controlSurface;
+    if (down) fill = fill.darker(t.dark ? 0.10f : 0.04f);
+    else if (over) fill = t.controlSurfaceHi;
+    g.setColour(fill);
+    g.fillRoundedRectangle(r, metrics::controlRadius);
+
+    g.setColour(t.controlHairline);
+    g.drawRoundedRectangle(r.reduced(0.25f), metrics::controlRadius, 0.5f);
+
+    if (!t.dark)
+    {
+        // Light: raised control — subtle bottom edge (SwiftUI default button).
+        g.setColour(rgba(0, 0, 0, 0.05f));
+        g.drawHorizontalLine((int) r.getBottom() - 0.5f, r.getX() + 1.5f, r.getRight() - 1.5f);
+    }
+    else
+    {
+        // Dark: inset control — inner top highlight.
+        g.setColour(rgba(255, 255, 255, 0.06f));
+        g.drawHorizontalLine((int) r.getY() + 0.5f, r.getX() + 1.5f, r.getRight() - 1.5f);
+    }
+}
+
+void drawInspectorDivider(juce::Graphics& g, juce::Rectangle<int> bounds)
+{
+    g.setColour(inspectorTokens().divider);
+    g.fillRect(bounds.getX(), bounds.getBottom() - 1, bounds.getWidth(), 1);
 }
 
 // ── Fonts (system stack) ─────────────────────────────────────────────────────
 
+// Resolve the San Francisco system font. "-apple-system" is a CSS alias, not a
+// CoreText family name, so JUCE would silently fall back to Helvetica.
+static const juce::String& systemFontFamily(bool display)
+{
+    struct Families
+    {
+        Families()
+        {
+            const auto all = juce::Font::findAllTypefaceNames();
+            text = all.contains("SF Pro Text") ? "SF Pro Text"
+                 : all.contains("Helvetica Neue") ? "Helvetica Neue"
+                 : juce::Font::getDefaultSansSerifFontName();
+            displayFamily = all.contains("SF Pro Display") ? "SF Pro Display" : text;
+            sf = text.startsWith("SF ");
+        }
+        juce::String text, displayFamily;
+        bool sf = false;
+    };
+    static const Families f;
+    return display ? f.displayFamily : f.text;
+}
+
+static bool systemFontIsSF()
+{
+    return systemFontFamily(false).startsWith("SF ");
+}
+
 juce::Font uiFont(float pt, bool semibold)
 {
-    auto opts = juce::FontOptions(pt)
-                    .withStyle(semibold ? "Semibold" : "Regular")
-                    .withName("-apple-system");
-    return juce::Font(opts);
+    // SF Pro Display for large text, SF Pro Text for body (HIG threshold 20pt).
+    const auto& family = systemFontFamily(pt >= 20.0f);
+    const char* style = semibold ? (systemFontIsSF() ? "Semibold" : "Medium")
+                                 : "Regular";
+    return juce::Font(juce::FontOptions(pt).withName(family).withStyle(style));
 }
 
 juce::Font monoFont(float pt, bool semibold)

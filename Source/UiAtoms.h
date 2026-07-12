@@ -37,6 +37,8 @@ namespace icons {
     inline constexpr const char* foldRows      = "fold-rows";
     inline constexpr const char* infinity      = "infinity";
     inline constexpr const char* search        = "search";
+    inline constexpr const char* moon          = "moon";
+    inline constexpr const char* sun           = "sun";
 }
 
 /** Stroke-drawn icon centered in bounds. `px` is the stroke width. */

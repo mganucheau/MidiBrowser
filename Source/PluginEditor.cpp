@@ -67,6 +67,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
 {
     setLookAndFeel(&lnf);
     lnf.refreshColours();
+    juce::Desktop::getInstance().addDarkModeSettingListener(this);
 
     content.onLayout = [this] { layoutContent(); };
     addAndMakeVisible(content);
@@ -93,6 +94,17 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.onToggleEditor = [this] { toggleEditorFold(); };
     transport.onToggleEffects = [this] { toggleEffectsFold(); };
     transport.onDragToDaw = [this] { startDragExport(); };
+    transport.onToggleAppearance = [this]
+    {
+        auto& t = tweaks();
+        t.appearance.store(usesDarkAppearance() ? (int) Appearance::Light
+                                                : (int) Appearance::Dark);
+        lnf.refreshColours();
+        sendLookAndFeelChange();
+        transport.refreshAppearanceIcon();
+        resized();
+        repaint();
+    };
     transport.setSynced(processorRef.syncToHost.load());
     transport.setFreeBpm(processorRef.freeBpm.load());
     transport.setBpmMultiplier(processorRef.bpmMultiplier.load());
@@ -328,8 +340,19 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
 
 MidiBrowserEditor::~MidiBrowserEditor()
 {
+    juce::Desktop::getInstance().removeDarkModeSettingListener(this);
     stopTimer();
     setLookAndFeel(nullptr);
+}
+
+void MidiBrowserEditor::darkModeSettingChanged()
+{
+    if (currentAppearance() != Appearance::System)
+        return;
+    lnf.refreshColours();
+    sendLookAndFeelChange();
+    transport.refreshAppearanceIcon();
+    repaint();
 }
 
 // ── data ─────────────────────────────────────────────────────────────────────
@@ -969,7 +992,10 @@ void MidiBrowserEditor::layoutContent()
     const int paneH = row.getHeight();
     if (edOpen)
     {
-        rollEditor.setBounds(paneX, paneY, metrics::editorPaneW, paneH);
+        // Prototype: editor sits in a padded rounded card.
+        auto card = juce::Rectangle<int>(paneX, paneY, metrics::editorPaneW, paneH)
+                        .reduced(8, 8);
+        rollEditor.setBounds(card);
         paneX += metrics::editorPaneW;
     }
     if (fxOpen)
@@ -993,16 +1019,8 @@ void MidiBrowserEditor::layoutContent()
 
 void MidiBrowserEditor::paint(juce::Graphics& g)
 {
-    g.setGradientFill(juce::ColourGradient(colours::desktopTop(), 0, 0,
-                                           colours::desktopBot(), 0, (float) getHeight(), false));
-    g.fillAll();
-
-    // Window shell
-    auto shell = content.getBounds().toFloat().reduced(0.5f);
-    g.setColour(colours::bg());
-    g.fillRoundedRectangle(shell, metrics::windowRadius);
-    g.setColour(colours::windowBorder());
-    g.drawRoundedRectangle(shell, metrics::windowRadius, 0.5f);
+    // Flat window fill — matches prototype (no desktop chrome behind content).
+    g.fillAll(colours::bg());
 }
 
 // ── tweaks ───────────────────────────────────────────────────────────────────
@@ -1011,6 +1029,12 @@ void MidiBrowserEditor::showTweaksMenu()
 {
     juce::PopupMenu menu;
     auto& tw = tweaks();
+
+    juce::PopupMenu appearanceMenu;
+    appearanceMenu.addItem(400, "System", true, tw.appearance.load() == (int) Appearance::System);
+    appearanceMenu.addItem(401, "Light", true, tw.appearance.load() == (int) Appearance::Light);
+    appearanceMenu.addItem(402, "Dark", true, tw.appearance.load() == (int) Appearance::Dark);
+    menu.addSubMenu("Appearance", appearanceMenu);
 
     juce::PopupMenu densityMenu;
     densityMenu.addItem(300, "Compact", true, tw.density.load() == 0);
@@ -1037,9 +1061,11 @@ void MidiBrowserEditor::showTweaksMenu()
             auto& t = tweaks();
             bool sizeChanged = false;
             if (result >= 500) { t.size.store(result - 500); sizeChanged = true; }
+            else if (result >= 400) t.appearance.store(result - 400);
             else if (result >= 300) t.density.store(result - 300);
             lnf.refreshColours();
             sendLookAndFeelChange();
+            transport.refreshAppearanceIcon();
             if (sizeChanged)
                 applyLayoutState();
             resized();

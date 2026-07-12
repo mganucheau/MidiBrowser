@@ -16,7 +16,8 @@ namespace pflow {
 
 class MidiBrowserEditor : public juce::AudioProcessorEditor,
                           public juce::Timer,
-                          public juce::DragAndDropContainer
+                          public juce::DragAndDropContainer,
+                          private juce::DarkModeSettingListener
 {
 public:
     explicit MidiBrowserEditor(MidiBrowserProcessor&);
@@ -26,6 +27,7 @@ public:
     void resized() override;
     void timerCallback() override;
     bool keyPressed(const juce::KeyPress&) override;
+    void darkModeSettingChanged() override;
 
 private:
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);

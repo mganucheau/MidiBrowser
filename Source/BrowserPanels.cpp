@@ -354,11 +354,19 @@ void FavoritesSidebar::paintRow(juce::Graphics& g, int rowIdx, const juce::Recta
 
     if (isActive || hovered)
     {
-        g.setColour(isActive ? colours::accentSoft() : colours::elev().withAlpha(0.7f));
-        g.fillRoundedRectangle(r.toFloat(), 6.0f);
+        if (isActive)
+        {
+            g.setColour(colours::accent());
+            g.fillRoundedRectangle(r.toFloat(), 7.0f);
+        }
+        else
+        {
+            g.setColour(colours::elev().withAlpha(0.85f));
+            g.fillRoundedRectangle(r.toFloat(), 7.0f);
+        }
     }
 
-    const auto iconCol = isActive ? colours::accent() : colours::text2();
+    const auto iconCol = isActive ? juce::Colours::white : colours::text2();
     const char* icon = icons::folder;
     juce::String label;
     switch (row.kind)
@@ -393,9 +401,12 @@ void FavoritesSidebar::paintRow(juce::Graphics& g, int rowIdx, const juce::Recta
     if (hovered && (row.kind == RowKind::SavedDir || row.kind == RowKind::SavedSearch))
     {
         auto xArea = textArea.removeFromRight(18).toFloat().withSizeKeepingCentre(10.0f, 10.0f);
-        drawIcon(g, icons::x, xArea, removeZone ? colours::text() : colours::text3(), 1.4f);
+        drawIcon(g, icons::x, xArea,
+                 removeZone ? (isActive ? juce::Colours::white : colours::text())
+                            : (isActive ? juce::Colours::white.withAlpha(0.7f) : colours::text3()),
+                 1.4f);
     }
-    g.setColour(isActive ? colours::text() : colours::text2());
+    g.setColour(isActive ? juce::Colours::white : colours::text());
     g.setFont(uiFont(12.5f, isActive));
     g.drawText(label, textArea, juce::Justification::centredLeft, true);
 }
@@ -403,17 +414,18 @@ void FavoritesSidebar::paintRow(juce::Graphics& g, int rowIdx, const juce::Recta
 void FavoritesSidebar::paint(juce::Graphics& g)
 {
     auto b = getLocalBounds().toFloat();
-    g.setGradientFill(juce::ColourGradient(colours::sidebarTop(), 0, 0,
-                                           colours::sidebarBot(), 0, b.getHeight(), false));
+    g.setColour(colours::bg());
     g.fillRect(b);
     g.setColour(colours::line());
     g.fillRect(getLocalBounds().removeFromRight(1));
 
     if (!collapsed)
     {
+        auto headerFont = uiFont(10.0f, true);
+        headerFont.setExtraKerningFactor(0.08f);
         g.setColour(colours::text3());
-        g.setFont(uiFont(10.0f, true));
-        g.drawText("SIDEBAR", metrics::sidebarRailW - 4, 0, 80, kSidebarHeaderH,
+        g.setFont(headerFont);
+        g.drawText("LIBRARY", metrics::sidebarRailW - 4, 0, 100, kSidebarHeaderH,
                    juce::Justification::centredLeft);
     }
 
@@ -426,11 +438,13 @@ void FavoritesSidebar::paint(juce::Graphics& g)
         const auto kind = rows[(size_t) i].kind;
         if (!collapsed)
         {
+            auto sectionFont = uiFont(10.0f, true);
+            sectionFont.setExtraKerningFactor(0.08f);
             if (!drewSaved && kind == RowKind::SavedDir)
             {
                 g.setColour(colours::text3());
-                g.setFont(uiFont(10.0f, true));
-                g.drawText("SAVED", 10, y, getWidth() - 16, kSidebarSectionH,
+                g.setFont(sectionFont);
+                g.drawText("FAVORITES", 10, y, getWidth() - 16, kSidebarSectionH,
                            juce::Justification::centredLeft);
                 y += kSidebarSectionH;
                 drewSaved = true;
@@ -438,8 +452,8 @@ void FavoritesSidebar::paint(juce::Graphics& g)
             if (!drewFav && kind == RowKind::Starred)
             {
                 g.setColour(colours::text3());
-                g.setFont(uiFont(10.0f, true));
-                g.drawText("FAVORITES", 10, y, getWidth() - 16, kSidebarSectionH,
+                g.setFont(sectionFont);
+                g.drawText("STARRED", 10, y, getWidth() - 16, kSidebarSectionH,
                            juce::Justification::centredLeft);
                 y += kSidebarSectionH;
                 drewFav = true;
@@ -447,7 +461,7 @@ void FavoritesSidebar::paint(juce::Graphics& g)
             if (!drewSearch && kind == RowKind::Search)
             {
                 g.setColour(colours::text3());
-                g.setFont(uiFont(10.0f, true));
+                g.setFont(sectionFont);
                 g.drawText("SEARCH", 10, y, getWidth() - 16, kSidebarSectionH,
                            juce::Justification::centredLeft);
                 y += kSidebarSectionH;

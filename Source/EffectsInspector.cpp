@@ -2,324 +2,21 @@
 
 namespace pflow {
 
-namespace {
-
-int tempoStepFromMultiplier(double m)
-{
-    if (m < 0.75) return 0;
-    if (m > 1.5) return 2;
-    return 1;
-}
-
-double multiplierFromTempoStep(int step)
-{
-    switch (step)
-    {
-        case 0: return 0.5;
-        case 2: return 2.0;
-        default: return 1.0;
-    }
-}
-} // namespace
-
-// ── ParamSlider ──────────────────────────────────────────────────────────────
-
-EffectsInspector::ParamSlider::ParamSlider(const juce::String& l, int mn, int mx, int d, bool bi)
-    : label(l), minV(mn), maxV(mx), defV(d), value(d), bipolar(bi)
-{
-}
-
-void EffectsInspector::ParamSlider::setValue(int v, juce::NotificationType notify)
-{
-    v = juce::jlimit(minV, maxV, v);
-    if (v == value) return;
-    value = v;
-    repaint();
-    if (notify != juce::dontSendNotification && onChange)
-        onChange(value);
-}
-
-void EffectsInspector::ParamSlider::resized()
-{
-    auto r = getLocalBounds().toFloat().reduced(0.0f, 6.0f);
-    track = r.withTrimmedTop(18.0f).withHeight(4.0f);
-    track = track.withX(track.getX() + 2.0f).withWidth(track.getWidth() - 4.0f);
-}
-
-void EffectsInspector::ParamSlider::setFromX(float x)
-{
-    const float t = juce::jlimit(0.0f, 1.0f, (x - track.getX()) / juce::jmax(1.0f, track.getWidth()));
-    setValue(minV + (int) std::lround(t * (float) (maxV - minV)));
-}
-
-void EffectsInspector::ParamSlider::mouseDown(const juce::MouseEvent& e) { setFromX(e.position.x); }
-void EffectsInspector::ParamSlider::mouseDrag(const juce::MouseEvent& e) { setFromX(e.position.x); }
-void EffectsInspector::ParamSlider::mouseDoubleClick(const juce::MouseEvent&) { setValue(defV); }
-
-void EffectsInspector::ParamSlider::paint(juce::Graphics& g)
-{
-    auto top = getLocalBounds().removeFromTop(16);
-    g.setFont(uiFont(11.0f, false));
-    g.setColour(colours::text2());
-    g.drawText(label, top, juce::Justification::centredLeft);
-
-    g.setFont(monoFont(11.0f, true));
-    g.setColour(colours::text());
-    const auto text = valueText.isNotEmpty() ? valueText
-                      : grooveValueText({ label.toRawUTF8(), label.toRawUTF8(), minV, maxV, defV }, value);
-    g.drawText(text, top, juce::Justification::centredRight);
-
-    g.setColour(colours::knobTrack());
-    g.fillRoundedRectangle(track, 2.0f);
-
-    const float t = (float) (value - minV) / (float) juce::jmax(1, maxV - minV);
-    const float thumbX = track.getX() + t * track.getWidth();
-
-    if (bipolar)
-    {
-        const float mid = track.getCentreX();
-        g.setColour(colours::accent());
-        g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(
-                                   juce::jmin(mid, thumbX), track.getY(),
-                                   juce::jmax(mid, thumbX), track.getBottom()), 2.0f);
-        g.setColour(colours::lineStrong().withAlpha(0.5f));
-        g.fillRect(mid - 0.5f, track.getY() - 2.0f, 1.0f, track.getHeight() + 4.0f);
-    }
-    else
-    {
-        g.setColour(colours::accent());
-        g.fillRoundedRectangle(track.withWidth(juce::jmax(0.0f, thumbX - track.getX())), 2.0f);
-    }
-
-    g.setColour(juce::Colours::white);
-    g.fillEllipse(thumbX - 7.0f, track.getCentreY() - 7.0f, 14.0f, 14.0f);
-    g.setColour(juce::Colours::black.withAlpha(0.18f));
-    g.drawEllipse(thumbX - 7.0f, track.getCentreY() - 7.0f, 14.0f, 14.0f, 0.8f);
-}
-
-// ── DiscreteSlider ───────────────────────────────────────────────────────────
-
-EffectsInspector::DiscreteSlider::DiscreteSlider(const juce::String& l, int steps, int def)
-    : label(l), numSteps(steps), defStep(def), step(def)
-{
-}
-
-void EffectsInspector::DiscreteSlider::setLabels(const juce::StringArray& ls)
-{
-    labels = ls;
-    repaint();
-}
-
-void EffectsInspector::DiscreteSlider::setStep(int s, juce::NotificationType notify)
-{
-    s = juce::jlimit(0, numSteps - 1, s);
-    if (s == step) return;
-    step = s;
-    repaint();
-    if (notify != juce::dontSendNotification && onChange)
-        onChange(step);
-}
-
-void EffectsInspector::DiscreteSlider::resized()
-{
-    auto r = getLocalBounds().toFloat().reduced(0.0f, 6.0f);
-    track = r.withTrimmedTop(18.0f).withHeight(4.0f);
-    track = track.withX(track.getX() + 2.0f).withWidth(track.getWidth() - 4.0f);
-}
-
-void EffectsInspector::DiscreteSlider::setFromX(float x)
-{
-    const float t = juce::jlimit(0.0f, 1.0f, (x - track.getX()) / juce::jmax(1.0f, track.getWidth()));
-    setStep((int) std::lround(t * (float) (numSteps - 1)));
-}
-
-void EffectsInspector::DiscreteSlider::mouseDown(const juce::MouseEvent& e) { setFromX(e.position.x); }
-void EffectsInspector::DiscreteSlider::mouseDrag(const juce::MouseEvent& e) { setFromX(e.position.x); }
-void EffectsInspector::DiscreteSlider::mouseDoubleClick(const juce::MouseEvent&) { setStep(defStep); }
-
-void EffectsInspector::DiscreteSlider::paint(juce::Graphics& g)
-{
-    auto top = getLocalBounds().removeFromTop(16);
-    g.setFont(uiFont(11.0f, false));
-    g.setColour(colours::text2());
-    g.drawText(label, top, juce::Justification::centredLeft);
-
-    const juce::String val = labels.size() > step ? labels[step] : juce::String(step);
-    g.setFont(monoFont(11.0f, true));
-    g.setColour(colours::text());
-    g.drawText(val, top, juce::Justification::centredRight);
-
-    g.setColour(colours::knobTrack());
-    g.fillRoundedRectangle(track, 2.0f);
-
-    const float t = numSteps > 1 ? (float) step / (float) (numSteps - 1) : 0.0f;
-    const float thumbX = track.getX() + t * track.getWidth();
-    const float mid = track.getCentreX();
-
-    if (defStep >= 0 && defStep < numSteps)
-    {
-        g.setColour(colours::lineStrong().withAlpha(0.45f));
-        g.fillRect(mid - 0.5f, track.getY() - 2.0f, 1.0f, track.getHeight() + 4.0f);
-    }
-
-    g.setColour(colours::accent());
-    if (thumbX < mid)
-        g.fillRoundedRectangle(juce::Rectangle<float>(thumbX, track.getY(), mid - thumbX, track.getHeight()), 2.0f);
-    else if (thumbX > mid)
-        g.fillRoundedRectangle(juce::Rectangle<float>(mid, track.getY(), thumbX - mid, track.getHeight()), 2.0f);
-
-    g.setColour(juce::Colours::white);
-    g.fillEllipse(thumbX - 7.0f, track.getCentreY() - 7.0f, 14.0f, 14.0f);
-    g.setColour(juce::Colours::black.withAlpha(0.18f));
-    g.drawEllipse(thumbX - 7.0f, track.getCentreY() - 7.0f, 14.0f, 14.0f, 0.8f);
-}
-
-// ── InlineSettingRow ─────────────────────────────────────────────────────────
-
-EffectsInspector::InlineSettingRow::InlineSettingRow(const juce::String& l,
-                                                       juce::Component& c, int cw)
-    : label(l), control(c), controlW(cw)
-{
-    addAndMakeVisible(control);
-}
-
-void EffectsInspector::InlineSettingRow::resized()
-{
-    auto r = getLocalBounds();
-    control.setBounds(r.removeFromRight(controlW).withSizeKeepingCentre(controlW, 24));
-}
-
-void EffectsInspector::InlineSettingRow::paint(juce::Graphics& g)
-{
-    g.setFont(uiFont(12.0f, false));
-    g.setColour(colours::text2());
-    g.drawText(label, getLocalBounds(), juce::Justification::centredLeft);
-}
-
-// ── Section ──────────────────────────────────────────────────────────────────
-
-EffectsInspector::Section::Section(const juce::String& t) : title(t) {}
-
-void EffectsInspector::Section::setOpen(bool o)
-{
-    if (open == o) return;
-    open = o;
-    for (auto* c : rows)
-        c->setVisible(open);
-    if (onToggle) onToggle();
-    repaint();
-}
-
-int EffectsInspector::Section::idealHeight() const
-{
-    return open ? kHeaderH + (int) rows.size() * kRowH : kHeaderH;
-}
-
-void EffectsInspector::Section::resized()
-{
-    auto r = getLocalBounds().withTrimmedTop(kHeaderH).reduced(kPadH, 0);
-    for (auto* c : rows)
-    {
-        if (!open) { c->setBounds({}); continue; }
-        c->setBounds(r.removeFromTop(kRowH));
-    }
-}
-
-void EffectsInspector::Section::mouseDown(const juce::MouseEvent& e)
-{
-    if (e.y <= kHeaderH)
-        setOpen(!open);
-}
-
-void EffectsInspector::Section::paint(juce::Graphics& g)
-{
-    g.setColour(colours::text());
-    g.setFont(uiFont(11.0f, true));
-    g.drawText(title, kPadH + 10, 6, getWidth() - kPadH * 2, 20, juce::Justification::centredLeft);
-
-    juce::Path caret;
-    const float cx = (float) kPadH + 2.0f, cy = 16.0f;
-    if (open)
-        caret.addTriangle(cx - 4.0f, cy - 2.0f, cx + 4.0f, cy - 2.0f, cx, cy + 4.0f);
-    else
-        caret.addTriangle(cx - 2.0f, cy - 4.0f, cx + 4.0f, cy, cx - 2.0f, cy + 4.0f);
-    g.setColour(colours::text3());
-    g.fillPath(caret);
-}
-
-// ── PitchShiftRow ────────────────────────────────────────────────────────────
-
-EffectsInspector::PitchShiftRow::PitchShiftRow()
-{
-    valueBox.setJustificationType(juce::Justification::centred);
-    valueBox.setFont(monoFont(12.0f, true));
-    valueBox.setColour(juce::Label::textColourId, colours::text());
-    valueBox.setEditable(false, false, false);
-    addAndMakeVisible(valueBox);
-
-    notePreview.setJustificationType(juce::Justification::centredLeft);
-    notePreview.setFont(uiFont(11.0f, false));
-    notePreview.setColour(juce::Label::textColourId, colours::text3());
-    addAndMakeVisible(notePreview);
-
-    btnDown.onClick = [this] { bump(-1); };
-    btnUp.onClick = [this] { bump(1); };
-    addAndMakeVisible(btnDown);
-    addAndMakeVisible(btnUp);
-}
-
-void EffectsInspector::PitchShiftRow::setFromEdit(const ClipEdit& e, int rootPc)
-{
-    editCtx = e;
-    clipRoot = rootPc;
-    setValue(e.pitchShift, juce::dontSendNotification);
-}
-
-void EffectsInspector::PitchShiftRow::setValue(int v, juce::NotificationType notify)
-{
-    v = juce::jlimit(-12, 12, v);
-    if (v == value) return;
-    value = v;
-    valueBox.setText(juce::String(value), juce::dontSendNotification);
-
-    const int refPc = editCtx.root >= 0 ? editCtx.root : (clipRoot >= 0 ? clipRoot : 0);
-    int midi = juce::jlimit(0, 127, 60 + refPc + value);
-    if (editCtx.root >= 0 && editCtx.fitScale)
-        midi = fitToScale(midi, editCtx.root, editCtx.mode);
-    notePreview.setText(pitchName(midi) + " (" + juce::String(midi) + ")",
-                        juce::dontSendNotification);
-
-    if (notify != juce::dontSendNotification && onChange)
-        onChange(value);
-}
-
-void EffectsInspector::PitchShiftRow::bump(int delta)
-{
-    setValue(value + delta);
-}
-
-void EffectsInspector::PitchShiftRow::resized()
-{
-    auto r = getLocalBounds();
-    notePreview.setBounds(r.removeFromRight(88));
-    r.removeFromRight(6);
-    btnUp.setBounds(r.removeFromRight(22).withSizeKeepingCentre(20, 20));
-    r.removeFromRight(4);
-    valueBox.setBounds(r.removeFromRight(28).withSizeKeepingCentre(28, 22));
-    r.removeFromRight(4);
-    btnDown.setBounds(r.removeFromRight(22).withSizeKeepingCentre(20, 20));
-}
-
-void EffectsInspector::PitchShiftRow::paint(juce::Graphics& g)
-{
-    g.setFont(uiFont(12.0f, false));
-    g.setColour(colours::text2());
-    g.drawText("Pitch", getLocalBounds().withTrimmedRight(148), juce::Justification::centredLeft);
-}
-
-// ── EffectsInspector ─────────────────────────────────────────────────────────
+using namespace fx;
 
 EffectsInspector::EffectsInspector()
+    : tempoRow("Tempo", tempoToggle)
+    , swing("Swing", 0, 100, 0, false)
+    , swingStyleRow("Swing Style", swingStylePopup)
+    , pocket("Pocket", -100, 100, 0, true)
+    , humanize("Humanize", 0, 100, 0, false)
+    , dynamicsSl("Dynamics", -100, 100, 0, true)
+    , intensitySl("Intensity", 0, 200, 100, false)
+    , lengthSl("Length", 25, 200, 100, false)
+    , keyModeRow(keyPopup, modePopup)
+    , trimRow("Trim", btnTrim)
+    , fitRow("Fit to Scale", fitSwitch)
+    , mapRow("Map to Root", mapSwitch)
 {
     viewport.setViewedComponent(&body, false);
     viewport.setScrollBarsShown(true, false);
@@ -346,117 +43,108 @@ EffectsInspector::EffectsInspector()
     };
     addAndMakeVisible(btnEffectsLock);
 
-    auto wireSlider = [this](Section& sec, ParamSlider& s, int knobIdx)
+    btnTrim.setComponentID("btnTrim");
+    btnTrim.onClick = [this] { if (onTrimClicked) onTrimClicked(); };
+
+    tempoToggle.onChange = [this](double m)
+    {
+        bpmMultiplier = m;
+        if (onBpmMultiplierChanged) onBpmMultiplierChanged(bpmMultiplier);
+    };
+
+    auto wireSlider = [this](FlatSliderRow& s, int knobIdx)
     {
         s.onChange = [this, knobIdx](int v)
         {
             groove.set(knobIdx, v);
             notifyGroove();
         };
-        sec.addAndMakeVisible(s);
     };
-    wireSlider(timing, swing, 0);
-    wireSlider(timing, pocket, 1);
-    wireSlider(timing, humanize, 2);
-    wireSlider(dynamics, dynamicsSl, 3);
-    wireSlider(lengthSec, lengthSl, 4);
-    wireSlider(dynamics, intensity, 5);
+    wireSlider(swing, 0);
+    wireSlider(pocket, 1);
+    wireSlider(humanize, 2);
+    wireSlider(dynamicsSl, 3);
+    wireSlider(lengthSl, 4);
+    wireSlider(intensitySl, 5);
 
-    swingGridPicker.addItem("1/16", 1);
-    swingGridPicker.addItem("1/8", 2);
-    swingGridPicker.addItem("1/4", 3);
-    swingGridPicker.addItem("1/2", 4);
-    swingGridPicker.addItem("1", 5);
-    swingGridPicker.addItem("2", 6);
-    swingGridPicker.onChange = [this]
+    swingStylePopup.setItems({ "1/16", "1/8", "1/4", "1/2", "1", "2" }, 1);
+    swingStylePopup.onChange = [this](int idx)
     {
-        const int idx = juce::jmax(0, swingGridPicker.getSelectedId() - 1);
         groove.swingGridIndex = idx;
         groove.swingBase = idx == 0 ? SwingBase::Sixteenth : SwingBase::Eighth;
         notifyGroove();
     };
-    timing.addAndMakeVisible(swingGridRow);
 
-    tempoPicker.addItem("Half", 1);
-    tempoPicker.addItem("0", 2);
-    tempoPicker.addItem("Double", 3);
-    tempoPicker.onChange = [this]
+    octaveStepper.minV = -3;
+    octaveStepper.maxV = 3;
+    octaveStepper.format = [](int v) { return signedIntText(v); };
+    octaveStepper.onChange = [this](int v)
     {
-        const int id = tempoPicker.getSelectedId();
-        bpmMultiplier = id == 1 ? 0.5 : id == 3 ? 2.0 : 1.0;
-        if (onBpmMultiplierChanged) onBpmMultiplierChanged(bpmMultiplier);
-    };
-    playback.addAndMakeVisible(tempoRow);
-
-    btnTrim.setComponentID("btnTrim");
-    btnTrim.onClick = [this] { if (onTrimClicked) onTrimClicked(); };
-    playback.addAndMakeVisible(trimRow);
-
-    playback.rows = { &tempoRow, &trimRow };
-
-    timing.rows = { &swing, &swingGridRow, &pocket, &humanize };
-    dynamics.rows = { &dynamicsSl, &intensity };
-    lengthSec.rows = { &lengthSl };
-
-    for (int o = 3; o >= -3; --o)
-        octavePicker.addItem((o > 0 ? "+" : "") + juce::String(o), o + 4);
-    octavePicker.onChange = [this]
-    {
-        edit.octave = octavePicker.getSelectedId() - 4;
-        pitchShiftRow.setFromEdit(edit, clipRootPc);
+        edit.octave = v;
+        refreshPitchAnnotation();
         notifyEdit();
     };
-    pitch.addAndMakeVisible(octaveRow);
 
-    pitchShiftRow.onChange = [this](int v)
+    pitchRow.stepper.onChange = [this](int v)
     {
         edit.pitchShift = v;
+        refreshPitchAnnotation();
         notifyEdit();
     };
-    pitch.addAndMakeVisible(pitchShiftRow);
 
-    rootPicker.addItem("—", 1);
-    for (int i = 0; i < 12; ++i)
-        rootPicker.addItem(kNoteNames[(size_t) i], i + 2);
-    rootPicker.onChange = [this]
+    juce::StringArray keys;
+    for (int i = 0; i < 12; ++i) keys.add(kNoteNames[(size_t) i]);
+    keyPopup.setItems(keys, 0);
+    keyPopup.onChange = [this](int idx)
     {
-        const int id = rootPicker.getSelectedId();
-        edit.root = id <= 1 ? -1 : id - 2;
-        pitchShiftRow.setFromEdit(edit, clipRootPc);
+        edit.root = idx;
+        refreshPitchAnnotation();
         notifyEdit();
     };
-    pitch.addAndMakeVisible(keyRow);
 
-    for (int i = 0; i < kNumModes; ++i)
-        modePicker.addItem(modeName((Mode) i), i + 1);
-    modePicker.onChange = [this]
+    juce::StringArray modes;
+    for (int i = 0; i < kNumModes; ++i) modes.add(modeName((Mode) i));
+    modePopup.setItems(modes, 0);
+    modePopup.onChange = [this](int idx)
     {
-        edit.mode = (Mode) juce::jmax(0, modePicker.getSelectedId() - 1);
-        pitchShiftRow.setFromEdit(edit, clipRootPc);
+        edit.mode = (Mode) idx;
+        refreshPitchAnnotation();
         notifyEdit();
     };
-    pitch.addAndMakeVisible(modeRow);
 
     fitSwitch.onClick = [this]
     {
         edit.fitScale = fitSwitch.getToggleState();
-        pitchShiftRow.setFromEdit(edit, clipRootPc);
+        refreshPitchAnnotation();
         notifyEdit();
     };
-    pitch.addAndMakeVisible(fitRow);
 
     mapSwitch.onClick = [this]
     {
         edit.mapToRoot = mapSwitch.getToggleState();
         notifyEdit();
     };
-    pitch.addAndMakeVisible(mapRow);
 
-    pitch.rows = { &octaveRow, &pitchShiftRow, &keyRow, &modeRow, &fitRow, &mapRow };
+    playback.addRow(&tempoRow);
+    playback.addRow(&trimRow);
 
-    for (auto* sec : { &playback, &timing, &dynamics, &lengthSec, &pitch })
+    timing.addRow(&swing, kSliderRowH);
+    timing.addRow(&swingStyleRow);
+    timing.addRow(&pocket, kSliderRowH);
+    timing.addRow(&humanize, kSliderRowH);
+
+    performance.addRow(&dynamicsSl, kSliderRowH);
+    performance.addRow(&intensitySl, kSliderRowH);
+    performance.addRow(&lengthSl, kSliderRowH);
+
+    pitchSec.addRow(&octaveStepper);
+    pitchSec.addRow(&pitchRow);
+    pitchSec.addRow(&keyModeRow);
+    pitchSec.addRow(&fitRow);
+    pitchSec.addRow(&mapRow);
+
+    for (auto* sec : { &playback, &timing, &performance, &pitchSec })
     {
-        sec->setOpen(sec == &playback);
         sec->onToggle = [this] { layoutSections(); };
         body.addAndMakeVisible(*sec);
     }
@@ -464,6 +152,22 @@ EffectsInspector::EffectsInspector()
     setGroove(GrooveParams{}, juce::dontSendNotification);
     setEdit(ClipEdit{}, juce::dontSendNotification);
     setBpmMultiplier(1.0, juce::dontSendNotification);
+}
+
+int EffectsInspector::resolvedPitchMidi() const
+{
+    const int refPc = edit.root >= 0 ? edit.root : (clipRootPc >= 0 ? clipRootPc : 0);
+    int midi = juce::jlimit(0, 127, 60 + refPc + edit.octave * 12 + edit.pitchShift);
+    if (edit.root >= 0 && edit.fitScale)
+        midi = fitToScale(midi, edit.root, edit.mode);
+    return midi;
+}
+
+void EffectsInspector::refreshPitchAnnotation()
+{
+    const int refPc = edit.root >= 0 ? edit.root : (clipRootPc >= 0 ? clipRootPc : -1);
+    pitchRow.annotation = pitchScaleAnnotation(resolvedPitchMidi(), refPc, edit.mode);
+    pitchRow.repaint();
 }
 
 void EffectsInspector::setEffectsLocked(bool locked)
@@ -490,7 +194,7 @@ void EffectsInspector::setHasClip(bool has)
 void EffectsInspector::setClipRoot(int rootPc)
 {
     clipRootPc = rootPc;
-    pitchShiftRow.setFromEdit(edit, clipRootPc);
+    refreshPitchAnnotation();
 }
 
 void EffectsInspector::setTrimState(bool active, bool enabled, const juce::String& label)
@@ -504,9 +208,7 @@ void EffectsInspector::setTrimState(bool active, bool enabled, const juce::Strin
 void EffectsInspector::setBpmMultiplier(double mult, juce::NotificationType)
 {
     bpmMultiplier = juce::jlimit(0.25, 4.0, mult);
-    const int tempoId = bpmMultiplier < 0.75 ? 1 : bpmMultiplier > 1.5 ? 3 : 2;
-    tempoPicker.setSelectedId(tempoId, juce::dontSendNotification);
-    repaint();
+    tempoToggle.setMultiplier(bpmMultiplier, juce::dontSendNotification);
 }
 
 void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
@@ -517,26 +219,27 @@ void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
     humanize.setValue(g.humanize, juce::dontSendNotification);
     dynamicsSl.setValue(g.dynamics, juce::dontSendNotification);
     lengthSl.setValue(g.length, juce::dontSendNotification);
-    intensity.setValue(g.intensity, juce::dontSendNotification);
-    swingGridPicker.setSelectedId(juce::jlimit(1, 6, g.swingGridIndex + 1), juce::dontSendNotification);
+    intensitySl.setValue(g.intensity, juce::dontSendNotification);
+    swingStylePopup.setIndex(juce::jlimit(0, 5, g.swingGridIndex), juce::dontSendNotification);
     swing.valueText = grooveValueText(kKnobDefs[0], g.swing);
     pocket.valueText = grooveValueText(kKnobDefs[1], g.pocket);
     humanize.valueText = grooveValueText(kKnobDefs[2], g.humanize);
     dynamicsSl.valueText = grooveValueText(kKnobDefs[3], g.dynamics);
     lengthSl.valueText = grooveValueText(kKnobDefs[4], g.length);
-    intensity.valueText = grooveValueText(kKnobDefs[5], g.intensity);
+    intensitySl.valueText = grooveValueText(kKnobDefs[5], g.intensity);
     repaint();
 }
 
 void EffectsInspector::setEdit(const ClipEdit& e, juce::NotificationType)
 {
     edit = e;
-    octavePicker.setSelectedId(e.octave + 4, juce::dontSendNotification);
-    rootPicker.setSelectedId(e.root >= 0 ? e.root + 2 : 1, juce::dontSendNotification);
-    modePicker.setSelectedId((int) e.mode + 1, juce::dontSendNotification);
+    octaveStepper.setValue(e.octave, juce::dontSendNotification);
+    pitchRow.stepper.setValue(e.pitchShift, juce::dontSendNotification);
+    keyPopup.setIndex(e.root >= 0 ? e.root : 0, juce::dontSendNotification);
+    modePopup.setIndex((int) e.mode, juce::dontSendNotification);
     fitSwitch.setToggleState(e.fitScale, juce::dontSendNotification);
     mapSwitch.setToggleState(e.mapToRoot, juce::dontSendNotification);
-    pitchShiftRow.setFromEdit(e, clipRootPc);
+    refreshPitchAnnotation();
 }
 
 void EffectsInspector::notifyGroove()
@@ -546,7 +249,7 @@ void EffectsInspector::notifyGroove()
     humanize.valueText = grooveValueText(kKnobDefs[2], groove.humanize);
     dynamicsSl.valueText = grooveValueText(kKnobDefs[3], groove.dynamics);
     lengthSl.valueText = grooveValueText(kKnobDefs[4], groove.length);
-    intensity.valueText = grooveValueText(kKnobDefs[5], groove.intensity);
+    intensitySl.valueText = grooveValueText(kKnobDefs[5], groove.intensity);
     if (onGrooveChanged) onGrooveChanged(groove);
 }
 
@@ -557,43 +260,57 @@ void EffectsInspector::notifyEdit()
 
 void EffectsInspector::layoutSections()
 {
-    const int innerW = juce::jmax(1, body.getWidth() - kBodyPadH * 2);
-    const int w = juce::jmin(innerW, kSliderMaxW);
-    const int x = kBodyPadH + (innerW - w) / 2;
+    const int w = juce::jmax(1, body.getWidth());
     int y = 0;
-    for (auto* sec : { &playback, &timing, &dynamics, &lengthSec, &pitch })
+    for (auto* sec : { &playback, &timing, &performance, &pitchSec })
     {
         const int h = sec->idealHeight();
-        sec->setBounds(x, y, w, h);
+        sec->setBounds(0, y, w, h);
         sec->resized();
-        y += h + 6;
+        y += h;
     }
-    body.setSize(juce::jmax(1, (int) viewport.getMaximumVisibleWidth()),
-                 juce::jmax(y, viewport.getMaximumVisibleHeight()));
+    body.setSize(w, juce::jmax(y, viewport.getMaximumVisibleHeight()));
 }
 
 void EffectsInspector::resized()
 {
     auto r = getLocalBounds();
-    auto header = r.removeFromTop(headerH).reduced(kBodyPadH, 4);
-    btnEffectsLock.setBounds(header.removeFromRight(24).withSizeKeepingCentre(22, 22));
+    auto header = r.removeFromTop(kHeaderBarH).reduced(10, 4);
+    btnEffectsLock.setBounds(header.removeFromRight(22).withSizeKeepingCentre(20, 20));
     header.removeFromRight(4);
-    btnReset.setBounds(header.removeFromRight(24).withSizeKeepingCentre(22, 22));
+    btnReset.setBounds(header.removeFromRight(22).withSizeKeepingCentre(20, 20));
 
     viewport.setBounds(r);
     body.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()), body.getHeight());
+
+    tempoToggle.setSize(tempoToggle.idealWidth(), kRowMinH);
+    tempoRow.setControlWidth(tempoToggle.idealWidth());
+    trimRow.setControlWidth(btnTrim.idealWidth());
+    swingStylePopup.setSize(swingStylePopup.idealWidth(), kRowMinH);
+    swingStyleRow.setControlWidth(swingStylePopup.idealWidth());
+    octaveStepper.setSize(octaveStepper.idealWidth(), kRowMinH);
+    pitchRow.stepper.setSize(pitchRow.stepper.idealWidth(), kRowMinH);
+    fitRow.setControlWidth(fitSwitch.idealWidth());
+    mapRow.setControlWidth(mapSwitch.idealWidth());
+    keyModeRow.setSize(keyPopup.idealWidth() + modePopup.idealWidth() + 7, kRowMinH);
+
     layoutSections();
 }
 
 void EffectsInspector::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::bg());
-    g.setColour(colours::line());
+    const auto& t = inspectorTokens();
+    g.fillAll(t.panelBg);
+    g.setColour(t.divider);
     g.fillRect(getLocalBounds().removeFromLeft(1));
 
-    g.setColour(colours::text());
-    g.setFont(uiFont(12.5f, true));
-    g.drawText("Effects", kBodyPadH, 8, 100, 20, juce::Justification::centredLeft);
+    auto header = getLocalBounds().removeFromTop(kHeaderBarH);
+    g.setColour(t.divider);
+    g.fillRect(header.getX(), header.getBottom() - 1, header.getWidth(), 1);
+
+    g.setColour(t.headerText);
+    g.setFont(inspectorFont(true));
+    g.drawText("Effects", 14, 8, 120, 18, juce::Justification::centredLeft);
 }
 
 } // namespace pflow

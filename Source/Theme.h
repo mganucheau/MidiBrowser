@@ -10,9 +10,11 @@ namespace pflow {
 
 enum class Density { Compact, Comfortable };
 enum class ContentSize { Small, Medium, Large };
+enum class Appearance { System = 0, Light = 1, Dark = 2 };
 enum class ScalePlacement { Top, Bottom };   // legacy; Pitch & Scale lives in inspector
 
 constexpr int kNumContentSizes = 3;
+constexpr int kNumAppearances = 3;
 constexpr int kNumScalePlacements = 2;
 
 struct ThemeTokens
@@ -36,14 +38,47 @@ struct AccentTokens
     juce::Colour bright;
 };
 
+/** Flat effects-inspector palette (light / dark). */
+struct InspectorTokens
+{
+    juce::Colour panelBg;
+    juce::Colour accent;
+    juce::Colour headerText;
+    juce::Colour rowLabel;
+    juce::Colour valueText;
+    juce::Colour divider;
+    juce::Colour sliderTrack;
+    juce::Colour sliderKnob;
+    juce::Colour controlSurface;
+    juce::Colour controlSurfaceHi;
+    juce::Colour controlSeparator;
+    juce::Colour switchOffTrack;
+    juce::Colour chevron;
+    juce::Colour segmentText;
+    juce::Colour controlHairline;
+    bool dark = false;
+};
+
 const ThemeTokens& themeTokens();
 const AccentTokens& accentTokens();
+const InspectorTokens& inspectorTokens();
 
-/** App-level runtime Tweaks (density / content size). */
+/** Resolves System → macOS setting; Light/Dark force appearance. */
+bool usesDarkAppearance();
+
+/** @deprecated Use usesDarkAppearance() */
+inline bool inspectorUsesDarkPalette() { return usesDarkAppearance(); }
+
+void drawInspectorControlSurface(juce::Graphics& g, juce::Rectangle<float> bounds,
+                                 bool over, bool down);
+void drawInspectorDivider(juce::Graphics& g, juce::Rectangle<int> bounds);
+
+/** App-level runtime Tweaks (density / content size / appearance). */
 struct Tweaks
 {
     std::atomic<int> density { (int) Density::Compact };
     std::atomic<int> size    { (int) ContentSize::Medium };
+    std::atomic<int> appearance { (int) Appearance::System };
 };
 
 Tweaks& tweaks();
@@ -51,6 +86,11 @@ Tweaks& tweaks();
 inline Density currentDensity()
 {
     return (Density) juce::jlimit(0, 1, tweaks().density.load());
+}
+
+inline Appearance currentAppearance()
+{
+    return (Appearance) juce::jlimit(0, kNumAppearances - 1, tweaks().appearance.load());
 }
 
 /** UI scale for the Small / Medium / Large content-size tweak. */
@@ -141,7 +181,8 @@ namespace colours {
     inline juce::Colour textBright()    { return text(); }
     inline juce::Colour textMuted()     { return text3(); }
     inline juce::Colour controlFill()   { return elev(); }
-    inline juce::Colour knobTrack()     { return juce::Colour(0xffd5d2cc); }
+    inline juce::Colour knobTrack()     { return usesDarkAppearance() ? juce::Colour(0xff48484a)
+                                                                      : juce::Colour(0xffd5d2cc); }
     inline juce::Colour compSelectionHighlight() { return accentSoft(); }
     inline juce::Colour pianoWhiteKey() { return kbWhite(); }
     inline juce::Colour pianoBlackKey() { return kbBlack(); }
@@ -173,8 +214,8 @@ namespace metrics {
     constexpr int browserMaxWidth   = 520;
     constexpr float uiScale         = 1.0f;
 
-    constexpr float cornerRadius    = 8.0f;
-    constexpr float windowRadius    = 11.0f;
+    constexpr float cornerRadius    = 10.0f;
+    constexpr float windowRadius    = 12.0f;
     constexpr float groupedRadius   = 8.0f;
     constexpr float chipRadius      = 6.0f;
     constexpr float controlRadius   = 5.0f;
@@ -183,7 +224,7 @@ namespace metrics {
     constexpr int grid              = 8;
     constexpr int pluginPad         = 16;
     constexpr int sectionHeaderH    = 24;
-    constexpr int toolbarH          = 50;
+    constexpr int toolbarH          = 46;
     constexpr int toolbarGap        = 8;
     constexpr int previewH          = 168;
     constexpr int previewControlsH  = 32;
@@ -196,7 +237,7 @@ namespace metrics {
     constexpr int sidebarExpandedW  = 176;
     constexpr int fileTableW        = 356;
     constexpr int editorPaneW       = 470;
-    constexpr int effectsPaneW      = 240;
+    constexpr int effectsPaneW      = 244;
     constexpr int openRollW         = editorPaneW;
     constexpr int openRollMinW      = 360;
     constexpr int foldedWindowW     = sidebarW + fileTableW;

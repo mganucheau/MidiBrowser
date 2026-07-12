@@ -72,7 +72,7 @@ private:
     void paintRow(juce::Graphics&, int rowIdx, const juce::Rectangle<int>& r, bool hovered, bool removeZone);
 
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
-    IconBtn btnTweaks { icons::gear, "Tweaks: spacing, content size" };
+    IconBtn btnTweaks { icons::gear, "Settings" };
     juce::StringArray dirs;
     juce::String active;
     std::vector<SavedSearchEntry> savedSearches;

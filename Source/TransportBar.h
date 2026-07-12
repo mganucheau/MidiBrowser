@@ -4,8 +4,7 @@
 
 namespace pflow {
 
-// Cupertino toolbar: title · play/stop · sync · BPM · editor / effects toggles · drag.
-
+/** Prototype toolbar: MidiBrowser · play/stop · bpm pill · moon / editor / effects. */
 class TransportBar : public juce::Component
 {
 public:
@@ -23,6 +22,7 @@ public:
     void setEditorOpen(bool);
     void setEffectsOpen(bool);
     void setHasClip(bool has);
+    void refreshAppearanceIcon();
 
     std::function<void()> onPlayPause;
     std::function<void()> onStop;
@@ -31,9 +31,30 @@ public:
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
     std::function<void()> onDragToDaw;
+    std::function<void()> onToggleAppearance;
 
 private:
     void refreshBpm();
+
+    class StatusPill : public juce::Component
+    {
+    public:
+        std::function<void()> onToggleSync;
+        std::function<void(double)> onCommitBpm;
+        bool synced = true;
+        bool editable = false;
+
+        void setText(const juce::String& t);
+        void paint(juce::Graphics&) override;
+        void mouseDown(const juce::MouseEvent&) override;
+        void mouseDoubleClick(const juce::MouseEvent&) override;
+        bool keyPressed(const juce::KeyPress&) override;
+        void focusLost(FocusChangeType) override;
+
+        juce::String text;
+        bool editing = false;
+        juce::String editBuffer;
+    };
 
     class DragChip : public ChipBtn
     {
@@ -58,9 +79,10 @@ private:
     };
 
     IconBtn btnPlay { icons::play, "Play preview" };
-    IconBtn btnSync { icons::infinity, "Sync to DAW transport" };
-    juce::Label bpmLabel;
+    IconBtn btnStop { icons::stop, "Stop preview" };
+    StatusPill statusPill;
     DragChip btnDragToDaw { "Drag to DAW" };
+    IconBtn btnAppearance { icons::moon, "Toggle light / dark" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
     IconBtn btnEffects { icons::sliders, "Toggle effects" };
 

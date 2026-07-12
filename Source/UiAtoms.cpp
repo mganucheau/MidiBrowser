@@ -226,6 +226,26 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
         g.drawEllipse(cx - s * 0.55f, cy - s * 0.65f, s * 1.05f, s * 1.05f, px);
         g.drawLine(cx + s * 0.35f, cy + s * 0.45f, cx + s * 0.95f, cy + s * 1.05f, px * 1.2f);
     }
+    else if (name == icons::moon)
+    {
+        // Crescent moon (appearance toggle).
+        juce::Path disc, cut;
+        disc.addEllipse(cx - s * 0.7f, cy - s * 0.7f, s * 1.4f, s * 1.4f);
+        cut.addEllipse(cx - s * 0.15f, cy - s * 0.85f, s * 1.35f, s * 1.35f);
+        disc.setUsingNonZeroWinding(false);
+        disc.addPath(cut);
+        g.fillPath(disc);
+    }
+    else if (name == icons::sun)
+    {
+        g.drawEllipse(cx - s * 0.4f, cy - s * 0.4f, s * 0.8f, s * 0.8f, px);
+        for (int i = 0; i < 8; ++i)
+        {
+            const float a = juce::MathConstants<float>::twoPi * (float) i / 8.0f;
+            g.drawLine(cx + s * 0.55f * std::cos(a), cy + s * 0.55f * std::sin(a),
+                       cx + s * 0.9f * std::cos(a), cy + s * 0.9f * std::sin(a), px);
+        }
+    }
     else if (name == icons::gear)
     {
         g.drawEllipse(cx - s * 0.35f, cy - s * 0.35f, s * 0.7f, s * 0.7f, px);

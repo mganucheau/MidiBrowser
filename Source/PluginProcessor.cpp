@@ -304,6 +304,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("version", 4);
     xml.setAttribute("tweakDensity", tweaks().density.load());
     xml.setAttribute("tweakSize", tweaks().size.load());
+    xml.setAttribute("tweakAppearance", tweaks().appearance.load());
     xml.setAttribute("syncSessionBars", syncSessionBars.load());
     xml.setAttribute("lastBrowserDir", lastBrowserDir);
     xml.setAttribute("trimEmptyMeasuresPreview", trimEmptyMeasuresPreview ? 1 : 0);
@@ -438,6 +439,8 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 xml->getIntAttribute("tweakDensity", (int) Density::Compact)));
             tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1,
                 xml->getIntAttribute("tweakSize", (int) ContentSize::Medium)));
+            tweaks().appearance.store(juce::jlimit(0, kNumAppearances - 1,
+                xml->getIntAttribute("tweakAppearance", (int) Appearance::System)));
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");
