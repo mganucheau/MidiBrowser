@@ -366,7 +366,7 @@ void FavoritesSidebar::paintRow(juce::Graphics& g, int rowIdx, const juce::Recta
         }
     }
 
-    const auto iconCol = isActive ? juce::Colours::white : colours::text2();
+    const auto iconCol = isActive ? juce::Colours::white : colours::accent();
     const char* icon = icons::folder;
     juce::String label;
     switch (row.kind)

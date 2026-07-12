@@ -510,6 +510,8 @@ public:
         const int stepW = stepper.idealWidth();
         stepper.setBounds(r.removeFromRight(stepW).withSizeKeepingCentre(stepW, kRowMinH));
         r.removeFromRight(8);
+        // Leave room for the "Pitch" label on the left.
+        r.removeFromLeft(42);
         annotBounds = r;
     }
 
@@ -517,7 +519,7 @@ public:
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText("Pitch", getLocalBounds(), juce::Justification::centredLeft);
+        g.drawText("Pitch", getLocalBounds().withWidth(42), juce::Justification::centredLeft);
 
         g.setFont(uiFont(kAnnotPt, false));
         g.setColour(inspectorTokens().valueText);

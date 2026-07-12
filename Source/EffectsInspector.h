@@ -77,6 +77,7 @@ private:
     fx::FlatSliderRow lengthSl;
 
     fx::FlatStepper octaveStepper;
+    fx::InlineRow octaveRow;
     fx::PitchRow pitchRow;
     fx::FlatPopup keyPopup;
     fx::FlatPopup modePopup;

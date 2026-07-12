@@ -36,7 +36,8 @@ public:
 private:
     void refreshBpm();
 
-    class StatusPill : public juce::Component
+    class StatusPill : public juce::Component,
+                       private juce::Timer
     {
     public:
         std::function<void()> onToggleSync;
@@ -50,10 +51,12 @@ private:
         void mouseDoubleClick(const juce::MouseEvent&) override;
         bool keyPressed(const juce::KeyPress&) override;
         void focusLost(FocusChangeType) override;
+        void timerCallback() override;
 
         juce::String text;
         bool editing = false;
         juce::String editBuffer;
+        bool pendingSyncToggle = false;
     };
 
     class DragChip : public ChipBtn

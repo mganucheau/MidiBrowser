@@ -13,6 +13,7 @@ EffectsInspector::EffectsInspector()
     , dynamicsSl("Dynamics", -100, 100, 0, true)
     , intensitySl("Intensity", 0, 200, 100, false)
     , lengthSl("Length", 25, 200, 100, false)
+    , octaveRow("Octave", octaveStepper)
     , keyModeRow(keyPopup, modePopup)
     , trimRow("Trim", btnTrim)
     , fitRow("Fit to Scale", fitSwitch)
@@ -137,7 +138,7 @@ EffectsInspector::EffectsInspector()
     performance.addRow(&intensitySl, kSliderRowH);
     performance.addRow(&lengthSl, kSliderRowH);
 
-    pitchSec.addRow(&octaveStepper);
+    pitchSec.addRow(&octaveRow);
     pitchSec.addRow(&pitchRow);
     pitchSec.addRow(&keyModeRow);
     pitchSec.addRow(&fitRow);
@@ -289,6 +290,7 @@ void EffectsInspector::resized()
     swingStylePopup.setSize(swingStylePopup.idealWidth(), kRowMinH);
     swingStyleRow.setControlWidth(swingStylePopup.idealWidth());
     octaveStepper.setSize(octaveStepper.idealWidth(), kRowMinH);
+    octaveRow.setControlWidth(octaveStepper.idealWidth());
     pitchRow.stepper.setSize(pitchRow.stepper.idealWidth(), kRowMinH);
     fitRow.setControlWidth(fitSwitch.idealWidth());
     mapRow.setControlWidth(mapSwitch.idealWidth());

@@ -1020,22 +1020,23 @@ void PianoRollEditor::paint(juce::Graphics& g)
 
     if (hasClip)
     {
-        auto header = juce::Rectangle<int>(12, 0, getWidth() - 52, stripH);
-        g.setColour(colours::text());
-        g.setFont(uiFont(13.0f, true));
-        g.drawText(clip.name, header.removeFromTop(22), juce::Justification::centredLeft, true);
-
+        // Prototype: single compact title line — "Name · Key · N bars"
+        juce::String line = clip.name;
         juce::String meta;
         if (edit.root >= 0)
             meta << kNoteNames[(size_t) edit.root] << " " << modeName(edit.mode);
         else if (clip.root >= 0)
             meta << kNoteNames[(size_t) clip.root];
-        if (meta.isNotEmpty()) meta << " · ";
-        meta << resolved.bars << " bars";
-        if (!editIsClean(edit)) meta << " · edited";
-        g.setColour(colours::text3());
-        g.setFont(uiFont(11.0f, false));
-        g.drawText(meta, header, juce::Justification::centredLeft, true);
+        if (meta.isNotEmpty())
+            line << "  ·  " << meta;
+        line << "  ·  " << resolved.bars << " bars";
+        if (!editIsClean(edit))
+            line << "  ·  edited";
+
+        g.setColour(colours::text());
+        g.setFont(uiFont(12.5f, true));
+        g.drawText(line, juce::Rectangle<int>(12, 0, getWidth() - 52, stripH),
+                   juce::Justification::centredLeft, true);
     }
 }
 

@@ -77,7 +77,7 @@ int fitToScale(int midi, int rootPc, Mode mode)
 juce::String scaleDegreeLabel(int midi, int rootPc, Mode mode)
 {
     if (rootPc < 0) return {};
-    static const char* kOrd[] { "1st", "2nd", "3rd", "4th", "5th", "6th", "7th" };
+    static const char* kOrd[] { "Root", "2nd", "3rd", "4th", "5th", "6th", "7th" };
     const int pc = wrapPc(midi);
     const auto& iv = modeIntervals(mode);
     for (int deg = 0; deg < 7; ++deg)

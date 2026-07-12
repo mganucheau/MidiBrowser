@@ -271,7 +271,13 @@ IconBtn::IconBtn(const juce::String& iconName, const juce::String& tip)
 void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
 {
     auto b = getLocalBounds().toFloat();
-    if (active)
+    if (active && ghost)
+    {
+        // Toolbar toggles: soft accent wash + accent glyph (prototype style).
+        g.setColour(colours::accentSoft());
+        g.fillRoundedRectangle(b, metrics::chipRadius);
+    }
+    else if (active)
     {
         g.setColour(colours::accent().withAlpha(down ? 0.85f : 1.0f));
         g.fillRoundedRectangle(b, metrics::chipRadius);
@@ -281,14 +287,14 @@ void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
         g.setColour(down ? colours::elev().brighter(0.08f) : colours::elev());
         g.fillRoundedRectangle(b, metrics::chipRadius);
     }
-    const juce::Colour col = active ? colours::accentInk()
+    const juce::Colour col = (active && ghost) ? colours::accent()
+                           : active ? colours::accentInk()
                            : isEnabled() ? (over ? colours::text() : colours::text2())
                                          : colours::text2();
     const float inset = juce::jmin(b.getWidth(), b.getHeight()) * (0.5f - 0.32f * iconScale);
     drawIcon(g, icon, b.reduced(inset), col, 1.6f);
     if (!isEnabled())
     {
-        // Dim via fill overlay so glyph contrast stays ≥ AA on elev.
         g.setColour(colours::elev().withAlpha(0.35f));
         g.fillRoundedRectangle(b, metrics::chipRadius);
     }

@@ -14,7 +14,8 @@ void TransportBar::StatusPill::setText(const juce::String& t)
 void TransportBar::StatusPill::paint(juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour(colours::elev());
+    // Prototype: white raised pill on gray toolbar.
+    g.setColour(colours::panel());
     g.fillRoundedRectangle(r, r.getHeight() * 0.5f);
     g.setColour(colours::line());
     g.drawRoundedRectangle(r.reduced(0.5f), r.getHeight() * 0.5f, 0.5f);
@@ -29,18 +30,34 @@ void TransportBar::StatusPill::paint(juce::Graphics& g)
 void TransportBar::StatusPill::mouseDown(const juce::MouseEvent&)
 {
     if (editing) return;
-    if (synced && onToggleSync)
-        onToggleSync();
+    if (synced)
+    {
+        if (onToggleSync) onToggleSync();
+        return;
+    }
+    // Free: wait to distinguish single-click (re-sync) vs double-click (edit).
+    pendingSyncToggle = true;
+    startTimer(220);
 }
 
 void TransportBar::StatusPill::mouseDoubleClick(const juce::MouseEvent&)
 {
     if (synced) return;
+    pendingSyncToggle = false;
+    stopTimer();
     editing = true;
     editBuffer = text.upToFirstOccurrenceOf(" ", false, false);
     setWantsKeyboardFocus(true);
     grabKeyboardFocus();
     repaint();
+}
+
+void TransportBar::StatusPill::timerCallback()
+{
+    stopTimer();
+    if (pendingSyncToggle && onToggleSync)
+        onToggleSync();
+    pendingSyncToggle = false;
 }
 
 void TransportBar::StatusPill::focusLost(FocusChangeType)
@@ -110,7 +127,7 @@ TransportBar::TransportBar()
     };
     addAndMakeVisible(statusPill);
 
-    btnDragToDaw.accentText = true;
+    btnDragToDaw.accentText = false;
     btnDragToDaw.setTooltip("Drag edited clip onto a DAW track");
     btnDragToDaw.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
