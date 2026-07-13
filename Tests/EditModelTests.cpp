@@ -215,9 +215,9 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
     REQUIRE(badges.size() == 5);
     CHECK(badges[0].label == "Oct +2");
     CHECK(badges[1].label == "D# Minor");
-    CHECK(badges[2].label == juce::String::fromUTF8("→ D# root"));
+    CHECK(badges[2].label == "-> D# root");
     CHECK(badges[3].label == "1 note moved");
-    CHECK(badges[4].label == juce::String::fromUTF8("Trim −1 bar"));
+    CHECK(badges[4].label == "Trim -1 bar");
 
     SECTION("plurals")
     {
@@ -225,7 +225,7 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
         e.removedBars = { 0, 1 };
         const auto b = editBadges(clip, e);
         CHECK(b[3].label == "2 notes moved");
-        CHECK(b[4].label == juce::String::fromUTF8("Trim −2 bars"));
+        CHECK(b[4].label == "Trim -2 bars");
     }
 
     SECTION("negative octave")

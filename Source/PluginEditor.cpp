@@ -69,7 +69,7 @@ juce::String searchBpmTitle(const BrowserSearch& criteria)
     if (criteria.bpmMin > 0.0)
         return juce::String((int) std::lround(criteria.bpmMin)) + "+ BPM";
     if (criteria.bpmMax > 0.0)
-        return "≤" + juce::String((int) std::lround(criteria.bpmMax)) + " BPM";
+        return "<=" + juce::String((int) std::lround(criteria.bpmMax)) + " BPM";
     return {};
 }
 
@@ -90,7 +90,7 @@ juce::String searchBarsLabel(const BrowserSearch& criteria)
         return lo + "-" + hi + " bars";
     }
     if (lo.isNotEmpty()) return lo + "+ bars";
-    if (hi.isNotEmpty()) return "≤" + hi + " bars";
+    if (hi.isNotEmpty()) return "<=" + hi + " bars";
     return {};
 }
 
@@ -308,6 +308,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     fileList.onColumnVisibilityChanged = [this](const BrowserColumnVisibility& v)
     {
         processorRef.columnVisibility = v;
+        applyLayoutState();
     };
     content.addAndMakeVisible(fileList);
 
@@ -743,7 +744,7 @@ void MidiBrowserEditor::saveCurrentSearch()
         parts.add(kNoteNames[(size_t) activeSearch.keyRoot]);
     if (const auto barsLabel = searchBarsLabel(activeSearch); barsLabel.isNotEmpty())
         parts.add(barsLabel);
-    entry.name = parts.isEmpty() ? "Search" : parts.joinIntoString(" · ");
+    entry.name = parts.isEmpty() ? "Search" : parts.joinIntoString(" - ");
 
     processorRef.addSavedSearch(entry);
     activeSavedSearchIdx = (int) processorRef.savedSearches.size() - 1;
@@ -996,6 +997,15 @@ MidiClip MidiBrowserEditor::buildRenderedClip() const
         ev.channel = juce::jlimit(1, 16, n.channel);
         out.notes.push_back(ev);
     }
+
+    auto sustain = buildSustainPedalAutomation(notes, out.lengthBeats / juce::jmax(0.25, stretch), groove);
+    if (!sustain.empty())
+    {
+        // Automation is stored in unstretched beat time matching note events after stretch.
+        for (auto& p : sustain)
+            p.beat *= stretch;
+        out.automation[64] = std::move(sustain);
+    }
     return out;
 }
 
@@ -1194,25 +1204,36 @@ void MidiBrowserEditor::applyLayoutState()
     // Window width always budgets the full expanded sidebar so shrinking it
     // in-place can hand width to the file list without growing the window.
     const int sideBudget = sidebar.isCollapsed() ? side : metrics::sidebarExpandedWidth();
-    const int table = metrics::fileTableWidth();
-    const int w = sideBudget + table
-                  + (edOpen ? metrics::editorPaneWidth() : 0)
-                  + (fxOpen ? metrics::effectsPaneWidth() : 0);
+    const int baseTable = metrics::fileTableWidth();
+    // Grow the browser (and window) up to the width needed for visible columns,
+    // then stop — editor/effects stay fixed.
+    const int columnsW = fileList.idealContentWidth();
+    const int tableMax = juce::jmax(baseTable, columnsW);
+    const int panes = (edOpen ? metrics::editorPaneWidth() : 0)
+                    + (fxOpen ? metrics::effectsPaneWidth() : 0);
+    const int baseW = sideBudget + baseTable + panes;
+    const int maxW = sideBudget + tableMax + panes;
     const int minW = metrics::sidebarRailWidth() + metrics::browserMinWidthScaled()
                      + (edOpen ? metrics::openRollMinWidth() : 0)
                      + (fxOpen ? metrics::effectsPaneWidth() : 0);
-    setResizeLimits(minW, metrics::scaled(420), w, 2000);
+    setResizeLimits(minW, metrics::scaled(420), maxW, 2000);
 
     const int previewExtra = processorRef.previewOpen
                                  ? metrics::miniRollH() + metrics::scaled(34) : 0;
     const int targetH = juce::jmax(metrics::scaled(460) + previewExtra, lastWindowH);
 
-    layoutAnimFromW = getWidth() > 0 ? getWidth() : w;
-    layoutTargetW = w;
+    // Prefer fitting columns when they exceed the base table width; otherwise
+    // keep the current width (user can drag between base and max).
+    const int neededW = sideBudget + juce::jmax(baseTable, columnsW) + panes;
+    const int currentW = getWidth() > 0 ? getWidth() : baseW;
+    const int targetW = juce::jlimit(baseW, maxW, juce::jmax(currentW, neededW));
+
+    layoutAnimFromW = currentW;
+    layoutTargetW = targetW;
     layoutAnimStartMs = juce::Time::getMillisecondCounterHiRes();
     if (std::abs(layoutAnimFromW - layoutTargetW) < 2)
     {
-        setSize(w, targetH);
+        setSize(targetW, targetH);
         resized();
     }
 }
@@ -1244,9 +1265,14 @@ void MidiBrowserEditor::layoutContent()
     const int sideBudget = sidebar.isCollapsed() ? sideW : metrics::sidebarExpandedWidth();
     sidebar.setBounds(row.removeFromLeft(sideW));
 
-    // When the sidebar is narrowed (but not folded), the file list takes the
-    // freed space so the window does not grow.
-    const int browserW = metrics::fileTableWidth() + juce::jmax(0, sideBudget - sideW);
+    const int panes = (edOpen ? metrics::editorPaneWidth() : 0)
+                    + (fxOpen ? metrics::effectsPaneWidth() : 0);
+    const int baseTable = metrics::fileTableWidth() + juce::jmax(0, sideBudget - sideW);
+    const int columnsW = fileList.idealContentWidth();
+    const int tableMax = juce::jmax(baseTable, columnsW);
+    // Any extra window width goes only to the browser column; other panes stay fixed.
+    const int available = juce::jmax(baseTable, row.getWidth() - panes);
+    const int browserW = juce::jlimit(baseTable, tableMax, available);
     auto browserCol = row.removeFromLeft(browserW);
 
     int paneX = sideW + browserW;

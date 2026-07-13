@@ -311,7 +311,7 @@ void KnobsPanel::paint(juce::Graphics& g)
         juce::String names;
         for (int i = 0; i < kNumKnobs; ++i)
             names << kKnobDefs[(size_t) i].label
-                  << (i < kNumKnobs - 1 ? juce::String::fromUTF8(" · ") : juce::String());
+                  << (i < kNumKnobs - 1 ? juce::String(" / ") : juce::String());
         g.drawText(names, header, juce::Justification::centredRight, true);
     }
 }

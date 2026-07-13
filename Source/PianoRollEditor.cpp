@@ -442,7 +442,7 @@ void PianoRollEditor::refreshControls()
     fitSwitch.setToggleState(edit.fitScale, juce::dontSendNotification);
     mapSwitch.setToggleState(edit.mapToRoot, juce::dontSendNotification);
     mapSwitch.onText = (edit.mapToRoot && edit.root >= 0 && clip.root >= 0)
-        ? juce::String(kNoteNames[(size_t) clip.root]) + juce::String::fromUTF8(" → ")
+        ? juce::String(kNoteNames[(size_t) clip.root]) + juce::String(" -> ")
               + kNoteNames[(size_t) edit.root]
         : juce::String("on");
     mapSwitch.repaint();
@@ -811,14 +811,41 @@ const RollNote* PianoRollEditor::noteAt(juce::Point<float> pos) const
 
 void PianoRollEditor::computePxPerStepBase()
 {
-    const int visW = juce::jmax(60, rollViewport.getMaximumVisibleWidth());
+    // Prefer the viewport's laid-out width; fall back to the editor body so we
+    // never compute a tiny pps before the first real layout (which looks condensed).
+    int visW = rollViewport.getMaximumVisibleWidth();
+    if (visW < 32)
+        visW = juce::jmax(60, getWidth() - gutterW - 8);
+    visW = juce::jmax(60, visW);
+
     const int clipBars = juce::jmax(1, resolved.bars);
-    // 0 = File: fit the whole clip. Otherwise fit exactly N bars in the viewport
-    // so e.g. "2 bars" on an 8-bar loop zooms into two measures of notes.
+    // 0 = File: fit the whole clip. Otherwise fit exactly N bars across the
+    // piano-roll viewport so "8 bars" fills the window with 8 bars of content.
     const int bars = (visibleBarsZoom <= 0) ? clipBars : juce::jmax(1, visibleBarsZoom);
     const double stretch = juce::jmax(0.25, timeStretch);
-    const double stepsToShow = (double) bars * (double) kStepsPerBar * stretch;
-    pxPerStepBase = juce::jmax(0.75f, (float) ((double) visW / juce::jmax(1.0, stepsToShow)));
+    // Visual span of one musical bar at zoomX=1.
+    const double visualSteps = (double) bars * (double) kStepsPerBar * stretch;
+    pxPerStepBase = juce::jmax(0.25f, (float) ((double) visW / juce::jmax(1.0, visualSteps)));
+}
+
+void PianoRollEditor::updateRollSize()
+{
+    int visW = rollViewport.getMaximumVisibleWidth();
+    if (visW < 32)
+        visW = juce::jmax(1, getWidth() - gutterW - 8);
+    visW = juce::jmax(1, visW);
+    const int visH = juce::jmax(1, rollViewport.getMaximumVisibleHeight());
+
+    // Content width tracks the clip at the current zoom (musical steps * stretch * pps).
+    const double clipVisualSteps = (double) juce::jmax(1, resolved.bars)
+                                 * (double) kStepsPerBar
+                                 * juce::jmax(0.25, timeStretch);
+    const int contentW = (int) std::ceil(clipVisualSteps * (double) pxPerStep());
+    const int w = juce::jmax(contentW, visW);
+    const int h = juce::jmax((int) std::ceil((float) numRows() * effRowH()), visH);
+    rollContent.setSize(w, h);
+    gutter.repaint();
+    velocityLane.repaint();
 }
 
 int PianoRollEditor::barsZoomPopupIndex() const
@@ -895,17 +922,6 @@ void PianoRollEditor::setVelocityFromLaneY(int noteId, float laneY)
     const float t = 1.0f - juce::jlimit(0.0f, 1.0f, (laneY - (float) laneTop) / (float) laneH);
     const int vel = juce::jlimit(1, 127, (int) std::lround(t * 127.0));
     applyEdit([noteId, vel](ClipEdit& e) { e.velocities[noteId] = vel; });
-    velocityLane.repaint();
-}
-
-void PianoRollEditor::updateRollSize()
-{
-    const int visW = juce::jmax(1, rollViewport.getMaximumVisibleWidth());
-    const int visH = juce::jmax(1, rollViewport.getMaximumVisibleHeight());
-    const int w = juce::jmax((int) std::ceil((float) totalSteps() * pxPerStep()), visW);
-    const int h = juce::jmax((int) std::ceil((float) numRows() * effRowH()), visH);
-    rollContent.setSize(w, h);
-    gutter.repaint();
     velocityLane.repaint();
 }
 

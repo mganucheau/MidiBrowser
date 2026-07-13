@@ -278,7 +278,7 @@ std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
         out.push_back({ "scale", juce::String(kNoteNames[(size_t) e.root]) + " " + modeName(e.mode) });
 
     if (e.mapToRoot && e.root >= 0)
-        out.push_back({ "map", juce::String::fromUTF8("→ ") + kNoteNames[(size_t) e.root] + " root" });
+        out.push_back({ "map", juce::String("-> ") + kNoteNames[(size_t) e.root] + " root" });
 
     int moved = 0;
     for (const auto& [id, mv] : e.moves)
@@ -289,7 +289,7 @@ std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
 
     const int trimBars = (int) effectiveRemovedBars(clip, e).size();
     if (trimBars > 0)
-        out.push_back({ "trim", juce::String::fromUTF8("Trim −") + juce::String(trimBars)
+        out.push_back({ "trim", juce::String("Trim -") + juce::String(trimBars)
                                     + (trimBars > 1 ? " bars" : " bar") });
 
     if (!e.velocities.empty())
@@ -342,8 +342,11 @@ StepClip makeStepClip(const MidiClip& clip)
     s.difNotes = (int) distinctPitches.size();
 
     const double notesPerBar = (double) s.noteCount / (double) juce::jmax(1, s.bars);
-    s.complexity = juce::jlimit(1, 99,
-        (int) std::lround((double) s.difNotes * notesPerBar));
+    // Map density*variety into a readable 1..10 score.
+    s.complexity = juce::jlimit(1, 10,
+        (int) std::lround((double) s.difNotes * notesPerBar / 10.0));
+    if (s.noteCount > 0 && s.complexity < 1)
+        s.complexity = 1;
 
     if (!clip.notes.empty())
     {

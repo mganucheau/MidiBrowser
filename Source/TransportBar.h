@@ -69,7 +69,7 @@ private:
             if (e.mods.isPopupMenu())
             {
                 juce::PopupMenu m;
-                m.addItem(1, "Copy to Folder…", onCopyToFolder != nullptr);
+                m.addItem(1, "Copy to Folder...", onCopyToFolder != nullptr);
                 m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
                     [this](int result)
                     {

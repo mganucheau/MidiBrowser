@@ -196,6 +196,8 @@ public:
 
     void setColumnVisibility(const BrowserColumnVisibility& v);
     BrowserColumnVisibility getColumnVisibility() const { return columnsVisible; }
+    /** Pixel width needed to show every visible column without horizontal scroll. */
+    int idealContentWidth() const { return totalContentWidth(); }
     std::function<void(const BrowserColumnVisibility&)> onColumnVisibilityChanged;
 
     std::function<void(int)> onSelect;       // entry index
@@ -278,6 +280,7 @@ private:
     bool playing = false;
     bool searching = false;
     double searchAnimT = 0.0;
+    int lastViewX = 0;
 
     juce::Viewport viewport;
     ListContent content { *this };

@@ -504,7 +504,7 @@ void FavoritesSidebar::mouseDown(const juce::MouseEvent& e)
         if (hit.kind == RowKind::Starred && onCopyStarredToFolder)
         {
             juce::PopupMenu m;
-            m.addItem(1, "Copy All to Folder…");
+            m.addItem(1, "Copy All to Folder...");
             m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this)
                                  .withMousePosition(),
                 [this](int result)
@@ -1105,6 +1105,14 @@ void FileListPanel::timerCallback()
 {
     updateScrollTopButton();
 
+    // Keep column headers aligned with horizontally scrolled row content.
+    const int viewX = viewport.getViewPositionX();
+    if (viewX != lastViewX)
+    {
+        lastViewX = viewX;
+        repaint(getLocalBounds().removeFromTop(metrics::listHeaderH()));
+    }
+
     if (searching)
     {
         searchAnimT = juce::Time::getMillisecondCounterHiRes() / 1000.0;
@@ -1186,41 +1194,55 @@ void FileListPanel::mouseDown(const juce::MouseEvent& e)
 
 void FileListPanel::paintColumnHeader(juce::Graphics& g)
 {
-    auto header = getLocalBounds().removeFromTop(metrics::listHeaderH());
+    auto headerClip = getLocalBounds().removeFromTop(metrics::listHeaderH());
     g.setColour(colours::line());
-    g.fillRect(header.removeFromBottom(1));
+    g.fillRect(headerClip.removeFromBottom(1));
 
-    auto drawCol = [&](SortColumn col, const juce::String& label, juce::Justification just)
+    // Paint headers in content coordinates, shifted by the viewport's X scroll
+    // so titles stay locked to their columns while rows scroll sideways.
+    const int viewX = viewport.getViewPositionX();
+    g.saveState();
+    g.reduceClipRegion(getLocalBounds().removeFromTop(metrics::listHeaderH()));
+    g.addTransform(juce::AffineTransform::translation((float) -viewX, 0.0f));
+
+    auto drawCol = [&](SortColumn col, const juce::String& label)
     {
         if (!isColumnVisible(col))
             return;
-        auto r = headerColumnBounds(col);
+        // Bounds in panel space already account for viewX; undo that for content paint.
+        auto r = headerColumnBounds(col).translated(viewX, 0);
         const bool active = sortColumn == col;
         g.setColour(active ? colours::text() : colours::text3());
         g.setFont(uiFont(10.5f, true));
         const auto font = g.getCurrentFont();
         const int labelW = (int) std::ceil(juce::GlyphArrangement::getStringWidth(font, label));
         auto labelR = r.removeFromLeft(labelW);
-        g.drawText(label, labelR, just, false);
+        g.drawText(label, labelR, juce::Justification::centredLeft, false);
         if (active)
         {
-            // Triangle sits immediately after the title, not at the column edge.
-            auto arrowR = r.removeFromLeft(metrics::scaled(kSortArrowW));
-            g.drawText(sortAscending ? juce::String::fromUTF8("▲")
-                                     : juce::String::fromUTF8("▼"),
-                       arrowR, juce::Justification::centred, false);
+            auto arrowR = r.removeFromLeft(metrics::scaled(kSortArrowW)).toFloat()
+                              .withSizeKeepingCentre(8.0f, 8.0f);
+            juce::Path p;
+            const float cx = arrowR.getCentreX();
+            const float cy = arrowR.getCentreY();
+            if (sortAscending)
+                p.addTriangle(cx - 3.5f, cy + 2.0f, cx + 3.5f, cy + 2.0f, cx, cy - 2.5f);
+            else
+                p.addTriangle(cx - 3.5f, cy - 2.0f, cx + 3.5f, cy - 2.0f, cx, cy + 2.5f);
+            g.fillPath(p);
         }
     };
 
-    drawCol(SortColumn::Name, "Name", juce::Justification::centredLeft);
-    drawCol(SortColumn::Key, "Key", juce::Justification::centredLeft);
-    drawCol(SortColumn::Tempo, "Tempo", juce::Justification::centredLeft);
-    drawCol(SortColumn::Bars, "Bars", juce::Justification::centredLeft);
-    drawCol(SortColumn::Kind, "Kind", juce::Justification::centredLeft);
-    drawCol(SortColumn::Complexity, "Cx", juce::Justification::centredLeft);
-    drawCol(SortColumn::DifNotes, "DifNotes", juce::Justification::centredLeft);
-    drawCol(SortColumn::TimeSig, "TimeSig", juce::Justification::centredLeft);
-    drawCol(SortColumn::Notes, "Notes", juce::Justification::centredLeft);
+    drawCol(SortColumn::Name, "Name");
+    drawCol(SortColumn::Key, "Key");
+    drawCol(SortColumn::Tempo, "Tempo");
+    drawCol(SortColumn::Bars, "Bars");
+    drawCol(SortColumn::Kind, "Kind");
+    drawCol(SortColumn::Complexity, "Cx");
+    drawCol(SortColumn::DifNotes, "DifNotes");
+    drawCol(SortColumn::TimeSig, "TimeSig");
+    drawCol(SortColumn::Notes, "Notes");
+    g.restoreState();
 }
 
 void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<int> r,
@@ -1386,7 +1408,7 @@ void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
     {
         juce::PopupMenu m;
         m.addItem(1, "Show in Finder");
-        m.addItem(2, "Copy to Folder…");
+        m.addItem(2, "Copy to Folder...");
         m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this)
                              .withMousePosition(),
             [this, file = entry.file](int result)

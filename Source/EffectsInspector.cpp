@@ -6,20 +6,24 @@ using namespace fx;
 
 EffectsInspector::EffectsInspector()
     : tempoRow("Tempo", tempoToggle)
+    , swingTimeRow("Swing Time", swingTimePopup)
+    , quantizeTimeRow("Quantize Time", quantizeTimePopup)
+    , quantizeStrengthSl("Quantize Strength", 0, 100, 0, false)
     , swing("Swing", 0, 100, 0, false)
-    , swingStyleRow("Swing Style", swingStylePopup)
     , pocket("Pocket", -100, 100, 0, true)
     , humanize("Humanize", 0, 100, 0, false)
+    , lengthSl("Length", 25, 200, 100, false)
     , dynamicsSl("Dynamics", -100, 100, 0, true)
     , intensitySl("Intensity", 0, 200, 100, false)
-    , lengthSl("Length", 25, 200, 100, false)
+    , articulationRow("Articulation", articulationPopup)
+    , articulationStrengthSl("Articulation Strength", 0, 100, 0, false)
+    , sustainRow("Sustain Pedal", sustainPopup)
     , octaveRow("Octave", octaveStepper)
     , keyModeRow(keyPopup, modePopup)
     , trimRow("Trim empty measures", trimSwitch)
     , fitRow("Fit to Scale", fitSwitch)
     , mapRow("Map to Root", mapSwitch)
 {
-    // Capture slider/toggle clicks so sticky key-nav can leave the browser.
     addMouseListener(this, true);
 
     viewport.setViewedComponent(&body, false);
@@ -73,11 +77,52 @@ EffectsInspector::EffectsInspector()
     wireSlider(lengthSl, 4);
     wireSlider(intensitySl, 5);
 
-    swingStylePopup.setItems({ "1/16", "1/8", "1/4", "1/2", "1", "2" }, 1);
-    swingStylePopup.onChange = [this](int idx)
+    quantizeStrengthSl.onChange = [this](int v)
+    {
+        groove.quantizeStrength = v;
+        notifyGroove();
+    };
+    articulationStrengthSl.onChange = [this](int v)
+    {
+        groove.articulationStrength = v;
+        notifyGroove();
+    };
+
+    swingTimePopup.setItems({ "1/16", "1/8", "1/4", "1/2", "1", "2" }, 1);
+    swingTimePopup.onChange = [this](int idx)
     {
         groove.swingGridIndex = idx;
         groove.swingBase = idx == 0 ? SwingBase::Sixteenth : SwingBase::Eighth;
+        notifyGroove();
+    };
+
+    juce::StringArray qItems;
+    for (int i = 0; i < (int) QuantizeGrid::Count; ++i)
+        qItems.add(quantizeGridLabel((QuantizeGrid) i));
+    quantizeTimePopup.setItems(qItems, (int) QuantizeGrid::Eighth);
+    quantizeTimePopup.onChange = [this](int idx)
+    {
+        groove.quantizeGridIndex = idx;
+        notifyGroove();
+    };
+
+    juce::StringArray artItems;
+    for (int i = 0; i < (int) Articulation::Count; ++i)
+        artItems.add(articulationLabel((Articulation) i));
+    articulationPopup.setItems(artItems, 0);
+    articulationPopup.onChange = [this](int idx)
+    {
+        groove.articulationIndex = idx;
+        notifyGroove();
+    };
+
+    juce::StringArray susItems;
+    for (int i = 0; i < (int) SustainPedalMode::Count; ++i)
+        susItems.add(sustainPedalLabel((SustainPedalMode) i));
+    sustainPopup.setItems(susItems, 0);
+    sustainPopup.onChange = [this](int idx)
+    {
+        groove.sustainPedalMode = idx;
         notifyGroove();
     };
 
@@ -134,14 +179,20 @@ EffectsInspector::EffectsInspector()
     playback.addRow(&tempoRow);
     playback.addRow(&trimRow);
 
+    // Timing: Quantize first, then Swing Time / Swing / Length / Pocket / Humanize.
+    timing.addRow(&quantizeTimeRow);
+    timing.addRow(&quantizeStrengthSl, kSliderRowH);
+    timing.addRow(&swingTimeRow);
     timing.addRow(&swing, kSliderRowH);
-    timing.addRow(&swingStyleRow);
+    timing.addRow(&lengthSl, kSliderRowH);
     timing.addRow(&pocket, kSliderRowH);
     timing.addRow(&humanize, kSliderRowH);
 
+    performance.addRow(&articulationRow);
+    performance.addRow(&articulationStrengthSl, kSliderRowH);
+    performance.addRow(&sustainRow);
     performance.addRow(&dynamicsSl, kSliderRowH);
     performance.addRow(&intensitySl, kSliderRowH);
-    performance.addRow(&lengthSl, kSliderRowH);
 
     pitchSec.addRow(&octaveRow);
     pitchSec.addRow(&pitchRow);
@@ -225,13 +276,25 @@ void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
     dynamicsSl.setValue(g.dynamics, juce::dontSendNotification);
     lengthSl.setValue(g.length, juce::dontSendNotification);
     intensitySl.setValue(g.intensity, juce::dontSendNotification);
-    swingStylePopup.setIndex(juce::jlimit(0, 5, g.swingGridIndex), juce::dontSendNotification);
+    quantizeStrengthSl.setValue(g.quantizeStrength, juce::dontSendNotification);
+    articulationStrengthSl.setValue(g.articulationStrength, juce::dontSendNotification);
+
+    swingTimePopup.setIndex(juce::jlimit(0, 5, g.swingGridIndex), juce::dontSendNotification);
+    quantizeTimePopup.setIndex(juce::jlimit(0, (int) QuantizeGrid::Count - 1, g.quantizeGridIndex),
+                               juce::dontSendNotification);
+    articulationPopup.setIndex(juce::jlimit(0, (int) Articulation::Count - 1, g.articulationIndex),
+                               juce::dontSendNotification);
+    sustainPopup.setIndex(juce::jlimit(0, (int) SustainPedalMode::Count - 1, g.sustainPedalMode),
+                          juce::dontSendNotification);
+
     swing.valueText = grooveValueText(kKnobDefs[0], g.swing);
     pocket.valueText = grooveValueText(kKnobDefs[1], g.pocket);
     humanize.valueText = grooveValueText(kKnobDefs[2], g.humanize);
     dynamicsSl.valueText = grooveValueText(kKnobDefs[3], g.dynamics);
     lengthSl.valueText = grooveValueText(kKnobDefs[4], g.length);
     intensitySl.valueText = grooveValueText(kKnobDefs[5], g.intensity);
+    quantizeStrengthSl.valueText = juce::String(g.quantizeStrength) + "%";
+    articulationStrengthSl.valueText = juce::String(g.articulationStrength) + "%";
     repaint();
 }
 
@@ -255,6 +318,8 @@ void EffectsInspector::notifyGroove()
     dynamicsSl.valueText = grooveValueText(kKnobDefs[3], groove.dynamics);
     lengthSl.valueText = grooveValueText(kKnobDefs[4], groove.length);
     intensitySl.valueText = grooveValueText(kKnobDefs[5], groove.intensity);
+    quantizeStrengthSl.valueText = juce::String(groove.quantizeStrength) + "%";
+    articulationStrengthSl.valueText = juce::String(groove.articulationStrength) + "%";
     if (onGrooveChanged) onGrooveChanged(groove);
 }
 
@@ -297,8 +362,16 @@ void EffectsInspector::resized()
     tempoToggle.setSize(tempoToggle.idealWidth(), kControlH);
     tempoRow.setControlWidth(tempoToggle.idealWidth());
     trimRow.setControlWidth(trimSwitch.idealWidth());
-    swingStylePopup.setSize(swingStylePopup.idealWidth(), kControlH);
-    swingStyleRow.setControlWidth(swingStylePopup.idealWidth());
+
+    swingTimePopup.setSize(swingTimePopup.idealWidth(), kControlH);
+    swingTimeRow.setControlWidth(swingTimePopup.idealWidth());
+    quantizeTimePopup.setSize(quantizeTimePopup.idealWidth(), kControlH);
+    quantizeTimeRow.setControlWidth(quantizeTimePopup.idealWidth());
+    articulationPopup.setSize(articulationPopup.idealWidth(), kControlH);
+    articulationRow.setControlWidth(articulationPopup.idealWidth());
+    sustainPopup.setSize(sustainPopup.idealWidth(), kControlH);
+    sustainRow.setControlWidth(sustainPopup.idealWidth());
+
     octaveStepper.setSize(octaveStepper.idealWidth(), kControlH);
     octaveRow.setControlWidth(octaveStepper.idealWidth());
     pitchRow.stepper.setSize(pitchRow.stepper.idealWidth(), kControlH);

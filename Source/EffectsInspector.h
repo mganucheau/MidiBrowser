@@ -69,15 +69,23 @@ private:
     fx::InlineRow tempoRow;
     fx::FlatSwitch trimSwitch;
 
+    fx::FlatPopup swingTimePopup;
+    fx::InlineRow swingTimeRow;
+    fx::FlatPopup quantizeTimePopup;
+    fx::InlineRow quantizeTimeRow;
+    fx::FlatSliderRow quantizeStrengthSl;
     fx::FlatSliderRow swing;
-    fx::FlatPopup swingStylePopup;
-    fx::InlineRow swingStyleRow;
     fx::FlatSliderRow pocket;
     fx::FlatSliderRow humanize;
+    fx::FlatSliderRow lengthSl;
 
     fx::FlatSliderRow dynamicsSl;
     fx::FlatSliderRow intensitySl;
-    fx::FlatSliderRow lengthSl;
+    fx::FlatPopup articulationPopup;
+    fx::InlineRow articulationRow;
+    fx::FlatSliderRow articulationStrengthSl;
+    fx::FlatPopup sustainPopup;
+    fx::InlineRow sustainRow;
 
     fx::FlatStepper octaveStepper;
     fx::InlineRow octaveRow;

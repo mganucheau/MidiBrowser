@@ -661,29 +661,104 @@ void PatternFlowLookAndFeel::drawTextEditorOutline(juce::Graphics& g, int width,
     g.drawRoundedRectangle(bounds, metrics::cornerRadius, focused ? 1.5f : 0.5f);
 }
 
+void PatternFlowLookAndFeel::drawPopupMenuBackground(juce::Graphics& g, int width, int height)
+{
+    auto bounds = juce::Rectangle<float>(0.0f, 0.0f, (float) width, (float) height).reduced(1.0f);
+    g.setColour(colours::panel());
+    g.fillRoundedRectangle(bounds, 8.0f);
+    g.setColour(colours::line());
+    g.drawRoundedRectangle(bounds.reduced(0.5f), 8.0f, 0.5f);
+}
+
+void PatternFlowLookAndFeel::preparePopupMenuWindow(juce::Component& window)
+{
+    window.setOpaque(false);
+}
+
+int PatternFlowLookAndFeel::getPopupMenuBorderSize()
+{
+    return 6;
+}
+
+void PatternFlowLookAndFeel::getIdealPopupMenuItemSize(const juce::String& text, bool isSeparator,
+                                                       int standardMenuItemHeight,
+                                                       int& idealWidth, int& idealHeight)
+{
+    LookAndFeel_V4::getIdealPopupMenuItemSize(text, isSeparator, standardMenuItemHeight,
+                                              idealWidth, idealHeight);
+    if (!isSeparator)
+        idealHeight = 26;
+    idealWidth = juce::jmax(idealWidth,
+                            (int) std::ceil(juce::GlyphArrangement::getStringWidth(uiFont(12.5f, false), text)) + 36);
+}
+
 void PatternFlowLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Rectangle<int>& area,
                                               bool isSeparator, bool isActive, bool isHighlighted,
                                               bool isTicked, bool hasSubMenu, const juce::String& text,
                                               const juce::String& shortcutKeyText, const juce::Drawable* icon,
                                               const juce::Colour* textColourToUse)
 {
+    juce::ignoreUnused(icon, shortcutKeyText);
+
     if (isSeparator)
     {
         g.setColour(colours::separator());
-        g.fillRect(area.withHeight(1).withY(area.getCentreY()));
+        g.fillRect(area.reduced(10, 0).withHeight(1).withY(area.getCentreY()));
         return;
     }
-    auto r = area.reduced(6, 1);
-    // Instant highlight only — no fade trail that leaves multiple rows lit.
-    if (isHighlighted)
+
+    auto r = area.reduced(6, 1).toFloat();
+    if (isHighlighted && isActive)
     {
-        g.setColour(colours::accent().withAlpha(0.85f));
-        g.fillRoundedRectangle(r.toFloat(), metrics::chipRadius);
+        g.setColour(colours::accent());
+        g.fillRoundedRectangle(r, metrics::chipRadius);
     }
+    else if (isTicked)
+    {
+        g.setColour(colours::accent().withAlpha(0.14f));
+        g.fillRoundedRectangle(r, metrics::chipRadius);
+    }
+
+    auto textArea = area.reduced(12, 0);
+    if (isTicked || hasSubMenu)
+        textArea.removeFromLeft(16);
+
+    if (isTicked)
+    {
+        // ASCII-safe checkmark drawn as geometry (avoids missing-glyph boxes).
+        juce::Path tick;
+        const float x = (float) area.getX() + 12.0f;
+        const float y = (float) area.getCentreY();
+        tick.startNewSubPath(x - 3.5f, y);
+        tick.lineTo(x - 0.5f, y + 3.0f);
+        tick.lineTo(x + 4.5f, y - 3.5f);
+        g.setColour(isHighlighted ? juce::Colours::white : colours::accent());
+        g.strokePath(tick, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved,
+                                                juce::PathStrokeType::rounded));
+    }
+
+    if (hasSubMenu)
+    {
+        auto chev = juce::Rectangle<float>((float) area.getRight() - 16.0f,
+                                           (float) area.getCentreY() - 4.0f, 8.0f, 8.0f);
+        juce::Path p;
+        p.addTriangle(chev.getX(), chev.getY(),
+                      chev.getX(), chev.getBottom(),
+                      chev.getRight(), chev.getCentreY());
+        g.setColour(isHighlighted ? juce::Colours::white : colours::text3());
+        g.fillPath(p);
+    }
+
     juce::Colour col = (textColourToUse != nullptr) ? *textColourToUse : colours::text();
-    if (!isActive) col = colours::textDim();
-    juce::LookAndFeel_V4::drawPopupMenuItem(g, area, false, isActive, false, isTicked, hasSubMenu,
-                                           text, shortcutKeyText, icon, &col);
+    if (!isActive)
+        col = colours::textDim();
+    else if (isHighlighted)
+        col = juce::Colours::white;
+
+    g.setFont(uiFont(12.5f, false));
+    g.setColour(col);
+    // Draw with fitted text so missing glyphs never leave empty slots.
+    g.drawFittedText(text, textArea, juce::Justification::centredLeft, 1);
 }
 
 void PatternFlowLookAndFeel::drawScrollbar(juce::Graphics& g, juce::ScrollBar&, int x, int y,

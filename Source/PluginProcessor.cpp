@@ -295,6 +295,32 @@ void MidiBrowserProcessor::generatePreviewMidi(const MidiClip& clip, double star
     const double blockLen = endBeat - startBeat;
     if (blockLen <= 0.0) return;
 
+    auto emitAt = [&](double globalBeat, const juce::MidiMessage& msg)
+    {
+        if (globalBeat < startBeat || globalBeat >= endBeat) return;
+        const double fraction = (globalBeat - startBeat) / blockLen;
+        const int sampleOffset = sampleOffsetBase
+            + juce::jlimit(0, numSamples - 1, (int) (fraction * (double) numSamples));
+        output.addEvent(msg, sampleOffset);
+    };
+
+    // Sustain / other clip automation (CC), looped with the clip.
+    for (const auto& entry : clip.automation)
+    {
+        const int cc = entry.first;
+        for (const auto& pt : entry.second)
+        {
+            const int kMin = juce::jmax(0, (int) std::floor((startBeat - pt.beat) / clipLen));
+            const int kMax = (int) std::ceil((endBeat - pt.beat) / clipLen);
+            for (int k = kMin; k <= kMax; ++k)
+            {
+                const double globalBeat = (double) k * clipLen + pt.beat;
+                emitAt(globalBeat,
+                       juce::MidiMessage::controllerEvent(1, cc, juce::jlimit(0, 127, pt.value)));
+            }
+        }
+    }
+
     for (const auto& note : clip.notes)
     {
         double noteStart = note.startBeat - clip.clipStartOffset;
@@ -311,21 +337,15 @@ void MidiBrowserProcessor::generatePreviewMidi(const MidiClip& clip, double star
 
             if (globalStart >= startBeat && globalStart < endBeat)
             {
-                const double fraction = (globalStart - startBeat) / blockLen;
-                const int sampleOffset = sampleOffsetBase
-                    + juce::jlimit(0, numSamples - 1, (int) (fraction * (double) numSamples));
                 const int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);
-                output.addEvent(juce::MidiMessage::noteOn(note.channel, pitch, (juce::uint8) note.velocity),
-                                sampleOffset);
+                emitAt(globalStart,
+                       juce::MidiMessage::noteOn(note.channel, pitch, (juce::uint8) note.velocity));
                 activeNotes_[juce::jlimit(1, 16, note.channel) - 1][pitch] = true;
             }
             if (globalEnd >= startBeat && globalEnd <= endBeat + 1.0e-12)
             {
-                const double fraction = juce::jlimit(0.0, 1.0, (globalEnd - startBeat) / blockLen);
-                const int sampleOffset = sampleOffsetBase
-                    + juce::jlimit(0, numSamples - 1, (int) (fraction * (double) numSamples));
                 const int pitch = juce::jlimit(0, 127, note.noteNumber + clip.rootNoteOffset);
-                output.addEvent(juce::MidiMessage::noteOff(note.channel, pitch), sampleOffset);
+                emitAt(globalEnd, juce::MidiMessage::noteOff(note.channel, pitch));
                 activeNotes_[juce::jlimit(1, 16, note.channel) - 1][pitch] = false;
             }
         }
@@ -406,6 +426,11 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("lockLength", lockedGroove.length);
     xml.setAttribute("lockIntensity", lockedGroove.intensity);
     xml.setAttribute("lockSwingGrid", lockedGroove.swingGridIndex);
+    xml.setAttribute("lockQuantizeGrid", lockedGroove.quantizeGridIndex);
+    xml.setAttribute("lockQuantizeStrength", lockedGroove.quantizeStrength);
+    xml.setAttribute("lockArticulation", lockedGroove.articulationIndex);
+    xml.setAttribute("lockArticulationStrength", lockedGroove.articulationStrength);
+    xml.setAttribute("lockSustainPedal", lockedGroove.sustainPedalMode);
     for (const auto& folder : savedBrowserDirs)
     {
         if (folder.isNotEmpty())
@@ -493,6 +518,12 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         e->setAttribute("length", k.length);
         e->setAttribute("intensity", k.intensity);
         e->setAttribute("swingBase", (int) k.swingBase);
+        e->setAttribute("swingGrid", k.swingGridIndex);
+        e->setAttribute("quantizeGrid", k.quantizeGridIndex);
+        e->setAttribute("quantizeStrength", k.quantizeStrength);
+        e->setAttribute("articulation", k.articulationIndex);
+        e->setAttribute("articulationStrength", k.articulationStrength);
+        e->setAttribute("sustainPedal", k.sustainPedalMode);
     }
     copyXmlToBinary(xml, dest);
 }
@@ -559,6 +590,16 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 xml->getIntAttribute("lockSwingGrid", xml->getIntAttribute("lockSwingBase", 0) != 0 ? 0 : 1));
             lockedGroove.swingBase = lockedGroove.swingGridIndex == 0
                                           ? SwingBase::Sixteenth : SwingBase::Eighth;
+            lockedGroove.quantizeGridIndex = juce::jlimit(0, (int) QuantizeGrid::Count - 1,
+                xml->getIntAttribute("lockQuantizeGrid", (int) QuantizeGrid::Eighth));
+            lockedGroove.quantizeStrength = juce::jlimit(0, 100,
+                xml->getIntAttribute("lockQuantizeStrength", 0));
+            lockedGroove.articulationIndex = juce::jlimit(0, (int) Articulation::Count - 1,
+                xml->getIntAttribute("lockArticulation", 0));
+            lockedGroove.articulationStrength = juce::jlimit(0, 100,
+                xml->getIntAttribute("lockArticulationStrength", 0));
+            lockedGroove.sustainPedalMode = juce::jlimit(0, (int) SustainPedalMode::Count - 1,
+                xml->getIntAttribute("lockSustainPedal", 0));
             for (auto* child : xml->getChildIterator())
             {
                 if (child->hasTagName("SavedFolder"))
@@ -663,6 +704,17 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     k.set(5, child->getIntAttribute("intensity", 100));
                     k.swingBase = child->getIntAttribute("swingBase", 0) != 0
                                       ? SwingBase::Sixteenth : SwingBase::Eighth;
+                    k.swingGridIndex = juce::jlimit(0, 5,
+                        child->getIntAttribute("swingGrid", k.swingBase == SwingBase::Sixteenth ? 0 : 1));
+                    k.quantizeGridIndex = juce::jlimit(0, (int) QuantizeGrid::Count - 1,
+                        child->getIntAttribute("quantizeGrid", (int) QuantizeGrid::Eighth));
+                    k.quantizeStrength = juce::jlimit(0, 100, child->getIntAttribute("quantizeStrength", 0));
+                    k.articulationIndex = juce::jlimit(0, (int) Articulation::Count - 1,
+                        child->getIntAttribute("articulation", 0));
+                    k.articulationStrength = juce::jlimit(0, 100,
+                        child->getIntAttribute("articulationStrength", 0));
+                    k.sustainPedalMode = juce::jlimit(0, (int) SustainPedalMode::Count - 1,
+                        child->getIntAttribute("sustainPedal", 0));
                     clipGrooves[path] = k;
                 }
             }

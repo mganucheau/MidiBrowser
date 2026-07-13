@@ -43,7 +43,7 @@ struct StepClip
     int    timeSigDen = 4;
     int    noteCount = 0;
     int    difNotes = 0;    // distinct pitches
-    int    complexity = 1;  // 1..99 density × variety score
+    int    complexity = 1;  // 1..10 density x variety score
     std::vector<RollNote> notes;
 };
 

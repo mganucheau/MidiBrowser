@@ -325,11 +325,18 @@ public:
     void drawTextEditorOutline(juce::Graphics&, int width, int height,
                                juce::TextEditor&) override;
 
+    void drawPopupMenuBackground(juce::Graphics&, int width, int height) override;
+    void preparePopupMenuWindow(juce::Component& window) override;
+    int getPopupMenuBorderSize() override;
+
     void drawPopupMenuItem(juce::Graphics&, const juce::Rectangle<int>& area,
                            bool isSeparator, bool isActive, bool isHighlighted,
                            bool isTicked, bool hasSubMenu, const juce::String& text,
                            const juce::String& shortcutKeyText, const juce::Drawable* icon,
                            const juce::Colour* textColourToUse) override;
+
+    void getIdealPopupMenuItemSize(const juce::String& text, bool isSeparator,
+                                   int standardMenuItemHeight, int& idealWidth, int& idealHeight) override;
 
     void drawScrollbar(juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height,
                        bool isScrollbarVertical, int thumbStartPosition, int thumbSize,
