@@ -43,7 +43,7 @@ struct StepClip
     int    timeSigDen = 4;
     int    noteCount = 0;
     int    difNotes = 0;    // distinct pitches
-    int    complexity = 1;  // 1..10 density x variety score
+    int    complexity = 1;  // 1..100 density x variety score
     std::vector<RollNote> notes;
 };
 
@@ -82,6 +82,13 @@ struct ClipEdit
 {
     int  octave    = 0;
     int  pitchShift = 0;   // whole-file semitone transpose, -12..12
+    /** 0 = Off. 1..3 = fold/spread the clip into that many octaves. */
+    int  octaveRange = 0;
+    /** Inclusive MIDI clamp/fold window. Defaults = full range (inactive). */
+    int  pitchMin = 0;
+    int  pitchMax = 127;
+    /** Playback length multiplier: 1 (Off), 2, 4, or 8. Tiles the clip. */
+    int  extendMult = 1;
     bool fitScale  = false;
     bool mapToRoot = false;
     int  root      = -1;            // target root pitch-class, -1 = unset
@@ -99,6 +106,11 @@ struct ClipEdit
     bool hasTrim() const
     {
         return !removedBars.empty() || legacyTrimLead > 0 || legacyTrimTail > 0;
+    }
+
+    bool hasPitchRange() const
+    {
+        return pitchMin > 0 || pitchMax < 127;
     }
 
     void clearTrim()
@@ -125,7 +137,8 @@ struct ResolvedClip
 };
 
 /** Effective notes + bar count for display and playback. Order:
-    per-note move + octave → map-to-root → fit-to-scale → step move → trim. */
+    per-note move + octave → map-to-root → fit-to-scale → octave-range
+    → pitch-range fold → step move → trim. */
 ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& edit);
 
 struct EdgeBars { int lead = 0; int tail = 0; };

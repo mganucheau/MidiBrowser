@@ -109,7 +109,7 @@ public:
     juce::String offText { "off" };
 };
 
-/** − value + stepper (octave). */
+/** - value + stepper (octave). */
 class Stepper : public juce::Component
 {
 public:

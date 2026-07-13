@@ -72,7 +72,21 @@ private:
 
     MidiBrowserProcessor& processorRef;
     PatternFlowLookAndFeel lnf;
-    juce::TooltipWindow tooltips { this, 600 };
+
+    /** Hides tips when Settings → Show Tooltips is off; styled via LookAndFeel. */
+    struct AppTooltipWindow : juce::TooltipWindow
+    {
+        AppTooltipWindow(juce::Component* parent, int delayMs)
+            : juce::TooltipWindow(parent, delayMs) {}
+
+        juce::String getTipFor(juce::Component& c) override
+        {
+            if (tweaks().showTooltips.load() == 0)
+                return {};
+            return juce::TooltipWindow::getTipFor(c);
+        }
+    };
+    AppTooltipWindow tooltips { this, 450 };
 
     struct ContentHolder : juce::Component
     {

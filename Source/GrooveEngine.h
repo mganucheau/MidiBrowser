@@ -49,7 +49,8 @@ enum class QuantizeGrid : int
 
 enum class Articulation : int
 {
-    Legato = 0,
+    Off = 0,
+    Legato,
     Staccato,
     Tenuto,
     Pianissimo,
@@ -63,6 +64,37 @@ enum class SustainPedalMode : int
     Off = 0,
     StartOfClip,
     Auto,
+    Count
+};
+
+enum class DelayTime : int
+{
+    Quarter = 0,
+    DottedEighth,
+    Eighth,
+    EighthT,
+    Sixteenth,
+    SixteenthT,
+    ThirtySecond,
+    Count
+};
+
+enum class ArpMode : int
+{
+    Off = 0,
+    Up,
+    Down,
+    UpDown,
+    Random,
+    AsPlayed,
+    Count
+};
+
+enum class StrumDirection : int
+{
+    Up = 0,
+    Down,
+    Alternate,
     Count
 };
 
@@ -90,6 +122,7 @@ inline const char* articulationLabel(Articulation a)
 {
     switch (a)
     {
+        case Articulation::Off:        return "Off";
         case Articulation::Legato:     return "Legato";
         case Articulation::Staccato:   return "Staccato";
         case Articulation::Tenuto:     return "Tenuto";
@@ -98,7 +131,7 @@ inline const char* articulationLabel(Articulation a)
         case Articulation::Slur:       return "Slur";
         case Articulation::Count:      break;
     }
-    return "Legato";
+    return "Off";
 }
 
 inline const char* sustainPedalLabel(SustainPedalMode m)
@@ -111,6 +144,49 @@ inline const char* sustainPedalLabel(SustainPedalMode m)
         case SustainPedalMode::Count:       break;
     }
     return "Off";
+}
+
+inline const char* delayTimeLabel(DelayTime t)
+{
+    switch (t)
+    {
+        case DelayTime::Quarter:       return "1/4";
+        case DelayTime::DottedEighth:  return "1/8.";
+        case DelayTime::Eighth:        return "1/8";
+        case DelayTime::EighthT:       return "1/8t";
+        case DelayTime::Sixteenth:     return "1/16";
+        case DelayTime::SixteenthT:    return "1/16t";
+        case DelayTime::ThirtySecond:  return "1/32";
+        case DelayTime::Count:         break;
+    }
+    return "1/8";
+}
+
+inline const char* arpModeLabel(ArpMode m)
+{
+    switch (m)
+    {
+        case ArpMode::Off:      return "Off";
+        case ArpMode::Up:       return "Up";
+        case ArpMode::Down:     return "Down";
+        case ArpMode::UpDown:   return "Up/Down";
+        case ArpMode::Random:   return "Random";
+        case ArpMode::AsPlayed: return "As Played";
+        case ArpMode::Count:    break;
+    }
+    return "Off";
+}
+
+inline const char* strumDirectionLabel(StrumDirection d)
+{
+    switch (d)
+    {
+        case StrumDirection::Up:        return "Up";
+        case StrumDirection::Down:      return "Down";
+        case StrumDirection::Alternate: return "Alternate";
+        case StrumDirection::Count:     break;
+    }
+    return "Up";
 }
 
 struct GrooveParams
@@ -128,14 +204,40 @@ struct GrooveParams
 
     int quantizeGridIndex = (int) QuantizeGrid::Eighth;
     int quantizeStrength = 0;       // 0..100
-    int articulationIndex = (int) Articulation::Legato;
-    int articulationStrength = 0;   // 0..100
+    int articulationIndex = (int) Articulation::Off;
+    int articulationStrength = 0;   // 0..100 (ignored when Articulation::Off)
     int sustainPedalMode = (int) SustainPedalMode::Off;
+
+    /** -1 = follow clip baseline (no morph). Else 0..100 target complexity. */
+    int complexityTarget = -1;
+
+    int delayTimeIndex = (int) DelayTime::Eighth;
+    int delayAmount = 0;            // 0..100
+    int delayFeedback = 40;         // 0..100
+
+    int arpModeIndex = (int) ArpMode::Off;
+    int arpRateIndex = (int) DelayTime::Sixteenth;
+    int arpGate = 70;               // 10..100 %
+    int arpOctaves = 1;             // 1..4
+
+    int strumDirectionIndex = (int) StrumDirection::Up;
+    int strumSpeed = 40;            // 0..100 spread
+    int strumAmount = 0;            // 0..100 (0 = off)
+
+    /** Compress clip velocities into this MIDI window (1..127). */
+    int velocityRangeLo = 1;
+    int velocityRangeHi = 127;
+
+    /** 0 = original. 1..16 = alternate slight variations of the clip. */
+    int variationIndex = 0;
 
     int  get(int knobIndex) const;
     void set(int knobIndex, int value);
     bool isDefault() const;
     int  activeCount() const;   // knobs/toggles off default (badge count)
+
+    /** Write Length / Intensity / Dynamics from articulation type + strength. */
+    void applyArticulationToKnobs();
 
     QuantizeGrid quantizeGrid() const
     {
@@ -149,10 +251,35 @@ struct GrooveParams
     {
         return (SustainPedalMode) juce::jlimit(0, (int) SustainPedalMode::Count - 1, sustainPedalMode);
     }
+    DelayTime delayTime() const
+    {
+        return (DelayTime) juce::jlimit(0, (int) DelayTime::Count - 1, delayTimeIndex);
+    }
+    ArpMode arpMode() const
+    {
+        return (ArpMode) juce::jlimit(0, (int) ArpMode::Count - 1, arpModeIndex);
+    }
+    DelayTime arpRate() const
+    {
+        return (DelayTime) juce::jlimit(0, (int) DelayTime::Count - 1, arpRateIndex);
+    }
+    StrumDirection strumDirection() const
+    {
+        return (StrumDirection) juce::jlimit(0, (int) StrumDirection::Count - 1, strumDirectionIndex);
+    }
+
+    /** Effective complexity for the UI slider (falls back to clip baseline). */
+    int resolvedComplexityTarget(int clipComplexity) const
+    {
+        if (complexityTarget >= 0)
+            return juce::jlimit(0, 100, complexityTarget);
+        return juce::jlimit(0, 100, clipComplexity);
+    }
 };
 
-/** Timing + length transform. Returns new notes; never mutates. */
-std::vector<RollNote> applyGroove(const std::vector<RollNote>& notes, const GrooveParams& k);
+/** Timing + generative transforms. sourceComplexity is the clip's baseline (1..100). */
+std::vector<RollNote> applyGroove(const std::vector<RollNote>& notes, const GrooveParams& k,
+                                  int sourceComplexity = -1);
 
 /** Build CC64 sustain points (beat domain) for export/preview. Empty when Off. */
 std::vector<AutomationPoint> buildSustainPedalAutomation(const std::vector<RollNote>& notes,

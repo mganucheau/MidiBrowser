@@ -120,6 +120,10 @@ void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
 {
     target.octave = locked.octave;
     target.pitchShift = locked.pitchShift;
+    target.octaveRange = locked.octaveRange;
+    target.pitchMin = locked.pitchMin;
+    target.pitchMax = locked.pitchMax;
+    target.extendMult = locked.extendMult;
     target.fitScale = locked.fitScale;
     target.mapToRoot = locked.mapToRoot;
     target.root = locked.root;
@@ -128,7 +132,9 @@ void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
 
 bool editIsClean(const ClipEdit& e)
 {
-    if (e.octave != 0 || e.pitchShift != 0 || e.fitScale || e.mapToRoot || e.hasTrim()
+    if (e.octave != 0 || e.pitchShift != 0 || e.octaveRange != 0 || e.hasPitchRange()
+        || e.extendMult > 1
+        || e.fitScale || e.mapToRoot || e.hasTrim()
         || e.legacyTrimLead != 0 || e.legacyTrimTail != 0)
         return false;
     if (!e.velocities.empty() || !e.deleted.empty())
@@ -185,6 +191,8 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
         if (e.fitScale && e.root >= 0)
             pitch = fitToScale(pitch, e.root, e.mode);
 
+        pitch = juce::jlimit(0, 127, pitch);
+
         RollNote r = n;
         r.pitch = pitch;
         r.start = n.start + mv.dStep;
@@ -192,6 +200,58 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
         if (auto vit = e.velocities.find(n.id); vit != e.velocities.end())
             r.fileVelocity = std::clamp(vit->second, 1, 127);
         out.notes.push_back(r);
+    }
+
+    // Octave Range: fold/spread the clip's pitch span into N octaves.
+    if (e.octaveRange > 0 && !out.notes.empty())
+    {
+        const int numOct = juce::jlimit(1, 3, e.octaveRange);
+        int srcMin = 127, srcMax = 0;
+        for (const auto& n : out.notes)
+        {
+            srcMin = std::min(srcMin, n.pitch);
+            srcMax = std::max(srcMax, n.pitch);
+        }
+        const int srcSpan = srcMax - srcMin;
+        const int targetSpan = numOct * 12;
+        if (srcSpan > 0)
+        {
+            for (auto& n : out.notes)
+            {
+                const double t = (double) (n.pitch - srcMin) / (double) srcSpan;
+                n.pitch = juce::jlimit(0, 127,
+                    srcMin + (int) std::lround(t * (double) (targetSpan - 1)));
+            }
+        }
+    }
+
+    // Pitch Range: wrap notes into [pitchMin, pitchMax] by octave folds.
+    if (e.hasPitchRange() && !out.notes.empty())
+    {
+        int lo = juce::jlimit(0, 127, e.pitchMin);
+        int hi = juce::jlimit(0, 127, e.pitchMax);
+        if (hi < lo) std::swap(lo, hi);
+        const int window = hi - lo + 1;
+        for (auto& n : out.notes)
+        {
+            if (window <= 12)
+            {
+                // Narrow window: keep pitch class, snap into range.
+                int p = n.pitch;
+                while (p > hi) p -= 12;
+                while (p < lo) p += 12;
+                n.pitch = juce::jlimit(lo, hi, p);
+            }
+            else
+            {
+                int p = n.pitch;
+                while (p > hi) p -= 12;
+                while (p < lo) p += 12;
+                if (p < lo || p > hi)
+                    p = juce::jlimit(lo, hi, n.pitch);
+                n.pitch = p;
+            }
+        }
     }
 
     const auto removed = effectiveRemovedBars(clip, e);
@@ -203,6 +263,33 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
         bars = clip.bars - (int) removed.size();
     }
     out.bars = std::max(1, bars);
+
+    // Extend: tile the resolved clip so arps/delays can evolve past the file length.
+    const int mult = (e.extendMult == 2 || e.extendMult == 4 || e.extendMult == 8)
+                   ? e.extendMult : 1;
+    if (mult > 1 && !out.notes.empty())
+    {
+        const double loopSteps = (double) out.bars * (double) kStepsPerBar;
+        int maxId = 0;
+        for (const auto& n : out.notes)
+            maxId = std::max(maxId, n.id);
+        std::vector<RollNote> tiled = out.notes;
+        tiled.reserve(out.notes.size() * (size_t) mult);
+        for (int rep = 1; rep < mult; ++rep)
+        {
+            for (const auto& n : out.notes)
+            {
+                RollNote c = n;
+                c.id = ++maxId;
+                c.start = n.start + loopSteps * (double) rep;
+                c.moved = true;
+                tiled.push_back(c);
+            }
+        }
+        out.notes = std::move(tiled);
+        out.bars *= mult;
+    }
+
     return out;
 }
 
@@ -274,6 +361,15 @@ std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
     if (e.octave != 0)
         out.push_back({ "oct", juce::String("Oct ") + (e.octave > 0 ? "+" : "") + juce::String(e.octave) });
 
+    if (e.octaveRange > 0)
+        out.push_back({ "octRange", juce::String(e.octaveRange) + " oct" });
+
+    if (e.extendMult > 1)
+        out.push_back({ "extend", "x" + juce::String(e.extendMult) });
+
+    if (e.hasPitchRange())
+        out.push_back({ "range", pitchName(e.pitchMin) + "-" + pitchName(e.pitchMax) });
+
     if (e.fitScale && e.root >= 0)
         out.push_back({ "scale", juce::String(kNoteNames[(size_t) e.root]) + " " + modeName(e.mode) });
 
@@ -342,9 +438,9 @@ StepClip makeStepClip(const MidiClip& clip)
     s.difNotes = (int) distinctPitches.size();
 
     const double notesPerBar = (double) s.noteCount / (double) juce::jmax(1, s.bars);
-    // Map density*variety into a readable 1..10 score.
-    s.complexity = juce::jlimit(1, 10,
-        (int) std::lround((double) s.difNotes * notesPerBar / 10.0));
+    // Density x pitch variety on a 1..100 scale for the Complexity slider.
+    s.complexity = juce::jlimit(1, 100,
+        (int) std::lround((double) s.difNotes * notesPerBar));
     if (s.noteCount > 0 && s.complexity < 1)
         s.complexity = 1;
 

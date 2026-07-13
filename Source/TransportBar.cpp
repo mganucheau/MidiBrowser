@@ -106,10 +106,12 @@ TransportBar::TransportBar()
     };
 
     prep(btnPlay);
+    btnPlay.setTooltip("Play / pause preview (Space)");
     btnPlay.onClick = [this] { if (onPlayPause) onPlayPause(); };
     addAndMakeVisible(btnPlay);
 
     prep(btnStop);
+    btnStop.setTooltip("Stop preview");
     btnStop.onClick = [this] { if (onStop) onStop(); };
     addAndMakeVisible(btnStop);
 
@@ -133,19 +135,19 @@ TransportBar::TransportBar()
     addAndMakeVisible(btnSync);
 
     btnDragToDaw.accentText = false;
-    btnDragToDaw.setTooltip("Drag edited clip onto a DAW track");
+    btnDragToDaw.setTooltip("Drag edited clip onto a DAW track (or right-click to copy)");
     btnDragToDaw.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
     btnDragToDaw.onCopyToFolder = [this] { if (onCopyToFolder) onCopyToFolder(); };
     addAndMakeVisible(btnDragToDaw);
 
     prep(btnEditor);
-    btnEditor.setTooltip("Toggle editor (E)");
+    btnEditor.setTooltip("Toggle editor\nShortcut: E");
     btnEditor.onClick = [this] { if (onToggleEditor) onToggleEditor(); };
     addAndMakeVisible(btnEditor);
 
     prep(btnEffects);
-    btnEffects.setTooltip("Toggle effects (F)");
+    btnEffects.setTooltip("Toggle effects\nShortcut: F");
     btnEffects.onClick = [this] { if (onToggleEffects) onToggleEffects(); };
     addAndMakeVisible(btnEffects);
 
@@ -225,8 +227,8 @@ void TransportBar::refreshBpm()
     statusPill.editable = !synced;
     statusPill.setText(juce::String(shown, 1) + " bpm");
     btnSync.active = synced;
-    btnSync.setTooltip(synced ? "Synced to host — click for free tempo"
-                              : "Free tempo — click to sync to host");
+    btnSync.setTooltip(synced ? "Synced to host - click for free tempo"
+                              : "Free tempo - click to sync to host");
     btnSync.repaint();
 }
 
@@ -254,7 +256,7 @@ void TransportBar::resized()
     r.removeFromRight(gap);
     btnEditor.setBounds(mid(r.removeFromRight(btn), btn));
 
-    btnDragToDaw.setVisible(editorOpen && hasClip);
+    btnDragToDaw.setVisible((editorOpen || effectsOpen) && hasClip);
     if (btnDragToDaw.isVisible())
     {
         r.removeFromRight(10);

@@ -79,6 +79,7 @@ struct Tweaks
     std::atomic<int> density { (int) Density::Compact };
     std::atomic<int> size    { (int) ContentSize::Large };
     std::atomic<int> appearance { (int) Appearance::Light };
+    std::atomic<int> showTooltips { 1 }; // 1 = on
 };
 
 Tweaks& tweaks();
@@ -341,6 +342,10 @@ public:
     void drawScrollbar(juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height,
                        bool isScrollbarVertical, int thumbStartPosition, int thumbSize,
                        bool isMouseOver, bool isMouseDown) override;
+
+    void drawTooltip(juce::Graphics&, const juce::String& text, int width, int height) override;
+    juce::Rectangle<int> getTooltipBounds(const juce::String& tipText, juce::Point<int> screenPos,
+                                          juce::Rectangle<int> parentArea) override;
 
     juce::Font getLabelFont(juce::Label&) override;
     juce::Font getTextButtonFont(juce::TextButton& btn, int) override;

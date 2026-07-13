@@ -312,16 +312,21 @@ PianoRollEditor::~PianoRollEditor() = default;
 void PianoRollEditor::setClip(const StepClip& c, const ClipEdit& e, const GrooveParams& k)
 {
     const bool sameClip = hasClip && clip.filePath == c.filePath && clip.name == c.name;
+    const int prevBars = hasClip ? resolved.bars : -1;
     hasClip = true;
     clip = c;
     edit = e;
     groove = k;
     rebuildResolved();
     refreshControls();
-    if (!sameClip)
+    // New clip OR length change (extend/trim) → fit the whole content in view.
+    if (!sameClip || resolved.bars != prevBars)
     {
         selection.clear();
-        resetLoopToClip();
+        if (!sameClip)
+            resetLoopToClip();
+        else
+            setLoopSteps(loopStartStep, loopEndStep, false);
         visibleBarsZoom = 0; // File — fit the whole clip
         zoomX = 1.0f;
         barsZoomPopup.setIndex(barsZoomPopupIndex(), juce::dontSendNotification);
@@ -389,7 +394,7 @@ void PianoRollEditor::rebuildResolved()
 {
     if (!hasClip) return;
     resolved = resolveClip(clip, edit);
-    grooved = applyGroove(resolved.notes, groove);
+    grooved = applyGroove(resolved.notes, groove, clip.complexity);
 
     ClipEdit noTrim = edit;
     noTrim.clearTrim();

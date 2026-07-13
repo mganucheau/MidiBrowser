@@ -138,7 +138,7 @@ public:
 
 // ── FlatPopup ────────────────────────────────────────────────────────────────
 
-class FlatPopup : public juce::Component
+class FlatPopup : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     FlatPopup() { setWantsKeyboardFocus(false); }
@@ -213,7 +213,7 @@ private:
     class MenuList : public juce::Component
     {
     public:
-        MenuList(FlatPopup& o, juce::StringArray items, int selected)
+        MenuList(FlatPopup& o, juce::StringArray items, int selected, int maxH)
             : owner(o), labels(std::move(items)), index(selected)
         {
             const int rowH = 24;
@@ -221,7 +221,8 @@ private:
             for (const auto& l : labels)
                 textW = juce::jmax(textW, juce::GlyphArrangement::getStringWidth(inspectorFont(), l));
             const int menuW = juce::jmax(o.getWidth(), (int) std::ceil(textW) + 28);
-            setSize(menuW, labels.size() * rowH + 8);
+            const int fullH = labels.size() * rowH + 8;
+            setSize(menuW, juce::jmin(fullH, juce::jmax(rowH * 8 + 8, maxH)));
         }
 
         void paint(juce::Graphics& g) override
@@ -235,7 +236,9 @@ private:
 
             const int rowH = 24;
             auto body = getLocalBounds().reduced(4);
-            for (int i = 0; i < labels.size(); ++i)
+            const int first = juce::jlimit(0, juce::jmax(0, labels.size() - 1), scroll);
+            const int visible = juce::jmax(1, (body.getHeight()) / rowH);
+            for (int i = first; i < labels.size() && i < first + visible; ++i)
             {
                 auto row = body.removeFromTop(rowH).toFloat();
                 const bool hi = (i == hover);
@@ -254,15 +257,28 @@ private:
 
         void mouseMove(const juce::MouseEvent& e) override
         {
-            const int h = juce::jlimit(-1, labels.size() - 1, (e.y - 4) / 24);
-            if (h != hover) { hover = h; repaint(); }
+            const int rowH = 24;
+            const int visibleIdx = (e.y - 4) / rowH;
+            const int h = scroll + visibleIdx;
+            const int clamped = juce::isPositiveAndBelow(h, labels.size()) ? h : -1;
+            if (clamped != hover) { hover = clamped; repaint(); }
         }
 
         void mouseExit(const juce::MouseEvent&) override { hover = -1; repaint(); }
 
+        void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& wheel) override
+        {
+            const int rowH = 24;
+            const int visible = juce::jmax(1, (getHeight() - 8) / rowH);
+            const int maxScroll = juce::jmax(0, labels.size() - visible);
+            scroll = juce::jlimit(0, maxScroll, scroll - (int) std::lround(wheel.deltaY * 3.0f));
+            repaint();
+        }
+
         void mouseDown(const juce::MouseEvent& e) override
         {
-            const int i = (e.y - 4) / 24;
+            const int rowH = 24;
+            const int i = scroll + (e.y - 4) / rowH;
             if (juce::isPositiveAndBelow(i, labels.size()))
                 owner.setIndex(i, juce::sendNotification);
             if (auto* overlay = getParentComponent())
@@ -277,6 +293,7 @@ private:
         juce::StringArray labels;
         int index = 0;
         int hover = -1;
+        int scroll = 0;
     };
 
     void showMenu()
@@ -306,13 +323,22 @@ private:
         host->addAndMakeVisible(overlay);
         overlay->toFront(true);
 
-        auto* menu = new MenuList(*this, labels, index);
+        const int maxH = juce::jmax(200, host->getHeight() - 40);
+        auto* menu = new MenuList(*this, labels, index, maxH);
+        // Start scrolled so the selected item is visible.
+        {
+            const int rowH = 24;
+            const int visible = juce::jmax(1, (menu->getHeight() - 8) / rowH);
+            menu->scroll = juce::jlimit(0, juce::jmax(0, labels.size() - visible),
+                                        index - visible / 2);
+        }
         const auto screen = localAreaToGlobal(getLocalBounds());
         const auto hostScreen = host->getScreenBounds();
         int x = screen.getX() - hostScreen.getX();
         int y = screen.getBottom() - hostScreen.getY() + 2;
         if (y + menu->getHeight() > host->getHeight())
             y = screen.getY() - hostScreen.getY() - menu->getHeight() - 2;
+        y = juce::jlimit(4, host->getHeight() - menu->getHeight() - 4, y);
         x = juce::jlimit(4, host->getWidth() - menu->getWidth() - 4, x);
         menu->setBounds(x, y, menu->getWidth(), menu->getHeight());
         overlay->addAndMakeVisible(menu);
@@ -325,7 +351,7 @@ private:
 
 // ── FlatStepper ──────────────────────────────────────────────────────────────
 
-class FlatStepper : public juce::Component
+class FlatStepper : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     FlatStepper() { setWantsKeyboardFocus(false); }
@@ -378,10 +404,14 @@ public:
 
 // ── TempoToggle ──────────────────────────────────────────────────────────────
 
-class TempoToggle : public juce::Component
+class TempoToggle : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    TempoToggle() { setWantsKeyboardFocus(false); }
+    TempoToggle()
+    {
+        setWantsKeyboardFocus(false);
+        setTooltip("Halve or double playback tempo vs the clip / host");
+    }
     enum class Sel { None, Half, Double };
     std::function<void(double)> onChange;
 
@@ -467,7 +497,7 @@ private:
 
 // ── FlatSliderRow ────────────────────────────────────────────────────────────
 
-class FlatSliderRow : public juce::Component
+class FlatSliderRow : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     FlatSliderRow(const juce::String& l, int mn, int mx, int d, bool bi)
@@ -490,6 +520,7 @@ public:
     }
 
     int getValue() const { return value; }
+    void setDefault(int d) { defV = juce::jlimit(minV, maxV, d); }
 
     void resized() override
     {
@@ -556,6 +587,119 @@ private:
     juce::String label;
     int minV, maxV, defV, value;
     bool bipolar = false;
+    juce::Rectangle<float> track;
+};
+
+// ── FlatRangeSliderRow (dual-thumb velocity / similar ranges) ─────────────────
+
+class FlatRangeSliderRow : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    FlatRangeSliderRow(const juce::String& l, int mn, int mx, int defLo, int defHi)
+        : label(l), minV(mn), maxV(mx), lo(defLo), hi(defHi), defLoV(defLo), defHiV(defHi)
+    {
+        setWantsKeyboardFocus(false);
+    }
+
+    std::function<void(int, int)> onChange;
+    juce::String valueText;
+
+    void setRange(int newLo, int newHi, juce::NotificationType notify = juce::sendNotification)
+    {
+        newLo = juce::jlimit(minV, maxV, newLo);
+        newHi = juce::jlimit(minV, maxV, newHi);
+        if (newHi < newLo) std::swap(newLo, newHi);
+        if (newLo == lo && newHi == hi) return;
+        lo = newLo;
+        hi = newHi;
+        repaint();
+        if (notify != juce::dontSendNotification && onChange)
+            onChange(lo, hi);
+    }
+
+    int getLo() const { return lo; }
+    int getHi() const { return hi; }
+
+    void resized() override
+    {
+        track = getLocalBounds().toFloat()
+                    .withTrimmedTop(28.0f).withHeight(kSliderTrackH)
+                    .reduced(kSliderThumbR, 0.0f);
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override { dragThumb = hitThumb(e.position.x); setFromX(e.position.x); }
+    void mouseDrag(const juce::MouseEvent& e) override { setFromX(e.position.x); }
+    void mouseDoubleClick(const juce::MouseEvent&) override
+    {
+        setRange(defLoV, defHiV);
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& t = inspectorTokens();
+        auto top = getLocalBounds().removeFromTop(16);
+        g.setFont(inspectorFont());
+        g.setColour(t.rowLabel);
+        g.drawText(label, top, juce::Justification::centredLeft);
+
+        g.setFont(inspectorMono());
+        g.setColour(t.valueText);
+        const auto text = valueText.isNotEmpty() ? valueText
+                      : (juce::String(lo) + "-" + juce::String(hi));
+        g.drawText(text, top, juce::Justification::centredRight);
+
+        const float radius = kSliderTrackH * 0.5f;
+        g.setColour(t.sliderTrack);
+        g.fillRoundedRectangle(track, radius);
+
+        const float span = juce::jmax(1, maxV - minV);
+        const float xLo = track.getX() + track.getWidth() * ((float) (lo - minV) / span);
+        const float xHi = track.getX() + track.getWidth() * ((float) (hi - minV) / span);
+        g.setColour(t.accent.withAlpha(t.dark ? 0.85f : 0.75f));
+        g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(
+                                   xLo, track.getY(), xHi, track.getBottom()), radius);
+
+        const float d = kSliderThumbR * 2.0f;
+        auto drawThumb = [&](float x)
+        {
+            g.setColour(t.sliderKnob);
+            g.fillEllipse(x - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d);
+            g.setColour(t.dark ? t.accent.withAlpha(0.55f) : t.controlHairline);
+            g.drawEllipse(x - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d,
+                          t.dark ? 1.0f : 0.75f);
+        };
+        drawThumb(xLo);
+        drawThumb(xHi);
+    }
+
+private:
+    enum class Thumb { None, Lo, Hi };
+    Thumb dragThumb = Thumb::None;
+
+    Thumb hitThumb(float x) const
+    {
+        const float span = juce::jmax(1, maxV - minV);
+        const float xLo = track.getX() + track.getWidth() * ((float) (lo - minV) / span);
+        const float xHi = track.getX() + track.getWidth() * ((float) (hi - minV) / span);
+        const float dLo = std::abs(x - xLo);
+        const float dHi = std::abs(x - xHi);
+        if (dLo <= dHi && dLo < kSliderThumbR * 2.5f) return Thumb::Lo;
+        if (dHi < kSliderThumbR * 2.5f) return Thumb::Hi;
+        return (x < (xLo + xHi) * 0.5f) ? Thumb::Lo : Thumb::Hi;
+    }
+
+    void setFromX(float x)
+    {
+        const float t = juce::jlimit(0.0f, 1.0f, (x - track.getX()) / juce::jmax(1.0f, track.getWidth()));
+        const int v = minV + (int) std::lround(t * (float) (maxV - minV));
+        if (dragThumb == Thumb::Lo)
+            setRange(juce::jmin(v, hi), hi);
+        else
+            setRange(lo, juce::jmax(v, lo));
+    }
+
+    juce::String label;
+    int minV, maxV, lo, hi, defLoV, defHiV;
     juce::Rectangle<float> track;
 };
 
@@ -631,6 +775,39 @@ private:
     FlatPopup& modePopup;
 };
 
+// ── RangeRow (Min / Max note pickers) ────────────────────────────────────────
+
+class RangeRow : public juce::Component
+{
+public:
+    RangeRow(FlatPopup& minP, FlatPopup& maxP) : minPopup(minP), maxPopup(maxP)
+    {
+        addAndMakeVisible(minPopup);
+        addAndMakeVisible(maxPopup);
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        const int maxW = maxPopup.idealWidth();
+        const int minW = minPopup.idealWidth();
+        maxPopup.setBounds(r.removeFromRight(maxW).withSizeKeepingCentre(maxW, kControlH));
+        r.removeFromRight(7);
+        minPopup.setBounds(r.removeFromRight(minW).withSizeKeepingCentre(minW, kControlH));
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.setFont(inspectorFont());
+        g.setColour(inspectorTokens().rowLabel);
+        g.drawText("Range", getLocalBounds(), juce::Justification::centredLeft);
+    }
+
+private:
+    FlatPopup& minPopup;
+    FlatPopup& maxPopup;
+};
+
 // ── PitchRow ─────────────────────────────────────────────────────────────────
 
 class PitchRow : public juce::Component
@@ -679,33 +856,44 @@ class Section : public juce::Component
 public:
     explicit Section(const juce::String& t) : title(t) {}
 
-    void addRow(juce::Component* c, int h = kRowMinH)
+    void addRow(juce::Component* c, int h = kRowMinH, std::function<bool()> dirtyFn = {})
     {
-        rows.push_back({ c, h });
+        rows.push_back({ c, h, std::move(dirtyFn) });
         addChildComponent(c);
-        c->setVisible(open);
+        refreshRowVisibility();
     }
 
     void setOpen(bool o)
     {
         if (open == o) return;
         open = o;
-        for (auto& r : rows)
-            r.comp->setVisible(open);
+        refreshRowVisibility();
         if (onToggle) onToggle();
+        repaint();
+    }
+
+    /** Re-evaluate dirty-row visibility (call after param changes). */
+    void refreshDirtyRows()
+    {
+        refreshRowVisibility();
+        resized();
         repaint();
     }
 
     int idealHeight() const
     {
         int h = kSectionPadT + kSectionHeaderH + kSectionPadB;
-        if (!open) return h;
-        h += kSectionTitleGap;
-        for (size_t i = 0; i < rows.size(); ++i)
+        int shown = 0;
+        int content = 0;
+        for (const auto& r : rows)
         {
-            if (i > 0) h += kRowGap;
-            h += rows[i].h;
+            if (!isRowShowing(r)) continue;
+            if (shown > 0) content += kRowGap;
+            content += r.h;
+            ++shown;
         }
+        if (shown > 0)
+            h += kSectionTitleGap + content;
         return h;
     }
 
@@ -718,11 +906,17 @@ public:
         // (title sits past the chevron).
         r.removeFromLeft(kSectionPadH + kSectionRowInset);
         r.removeFromRight(kSectionPadH);
-        for (size_t i = 0; i < rows.size(); ++i)
+        bool first = true;
+        for (auto& row : rows)
         {
-            if (!open) { rows[i].comp->setBounds({}); continue; }
-            if (i > 0) r.removeFromTop(kRowGap);
-            rows[i].comp->setBounds(r.removeFromTop(rows[i].h));
+            if (!isRowShowing(row))
+            {
+                row.comp->setBounds({});
+                continue;
+            }
+            if (!first) r.removeFromTop(kRowGap);
+            first = false;
+            row.comp->setBounds(r.removeFromTop(row.h));
         }
     }
 
@@ -756,8 +950,26 @@ public:
     bool open = false;
     std::function<void()> onToggle;
 
-    struct Row { juce::Component* comp; int h; };
+    struct Row
+    {
+        juce::Component* comp = nullptr;
+        int h = kRowMinH;
+        std::function<bool()> dirty;
+    };
     std::vector<Row> rows;
+
+private:
+    bool isRowShowing(const Row& r) const
+    {
+        if (open) return true;
+        return r.dirty && r.dirty();
+    }
+
+    void refreshRowVisibility()
+    {
+        for (auto& r : rows)
+            r.comp->setVisible(isRowShowing(r));
+    }
 };
 } // namespace fx
 } // namespace pflow

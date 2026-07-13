@@ -780,4 +780,53 @@ void PatternFlowLookAndFeel::drawScrollbar(juce::Graphics& g, juce::ScrollBar&, 
     g.fillRoundedRectangle(thumb, r);
 }
 
+void PatternFlowLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text,
+                                         int width, int height)
+{
+    auto bounds = juce::Rectangle<float>(0.0f, 0.0f, (float) width, (float) height).reduced(0.5f);
+    const float radius = 6.0f;
+    g.setColour(colours::elev());
+    g.fillRoundedRectangle(bounds, radius);
+    g.setColour(colours::line());
+    g.drawRoundedRectangle(bounds, radius, 0.5f);
+
+    g.setColour(colours::text());
+    g.setFont(uiFont(11.5f, false));
+    g.drawFittedText(text, bounds.reduced(9.0f, 6.0f).toNearestInt(),
+                     juce::Justification::centredLeft, 4);
+}
+
+juce::Rectangle<int> PatternFlowLookAndFeel::getTooltipBounds(const juce::String& tipText,
+                                                              juce::Point<int> screenPos,
+                                                              juce::Rectangle<int> parentArea)
+{
+    const auto font = uiFont(11.5f, false);
+    const int maxW = 260;
+    int textW = 0;
+    int lines = 1;
+    {
+        juce::AttributedString as;
+        as.setJustification(juce::Justification::centredLeft);
+        as.append(tipText, font, colours::text());
+        juce::TextLayout layout;
+        layout.createLayout(as, (float) maxW);
+        textW = (int) std::ceil(layout.getWidth());
+        lines = juce::jmax(1, (int) std::ceil(layout.getHeight() / font.getHeight()));
+    }
+    const int padX = 18;
+    const int padY = 12;
+    const int w = juce::jlimit(40, maxW + padX, textW + padX);
+    const int h = (int) std::ceil(font.getHeight() * (float) lines) + padY;
+
+    int x = screenPos.x;
+    int y = screenPos.y + 14;
+    if (x + w > parentArea.getRight())
+        x = parentArea.getRight() - w - 4;
+    if (y + h > parentArea.getBottom())
+        y = screenPos.y - h - 6;
+    x = juce::jmax(parentArea.getX() + 4, x);
+    y = juce::jmax(parentArea.getY() + 4, y);
+    return { x, y, w, h };
+}
+
 } // namespace pflow

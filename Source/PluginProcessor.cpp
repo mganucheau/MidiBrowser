@@ -393,6 +393,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("tweakDensity", tweaks().density.load());
     xml.setAttribute("tweakSize", tweaks().size.load());
     xml.setAttribute("tweakAppearance", tweaks().appearance.load());
+    xml.setAttribute("tweakShowTooltips", tweaks().showTooltips.load());
     xml.setAttribute("syncSessionBars", syncSessionBars.load());
     xml.setAttribute("lastBrowserDir", lastBrowserDir);
     xml.setAttribute("trimEmptyMeasuresPreview", trimEmptyMeasuresPreview ? 1 : 0);
@@ -415,6 +416,11 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("effectsLock", effectsLock ? 1 : 0);
     xml.setAttribute("lockAutoTrim", lockAutoTrim ? 1 : 0);
     xml.setAttribute("lockOctave", lockedEdit.octave);
+    xml.setAttribute("lockPitchShift", lockedEdit.pitchShift);
+    xml.setAttribute("lockOctaveRange", lockedEdit.octaveRange);
+    xml.setAttribute("lockPitchMin", lockedEdit.pitchMin);
+    xml.setAttribute("lockPitchMax", lockedEdit.pitchMax);
+    xml.setAttribute("lockExtendMult", lockedEdit.extendMult);
     xml.setAttribute("lockFitScale", lockedEdit.fitScale ? 1 : 0);
     xml.setAttribute("lockMapToRoot", lockedEdit.mapToRoot ? 1 : 0);
     xml.setAttribute("lockRoot", lockedEdit.root);
@@ -429,8 +435,23 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("lockQuantizeGrid", lockedGroove.quantizeGridIndex);
     xml.setAttribute("lockQuantizeStrength", lockedGroove.quantizeStrength);
     xml.setAttribute("lockArticulation", lockedGroove.articulationIndex);
+    xml.setAttribute("lockArticulationV", 1);
     xml.setAttribute("lockArticulationStrength", lockedGroove.articulationStrength);
     xml.setAttribute("lockSustainPedal", lockedGroove.sustainPedalMode);
+    xml.setAttribute("lockComplexityTarget", lockedGroove.complexityTarget);
+    xml.setAttribute("lockDelayTime", lockedGroove.delayTimeIndex);
+    xml.setAttribute("lockDelayAmount", lockedGroove.delayAmount);
+    xml.setAttribute("lockDelayFeedback", lockedGroove.delayFeedback);
+    xml.setAttribute("lockArpMode", lockedGroove.arpModeIndex);
+    xml.setAttribute("lockArpRate", lockedGroove.arpRateIndex);
+    xml.setAttribute("lockArpGate", lockedGroove.arpGate);
+    xml.setAttribute("lockArpOctaves", lockedGroove.arpOctaves);
+    xml.setAttribute("lockStrumDir", lockedGroove.strumDirectionIndex);
+    xml.setAttribute("lockStrumSpeed", lockedGroove.strumSpeed);
+    xml.setAttribute("lockStrumAmount", lockedGroove.strumAmount);
+    xml.setAttribute("lockVelRangeLo", lockedGroove.velocityRangeLo);
+    xml.setAttribute("lockVelRangeHi", lockedGroove.velocityRangeHi);
+    xml.setAttribute("lockVariation", lockedGroove.variationIndex);
     for (const auto& folder : savedBrowserDirs)
     {
         if (folder.isNotEmpty())
@@ -469,6 +490,10 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         e->setAttribute("path", path);
         e->setAttribute("octave", edit.octave);
         e->setAttribute("pitchShift", edit.pitchShift);
+        e->setAttribute("octaveRange", edit.octaveRange);
+        e->setAttribute("pitchMin", edit.pitchMin);
+        e->setAttribute("pitchMax", edit.pitchMax);
+        e->setAttribute("extendMult", edit.extendMult);
         e->setAttribute("fitScale", edit.fitScale ? 1 : 0);
         e->setAttribute("mapToRoot", edit.mapToRoot ? 1 : 0);
         e->setAttribute("root", edit.root);
@@ -522,8 +547,23 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         e->setAttribute("quantizeGrid", k.quantizeGridIndex);
         e->setAttribute("quantizeStrength", k.quantizeStrength);
         e->setAttribute("articulation", k.articulationIndex);
+        e->setAttribute("articulationV", 1);
         e->setAttribute("articulationStrength", k.articulationStrength);
         e->setAttribute("sustainPedal", k.sustainPedalMode);
+        e->setAttribute("complexityTarget", k.complexityTarget);
+        e->setAttribute("delayTime", k.delayTimeIndex);
+        e->setAttribute("delayAmount", k.delayAmount);
+        e->setAttribute("delayFeedback", k.delayFeedback);
+        e->setAttribute("arpMode", k.arpModeIndex);
+        e->setAttribute("arpRate", k.arpRateIndex);
+        e->setAttribute("arpGate", k.arpGate);
+        e->setAttribute("arpOctaves", k.arpOctaves);
+        e->setAttribute("strumDir", k.strumDirectionIndex);
+        e->setAttribute("strumSpeed", k.strumSpeed);
+        e->setAttribute("strumAmount", k.strumAmount);
+        e->setAttribute("velRangeLo", k.velocityRangeLo);
+        e->setAttribute("velRangeHi", k.velocityRangeHi);
+        e->setAttribute("variation", k.variationIndex);
     }
     copyXmlToBinary(xml, dest);
 }
@@ -550,6 +590,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 xml->getIntAttribute("tweakSize", (int) ContentSize::Large)));
             tweaks().appearance.store(juce::jlimit(0, kNumAppearances - 1,
                 xml->getIntAttribute("tweakAppearance", (int) Appearance::Light)));
+            tweaks().showTooltips.store(xml->getIntAttribute("tweakShowTooltips", 1) != 0 ? 1 : 0);
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
             lastBrowserDir = xml->getStringAttribute("lastBrowserDir");
@@ -574,6 +615,16 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             lockAutoTrim = xml->getIntAttribute("lockAutoTrim", 0) != 0;
             lockedEdit = ClipEdit();
             lockedEdit.octave = juce::jlimit(-3, 3, xml->getIntAttribute("lockOctave", 0));
+            lockedEdit.pitchShift = juce::jlimit(-12, 12, xml->getIntAttribute("lockPitchShift", 0));
+            lockedEdit.octaveRange = juce::jlimit(0, 3, xml->getIntAttribute("lockOctaveRange", 0));
+            lockedEdit.pitchMin = juce::jlimit(0, 127, xml->getIntAttribute("lockPitchMin", 0));
+            lockedEdit.pitchMax = juce::jlimit(0, 127, xml->getIntAttribute("lockPitchMax", 127));
+            if (lockedEdit.pitchMax < lockedEdit.pitchMin)
+                std::swap(lockedEdit.pitchMin, lockedEdit.pitchMax);
+            {
+                const int em = xml->getIntAttribute("lockExtendMult", 1);
+                lockedEdit.extendMult = (em == 2 || em == 4 || em == 8) ? em : 1;
+            }
             lockedEdit.fitScale = xml->getIntAttribute("lockFitScale", 0) != 0;
             lockedEdit.mapToRoot = xml->getIntAttribute("lockMapToRoot", 0) != 0;
             lockedEdit.root = juce::jlimit(-1, 11, xml->getIntAttribute("lockRoot", -1));
@@ -596,10 +647,36 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 xml->getIntAttribute("lockQuantizeStrength", 0));
             lockedGroove.articulationIndex = juce::jlimit(0, (int) Articulation::Count - 1,
                 xml->getIntAttribute("lockArticulation", 0));
+            // Pre-Off enum: 0 was Legato. New saves stamp lockArticulationV=1.
+            if (xml->getIntAttribute("lockArticulationV", 0) == 0)
+                lockedGroove.articulationIndex = juce::jlimit(0, (int) Articulation::Count - 1,
+                    lockedGroove.articulationIndex + 1);
             lockedGroove.articulationStrength = juce::jlimit(0, 100,
                 xml->getIntAttribute("lockArticulationStrength", 0));
             lockedGroove.sustainPedalMode = juce::jlimit(0, (int) SustainPedalMode::Count - 1,
                 xml->getIntAttribute("lockSustainPedal", 0));
+            lockedGroove.complexityTarget = xml->getIntAttribute("lockComplexityTarget", -1);
+            if (lockedGroove.complexityTarget >= 0)
+                lockedGroove.complexityTarget = juce::jlimit(0, 100, lockedGroove.complexityTarget);
+            lockedGroove.delayTimeIndex = juce::jlimit(0, (int) DelayTime::Count - 1,
+                xml->getIntAttribute("lockDelayTime", (int) DelayTime::Eighth));
+            lockedGroove.delayAmount = juce::jlimit(0, 100, xml->getIntAttribute("lockDelayAmount", 0));
+            lockedGroove.delayFeedback = juce::jlimit(0, 100, xml->getIntAttribute("lockDelayFeedback", 40));
+            lockedGroove.arpModeIndex = juce::jlimit(0, (int) ArpMode::Count - 1,
+                xml->getIntAttribute("lockArpMode", 0));
+            lockedGroove.arpRateIndex = juce::jlimit(0, (int) DelayTime::Count - 1,
+                xml->getIntAttribute("lockArpRate", (int) DelayTime::Sixteenth));
+            lockedGroove.arpGate = juce::jlimit(10, 100, xml->getIntAttribute("lockArpGate", 70));
+            lockedGroove.arpOctaves = juce::jlimit(1, 4, xml->getIntAttribute("lockArpOctaves", 1));
+            lockedGroove.strumDirectionIndex = juce::jlimit(0, (int) StrumDirection::Count - 1,
+                xml->getIntAttribute("lockStrumDir", 0));
+            lockedGroove.strumSpeed = juce::jlimit(0, 100, xml->getIntAttribute("lockStrumSpeed", 40));
+            lockedGroove.strumAmount = juce::jlimit(0, 100, xml->getIntAttribute("lockStrumAmount", 0));
+            lockedGroove.velocityRangeLo = juce::jlimit(1, 127, xml->getIntAttribute("lockVelRangeLo", 1));
+            lockedGroove.velocityRangeHi = juce::jlimit(1, 127, xml->getIntAttribute("lockVelRangeHi", 127));
+            if (lockedGroove.velocityRangeHi < lockedGroove.velocityRangeLo)
+                std::swap(lockedGroove.velocityRangeLo, lockedGroove.velocityRangeHi);
+            lockedGroove.variationIndex = juce::jlimit(0, 16, xml->getIntAttribute("lockVariation", 0));
             for (auto* child : xml->getChildIterator())
             {
                 if (child->hasTagName("SavedFolder"))
@@ -654,6 +731,15 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     ClipEdit e;
                     e.octave = juce::jlimit(-3, 3, child->getIntAttribute("octave", 0));
                     e.pitchShift = juce::jlimit(-12, 12, child->getIntAttribute("pitchShift", 0));
+                    e.octaveRange = juce::jlimit(0, 3, child->getIntAttribute("octaveRange", 0));
+                    e.pitchMin = juce::jlimit(0, 127, child->getIntAttribute("pitchMin", 0));
+                    e.pitchMax = juce::jlimit(0, 127, child->getIntAttribute("pitchMax", 127));
+                    if (e.pitchMax < e.pitchMin)
+                        std::swap(e.pitchMin, e.pitchMax);
+                    {
+                        const int em = child->getIntAttribute("extendMult", 1);
+                        e.extendMult = (em == 2 || em == 4 || em == 8) ? em : 1;
+                    }
                     e.fitScale = child->getIntAttribute("fitScale", 0) != 0;
                     e.mapToRoot = child->getIntAttribute("mapToRoot", 0) != 0;
                     e.root = juce::jlimit(-1, 11, child->getIntAttribute("root", -1));
@@ -711,10 +797,36 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     k.quantizeStrength = juce::jlimit(0, 100, child->getIntAttribute("quantizeStrength", 0));
                     k.articulationIndex = juce::jlimit(0, (int) Articulation::Count - 1,
                         child->getIntAttribute("articulation", 0));
+                    // Pre-Off enum: 0 was Legato. New saves stamp articulationV=1.
+                    if (child->getIntAttribute("articulationV", 0) == 0)
+                        k.articulationIndex = juce::jlimit(0, (int) Articulation::Count - 1,
+                            k.articulationIndex + 1);
                     k.articulationStrength = juce::jlimit(0, 100,
                         child->getIntAttribute("articulationStrength", 0));
                     k.sustainPedalMode = juce::jlimit(0, (int) SustainPedalMode::Count - 1,
                         child->getIntAttribute("sustainPedal", 0));
+                    k.complexityTarget = child->getIntAttribute("complexityTarget", -1);
+                    if (k.complexityTarget >= 0)
+                        k.complexityTarget = juce::jlimit(0, 100, k.complexityTarget);
+                    k.delayTimeIndex = juce::jlimit(0, (int) DelayTime::Count - 1,
+                        child->getIntAttribute("delayTime", (int) DelayTime::Eighth));
+                    k.delayAmount = juce::jlimit(0, 100, child->getIntAttribute("delayAmount", 0));
+                    k.delayFeedback = juce::jlimit(0, 100, child->getIntAttribute("delayFeedback", 40));
+                    k.arpModeIndex = juce::jlimit(0, (int) ArpMode::Count - 1,
+                        child->getIntAttribute("arpMode", 0));
+                    k.arpRateIndex = juce::jlimit(0, (int) DelayTime::Count - 1,
+                        child->getIntAttribute("arpRate", (int) DelayTime::Sixteenth));
+                    k.arpGate = juce::jlimit(10, 100, child->getIntAttribute("arpGate", 70));
+                    k.arpOctaves = juce::jlimit(1, 4, child->getIntAttribute("arpOctaves", 1));
+                    k.strumDirectionIndex = juce::jlimit(0, (int) StrumDirection::Count - 1,
+                        child->getIntAttribute("strumDir", 0));
+                    k.strumSpeed = juce::jlimit(0, 100, child->getIntAttribute("strumSpeed", 40));
+                    k.strumAmount = juce::jlimit(0, 100, child->getIntAttribute("strumAmount", 0));
+                    k.velocityRangeLo = juce::jlimit(1, 127, child->getIntAttribute("velRangeLo", 1));
+                    k.velocityRangeHi = juce::jlimit(1, 127, child->getIntAttribute("velRangeHi", 127));
+                    if (k.velocityRangeHi < k.velocityRangeLo)
+                        std::swap(k.velocityRangeLo, k.velocityRangeHi);
+                    k.variationIndex = juce::jlimit(0, 16, child->getIntAttribute("variation", 0));
                     clipGrooves[path] = k;
                 }
             }

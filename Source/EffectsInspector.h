@@ -7,7 +7,7 @@
 
 namespace pflow {
 
-/** Flat macOS-style effects inspector (Playback / Timing / Performance / Pitch & Scale). */
+/** Flat macOS-style effects inspector (Playback / Timing / Performance / Pitch & Scale / Effects). */
 class EffectsInspector : public juce::Component
 {
 public:
@@ -30,6 +30,8 @@ public:
     void setPitchLocked(bool locked);
     void setHasClip(bool has);
     void setClipRoot(int rootPc);
+    /** Clip baseline complexity (1..100) — drives the Complexity slider position. */
+    void setClipComplexity(int complexity);
     void setTrimState(bool active, bool enabled, const juce::String& label = {});
 
     std::function<void(const GrooveParams&)> onGrooveChanged;
@@ -39,15 +41,18 @@ public:
     std::function<void(bool)> onPitchLockToggled;
     std::function<void()> onResetGroove;
     std::function<void()> onTrimClicked;
-    /** Fired when the user clicks into the effects pane (sticky key-nav). */
     std::function<void()> onActivated;
 
 private:
     void notifyGroove();
     void notifyEdit();
     void layoutSections();
+    void refreshDirtySections();
     void refreshPitchAnnotation();
+    void refreshComplexitySlider();
+    void syncArticulationKnobsToUi();
     int resolvedPitchMidi() const;
+    void resetPitchEditFields();
 
     GrooveParams groove;
     ClipEdit edit;
@@ -56,6 +61,7 @@ private:
     bool pitchLocked = false;
     bool hasClip = false;
     int clipRootPc = -1;
+    int clipComplexity = 50;
 
     IconBtn btnReset { icons::undo, "Reset effects to defaults" };
     IconBtn btnEffectsLock { icons::lockOpen, "Lock effects while browsing" };
@@ -64,10 +70,13 @@ private:
     fx::Section timing { "Timing" };
     fx::Section performance { "Performance" };
     fx::Section pitchSec { "Pitch & Scale" };
+    fx::Section effectsSec { "Effects" };
 
     fx::TempoToggle tempoToggle;
     fx::InlineRow tempoRow;
     fx::FlatSwitch trimSwitch;
+    fx::FlatPopup extendPopup;
+    fx::InlineRow extendRow;
 
     fx::FlatPopup swingTimePopup;
     fx::InlineRow swingTimeRow;
@@ -84,12 +93,36 @@ private:
     fx::FlatPopup articulationPopup;
     fx::InlineRow articulationRow;
     fx::FlatSliderRow articulationStrengthSl;
+    fx::FlatRangeSliderRow velocityRangeSl;
     fx::FlatPopup sustainPopup;
     fx::InlineRow sustainRow;
 
+    fx::FlatSliderRow complexitySl;
+    fx::FlatSliderRow variationsSl;
+    fx::FlatPopup delayTimePopup;
+    fx::InlineRow delayTimeRow;
+    fx::FlatSliderRow delayAmountSl;
+    fx::FlatSliderRow delayFeedbackSl;
+    fx::FlatPopup arpModePopup;
+    fx::InlineRow arpModeRow;
+    fx::FlatPopup arpRatePopup;
+    fx::InlineRow arpRateRow;
+    fx::FlatSliderRow arpGateSl;
+    fx::FlatPopup arpOctavesPopup;
+    fx::InlineRow arpOctavesRow;
+    fx::FlatPopup strumDirPopup;
+    fx::InlineRow strumDirRow;
+    fx::FlatSliderRow strumSpeedSl;
+    fx::FlatSliderRow strumAmountSl;
+
     fx::FlatStepper octaveStepper;
     fx::InlineRow octaveRow;
+    fx::FlatPopup octaveRangePopup;
+    fx::InlineRow octaveRangeRow;
     fx::PitchRow pitchRow;
+    fx::FlatPopup pitchMinPopup;
+    fx::FlatPopup pitchMaxPopup;
+    fx::RangeRow pitchRangeRow;
     fx::FlatPopup keyPopup;
     fx::FlatPopup modePopup;
     fx::KeyModeRow keyModeRow;

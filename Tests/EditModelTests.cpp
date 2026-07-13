@@ -73,6 +73,8 @@ TEST_CASE("editIsClean detects default edits", "[editmodel]")
     CHECK(editIsClean(e));
 
     SECTION("octave") { e.octave = 1; CHECK_FALSE(editIsClean(e)); }
+    SECTION("octaveRange") { e.octaveRange = 2; CHECK_FALSE(editIsClean(e)); }
+    SECTION("pitchRange") { e.pitchMin = 48; CHECK_FALSE(editIsClean(e)); }
     SECTION("fitScale") { e.fitScale = true; CHECK_FALSE(editIsClean(e)); }
     SECTION("mapToRoot") { e.mapToRoot = true; CHECK_FALSE(editIsClean(e)); }
     SECTION("moves") { e.moves[3] = { 1, 0 }; CHECK_FALSE(editIsClean(e)); }
@@ -105,6 +107,31 @@ TEST_CASE("resolveClip applies octave and per-note moves", "[editmodel]")
     // Source clip untouched (non-destructive contract).
     CHECK(clip.notes[1].pitch == 64);
     CHECK(clip.notes[1].start == Approx(4.0));
+}
+
+TEST_CASE("resolveClip octave range folds span into N octaves", "[editmodel]")
+{
+    auto clip = makeClip({ { 0, 48, 0.0, 2.0 }, { 1, 72, 2.0, 2.0 } }, 1); // 2 octaves apart
+    ClipEdit e;
+    e.octaveRange = 1;
+    const auto r = resolveClip(clip, e);
+    REQUIRE(r.notes.size() == 2);
+    CHECK(r.notes[0].pitch == 48);
+    CHECK(r.notes[1].pitch == 48 + 11); // span remapped into 1 octave
+}
+
+TEST_CASE("resolveClip pitch range folds notes into window", "[editmodel]")
+{
+    auto clip = makeClip({ { 0, 36, 0.0, 2.0 }, { 1, 84, 2.0, 2.0 } }, 1);
+    ClipEdit e;
+    e.pitchMin = 48;
+    e.pitchMax = 72;
+    const auto r = resolveClip(clip, e);
+    REQUIRE(r.notes.size() == 2);
+    CHECK(r.notes[0].pitch >= 48);
+    CHECK(r.notes[0].pitch <= 72);
+    CHECK(r.notes[1].pitch >= 48);
+    CHECK(r.notes[1].pitch <= 72);
 }
 
 TEST_CASE("resolveClip map-to-root transposes by nearest direction", "[editmodel]")

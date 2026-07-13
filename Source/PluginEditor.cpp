@@ -426,7 +426,20 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         {
             processorRef.clipGrooves.erase(clip->filePath);
             processorRef.lockedGroove = GrooveParams();
-            rollEditor.setClip(*clip, selectedEdit(), GrooveParams());
+            // Reset pitch-shaping fields; keep per-note moves / trim / velocities.
+            auto& e = processorRef.editFor(clip->filePath);
+            e.octave = 0;
+            e.pitchShift = 0;
+            e.octaveRange = 0;
+            e.pitchMin = 0;
+            e.pitchMax = 127;
+            e.extendMult = 1;
+            e.fitScale = false;
+            e.mapToRoot = false;
+            e.root = -1;
+            e.mode = Mode::Ionian;
+            processorRef.lockedEdit = ClipEdit();
+            rollEditor.setClip(*clip, e, GrooveParams());
             pushPreviewToProcessor();
             updateMiniPreview();
         }
@@ -834,6 +847,7 @@ void MidiBrowserEditor::syncEffectsInspector()
     const auto* clip = selectedClip();
     effectsInspector.setHasClip(clip != nullptr);
     effectsInspector.setClipRoot(clip != nullptr ? clip->root : -1);
+    effectsInspector.setClipComplexity(clip != nullptr ? clip->complexity : 50);
     effectsInspector.setEdit(selectedEdit(), juce::dontSendNotification);
     effectsInspector.setGroove(selectedGroove(), juce::dontSendNotification);
     effectsInspector.setBpmMultiplier(processorRef.bpmMultiplier.load(), juce::dontSendNotification);
@@ -981,7 +995,7 @@ MidiClip MidiBrowserEditor::buildRenderedClip() const
     const auto edit = selectedEdit();
     const auto groove = selectedGroove();
     const auto resolved = resolveClip(*clip, edit);
-    const auto notes = applyGroove(resolved.notes, groove);
+    const auto notes = applyGroove(resolved.notes, groove, clip->complexity);
     const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
 
     out.name = clip->name;
@@ -1143,7 +1157,7 @@ void MidiBrowserEditor::updateMiniPreview()
     // Frame from source notes so pitch/octave edits stay visible in the strip
     // (fitting to resolved notes would re-center and hide transposition).
     const int rootPc = edit.root >= 0 ? edit.root : (clip->root >= 0 ? clip->root : 0);
-    miniRoll.setNotes(applyGroove(resolved.notes, groove), resolved.bars, groove,
+    miniRoll.setNotes(applyGroove(resolved.notes, groove, clip->complexity), resolved.bars, groove,
                       rootPc, clip->notes, edit.mode, 4);
     const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
     miniRoll.setTimeStretch(stretch);
@@ -1324,6 +1338,8 @@ public:
         appearancePopup.setItems({ "System", "Light", "Dark" }, tweaks().appearance.load());
         spacingPopup.setItems({ "Compact", "Comfortable" }, tweaks().density.load());
         sizePopup.setItems({ "Small", "Medium", "Large" }, tweaks().size.load());
+        tooltipsSwitch.setToggleState(tweaks().showTooltips.load() != 0, juce::dontSendNotification);
+        tooltipsSwitch.setTooltip("Show hover tips for controls and shortcuts");
 
         auto wire = [this](fx::FlatPopup& p, std::function<void(int)> apply)
         {
@@ -1338,7 +1354,14 @@ public:
         wire(spacingPopup, [](int i) { tweaks().density.store(i); });
         wire(sizePopup, [](int i) { tweaks().size.store(i); });
 
-        setSize(260, 148);
+        tooltipsSwitch.onClick = [this]
+        {
+            tweaks().showTooltips.store(tooltipsSwitch.getToggleState() ? 1 : 0);
+            if (onChanged) onChanged();
+        };
+        addAndMakeVisible(tooltipsSwitch);
+
+        setSize(260, 178);
     }
 
     void paint(juce::Graphics& g) override
@@ -1358,8 +1381,8 @@ public:
         g.setColour(t.rowLabel);
         auto body = getLocalBounds().withTrimmedTop(34).reduced(14, 4);
         const int rowH = 28;
-        const char* labels[] = { "Appearance", "Spacing", "Size" };
-        for (int i = 0; i < 3; ++i)
+        const char* labels[] = { "Appearance", "Spacing", "Size", "Show Tooltips" };
+        for (int i = 0; i < 4; ++i)
         {
             auto row = body.removeFromTop(rowH);
             g.drawText(labels[i], row, juce::Justification::centredLeft);
@@ -1372,20 +1395,25 @@ public:
         auto body = getLocalBounds().withTrimmedTop(34).reduced(14, 4);
         const int rowH = 28;
         const int ctrlH = 22;
-        auto place = [&](fx::FlatPopup& p)
+        auto placePopup = [&](fx::FlatPopup& p)
         {
             auto row = body.removeFromTop(rowH);
             const int w = juce::jmin(p.idealWidth() + 8, 120);
             p.setBounds(row.removeFromRight(w).withSizeKeepingCentre(w, ctrlH));
             body.removeFromTop(2);
         };
-        place(appearancePopup);
-        place(spacingPopup);
-        place(sizePopup);
+        placePopup(appearancePopup);
+        placePopup(spacingPopup);
+        placePopup(sizePopup);
+
+        auto tipRow = body.removeFromTop(rowH);
+        const int sw = tooltipsSwitch.idealWidth();
+        tooltipsSwitch.setBounds(tipRow.removeFromRight(sw).withSizeKeepingCentre(sw, 18));
     }
 
 private:
     fx::FlatPopup appearancePopup, spacingPopup, sizePopup;
+    fx::FlatSwitch tooltipsSwitch;
 };
 
 } // namespace
@@ -1407,7 +1435,7 @@ void MidiBrowserEditor::showTweaksMenu()
         Overlay()
         {
             addAndMakeVisible(panel);
-            panel.setSize(280, 156);
+            panel.setSize(280, 186);
         }
 
         void resized() override
