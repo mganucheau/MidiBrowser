@@ -19,7 +19,8 @@ bool LibraryStore::searchesEqual(const BrowserSearch& a, const BrowserSearch& b)
         && a.keyRoot == b.keyRoot
         && a.barsMin == b.barsMin
         && a.barsMax == b.barsMax
-        && a.subdirs == b.subdirs;
+        && a.subdirs == b.subdirs
+        && a.removeDuplicates == b.removeDuplicates;
 }
 
 namespace {
@@ -30,6 +31,7 @@ BrowserSearch readBrowserSearch(const juce::XmlElement& el)
     s.query = el.getStringAttribute("query");
     s.keyRoot = el.getIntAttribute("key", -1);
     s.subdirs = el.getIntAttribute("subdirs", 0) != 0;
+    s.removeDuplicates = el.getIntAttribute("removeDuplicates", 0) != 0;
 
     if (el.hasAttribute("bpmMin") || el.hasAttribute("bpmMax"))
     {
@@ -69,6 +71,7 @@ void writeBrowserSearch(juce::XmlElement& el, const BrowserSearch& s)
     el.setAttribute("barsMin", s.barsMin);
     el.setAttribute("barsMax", s.barsMax);
     el.setAttribute("subdirs", s.subdirs ? 1 : 0);
+    el.setAttribute("removeDuplicates", s.removeDuplicates ? 1 : 0);
 }
 
 } // namespace

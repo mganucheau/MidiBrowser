@@ -70,6 +70,10 @@ FavoritesSidebar::SearchInlinePanel::SearchInlinePanel()
     subdirsSwitch.setToggleState(false, juce::dontSendNotification);
     addAndMakeVisible(subdirsSwitch);
 
+    dedupeSwitch.setToggleState(false, juce::dontSendNotification);
+    dedupeSwitch.setTooltip("Keep one row when the same MIDI file appears in multiple folders");
+    addAndMakeVisible(dedupeSwitch);
+
     btnSearch.onClick = [this]
     {
         if (onSearch) onSearch(getCriteria());
@@ -117,6 +121,7 @@ BrowserSearch FavoritesSidebar::SearchInlinePanel::getCriteria() const
     const int idx = keyPicker.getIndex();
     s.keyRoot = idx <= 0 ? -1 : idx - 1;
     s.subdirs = subdirsSwitch.getToggleState();
+    s.removeDuplicates = dedupeSwitch.getToggleState();
     return s;
 }
 
@@ -129,6 +134,7 @@ void FavoritesSidebar::SearchInlinePanel::setCriteria(const BrowserSearch& s)
     barsMaxPopup.setIndex(barsValueToIndex(s.barsMax), juce::dontSendNotification);
     keyPicker.setIndex(s.keyRoot >= 0 ? s.keyRoot + 1 : 0, juce::dontSendNotification);
     subdirsSwitch.setToggleState(s.subdirs, juce::dontSendNotification);
+    dedupeSwitch.setToggleState(s.removeDuplicates, juce::dontSendNotification);
 }
 
 void FavoritesSidebar::SearchInlinePanel::paint(juce::Graphics& g)
@@ -149,6 +155,7 @@ void FavoritesSidebar::SearchInlinePanel::paint(juce::Graphics& g)
     g.drawText("Key", keyRow, juce::Justification::centredLeft);
     g.drawText("Bars", barsRow, juce::Justification::centredLeft);
     g.drawText("Include Subdirectories", subdirsRow, juce::Justification::centredLeft);
+    g.drawText("Remove Duplicates", dedupeRow, juce::Justification::centredLeft);
 
     // Tiny Min/Max captions above the dual controls.
     g.setFont(uiFont(fx::kAnnotPt, false));
@@ -216,6 +223,11 @@ void FavoritesSidebar::SearchInlinePanel::resized()
     subdirsRow = r.removeFromTop(rowH);
     subdirsSwitch.setBounds(subdirsRow.removeFromRight(subdirsSwitch.idealWidth())
                                 .withSizeKeepingCentre(subdirsSwitch.idealWidth(), ctrlH));
+    r.removeFromTop(gap);
+
+    dedupeRow = r.removeFromTop(rowH);
+    dedupeSwitch.setBounds(dedupeRow.removeFromRight(dedupeSwitch.idealWidth())
+                               .withSizeKeepingCentre(dedupeSwitch.idealWidth(), ctrlH));
     r.removeFromTop(gap);
 
     btnSearch.setBounds(r.removeFromTop(ctrlH));
@@ -1407,14 +1419,28 @@ void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
     if (e.mods.isPopupMenu() && !entry.isDirectory && entry.file.existsAsFile())
     {
         juce::PopupMenu m;
-        m.addItem(1, "Show in Finder");
+        juce::StringArray locs = entry.locations;
+        if (locs.isEmpty())
+            locs.add(entry.file.getFullPathName());
+
+        if (locs.size() <= 1)
+        {
+            m.addItem(1, "Show in Finder");
+        }
+        else
+        {
+            for (int i = 0; i < locs.size(); ++i)
+                m.addItem(100 + i, "Show in Finder Location " + juce::String(i + 1));
+        }
         m.addItem(2, "Copy to Folder...");
         m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this)
                              .withMousePosition(),
-            [this, file = entry.file](int result)
+            [this, locs, file = entry.file](int result)
             {
                 if (result == 1 && owner.onRevealFile)
                     owner.onRevealFile(file);
+                else if (result >= 100 && result < 100 + locs.size() && owner.onRevealFile)
+                    owner.onRevealFile(juce::File(locs[result - 100]));
                 else if (result == 2 && owner.onCopyFileToFolder)
                     owner.onCopyFileToFolder(file);
             });

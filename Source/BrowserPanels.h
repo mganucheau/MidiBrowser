@@ -15,6 +15,8 @@ struct BrowserSearch
     int barsMin = 0;     // 0 = any; 64 = 64+ (≥64)
     int barsMax = 0;     // 0 = any; 64 = 64+ (unlimited upper)
     bool subdirs = false;
+    /** Collapse content-identical hits from multiple folders into one row. */
+    bool removeDuplicates = false;
 };
 
 struct SavedSearchEntry
@@ -116,7 +118,7 @@ private:
         BrowserSearch getCriteria() const;
         void setCriteria(const BrowserSearch&);
         void lookAndFeelChanged() override;
-        static constexpr int kHeight = 210;
+        static constexpr int kHeight = 246;
         std::function<void(const BrowserSearch&)> onSearch;
     private:
         void styleEditors();
@@ -127,8 +129,9 @@ private:
         fx::FlatPopup barsMinPopup;
         fx::FlatPopup barsMaxPopup;
         fx::FlatSwitch subdirsSwitch;
+        fx::FlatSwitch dedupeSwitch;
         fx::FlatTextButton btnSearch { "Search" };
-        juce::Rectangle<int> bpmRow, keyRow, barsRow, subdirsRow;
+        juce::Rectangle<int> bpmRow, keyRow, barsRow, subdirsRow, dedupeRow;
     };
     SearchInlinePanel searchForm;
 
@@ -165,6 +168,8 @@ struct FileListEntry
     bool edited = false;
     bool starred = false;
     bool isDirectory = false;
+    /** When remove-duplicates collapsed several paths: Location 1..N for Finder. */
+    juce::StringArray locations;
 };
 
 class FileListPanel : public juce::Component, private juce::Timer

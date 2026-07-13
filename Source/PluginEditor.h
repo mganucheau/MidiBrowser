@@ -125,6 +125,8 @@ private:
     bool starredFilter = false;
     BrowserSearch activeSearch;
     int activeSavedSearchIdx = -1;
+    /** Primary clip path -> all Finder locations (including primary) after dedupe. */
+    std::map<juce::String, juce::StringArray> searchDuplicateLocations;
     int selectedIdx = -1;
     KeyNavTarget keyNavTarget = KeyNavTarget::Browser;
     int lastWindowH = 560;

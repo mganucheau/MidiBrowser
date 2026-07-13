@@ -480,6 +480,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         child->setAttribute("barsMin", ss.search.barsMin);
         child->setAttribute("barsMax", ss.search.barsMax);
         child->setAttribute("subdirs", ss.search.subdirs ? 1 : 0);
+        child->setAttribute("removeDuplicates", ss.search.removeDuplicates ? 1 : 0);
     }
 
     for (const auto& [path, edit] : clipEdits)
@@ -721,6 +722,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                         entry.search.barsMax = bars;
                     }
                     entry.search.subdirs = child->getIntAttribute("subdirs", 0) != 0;
+                    entry.search.removeDuplicates = child->getIntAttribute("removeDuplicates", 0) != 0;
                     if (entry.name.isNotEmpty())
                         savedSearches.push_back(entry);
                 }

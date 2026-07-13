@@ -119,6 +119,71 @@ void scanMidiFiles(const juce::File& dir, bool subdirs,
     }
 }
 
+/** Collapse content-identical MIDI hits; returns primary path -> all locations. */
+std::map<juce::String, juce::StringArray>
+dedupeSearchResults(std::vector<StepClip>& clips)
+{
+    std::map<juce::String, juce::StringArray> locationsByPrimary;
+    if (clips.empty())
+        return locationsByPrimary;
+
+    auto contentKey = [](const juce::File& f) -> juce::String
+    {
+        // Name + size + FNV-1a of bytes — identical copies collapse without
+        // pulling in juce_cryptography (MIDI files are typically tiny).
+        juce::uint32 h = 2166136261u;
+        if (juce::FileInputStream in (f); in.openedOk())
+        {
+            char buf[4096];
+            while (! in.isExhausted())
+            {
+                const auto n = in.read(buf, (int) sizeof(buf));
+                for (int i = 0; i < n; ++i)
+                {
+                    h ^= (juce::uint8) buf[i];
+                    h *= 16777619u;
+                }
+            }
+        }
+        return f.getFileName().toLowerCase()
+             + "|" + juce::String(f.getSize())
+             + "|" + juce::String::toHexString((int) h);
+    };
+
+    std::map<juce::String, size_t> keyToIndex;
+    std::vector<StepClip> unique;
+    unique.reserve(clips.size());
+
+    for (auto& clip : clips)
+    {
+        const juce::File f(clip.filePath);
+        const juce::String key = contentKey(f);
+        if (key.isEmpty())
+        {
+            unique.push_back(std::move(clip));
+            continue;
+        }
+
+        if (auto it = keyToIndex.find(key); it != keyToIndex.end())
+        {
+            const auto& primary = unique[it->second].filePath;
+            auto& locs = locationsByPrimary[primary];
+            if (locs.isEmpty())
+                locs.add(primary);
+            if (!locs.contains(clip.filePath))
+                locs.add(clip.filePath);
+            continue;
+        }
+
+        keyToIndex[key] = unique.size();
+        locationsByPrimary[clip.filePath] = juce::StringArray { clip.filePath };
+        unique.push_back(std::move(clip));
+    }
+
+    clips = std::move(unique);
+    return locationsByPrimary;
+}
+
 } // namespace
 
 MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
@@ -494,6 +559,7 @@ void MidiBrowserEditor::setRootDirectory(const juce::File& dir, bool keepSelecti
 {
     browseMode = 0;
     starredFilter = false;
+    searchDuplicateLocations.clear();
     sidebar.setStarredFilter(false);
     rootDir = dir;
     processorRef.lastBrowserDir = dir.getFullPathName();
@@ -611,6 +677,10 @@ void MidiBrowserEditor::runSearch(const BrowserSearch& criteria)
         scanMidiFiles(searchRoot, criteria.subdirs, clips, matcher);
     }
 
+    searchDuplicateLocations.clear();
+    if (criteria.removeDuplicates)
+        searchDuplicateLocations = dedupeSearchResults(clips);
+
     juce::String title = "Search";
     if (criteria.query.isNotEmpty())
         title = criteria.query;
@@ -673,6 +743,10 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria)
         if (!missing)
         {
             clips = std::move(found);
+            searchDuplicateLocations.clear();
+            if (criteria.removeDuplicates)
+                searchDuplicateLocations = dedupeSearchResults(clips);
+
             juce::String title = "Search";
             if (criteria.query.isNotEmpty())
                 title = criteria.query;
@@ -706,16 +780,24 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria)
         };
         scanMidiFiles(searchRoot, criteria.subdirs, found, matcher);
 
+        // Cache every hit path before collapsing duplicates so a cache hit can
+        // rebuild Location 1..N menus.
         juce::StringArray resultPaths;
         for (const auto& c : found)
             resultPaths.add(c.filePath);
 
+        std::map<juce::String, juce::StringArray> locMap;
+        if (criteria.removeDuplicates)
+            locMap = dedupeSearchResults(found);
+
         juce::MessageManager::callAsync([this, results = std::move(found), criteria, searchRoot,
-                                         paths = std::move(resultPaths)]() mutable
+                                         paths = std::move(resultPaths),
+                                         locations = std::move(locMap)]() mutable
         {
             processorRef.library().putSearchCache(searchRoot, criteria, paths);
 
             clips = std::move(results);
+            searchDuplicateLocations = std::move(locations);
             juce::String title = "Search";
             if (criteria.query.isNotEmpty())
                 title = criteria.query;
@@ -794,7 +876,11 @@ void MidiBrowserEditor::rebuildEntries()
             continue;
         const bool edited = processorRef.editLock
                                 && !editIsClean(processorRef.editFor(clip.filePath));
-        entries.push_back(entryForClip(clip, juce::File(clip.filePath), edited, starred));
+        auto entry = entryForClip(clip, juce::File(clip.filePath), edited, starred);
+        if (auto it = searchDuplicateLocations.find(clip.filePath);
+            it != searchDuplicateLocations.end() && it->second.size() > 1)
+            entry.locations = it->second;
+        entries.push_back(std::move(entry));
         displayRows.push_back({ false, i, juce::File(clip.filePath) });
     }
 
