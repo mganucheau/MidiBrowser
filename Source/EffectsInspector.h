@@ -103,17 +103,6 @@ private:
     fx::InlineRow delayTimeRow;
     fx::FlatSliderRow delayAmountSl;
     fx::FlatSliderRow delayFeedbackSl;
-    fx::FlatPopup arpModePopup;
-    fx::InlineRow arpModeRow;
-    fx::FlatPopup arpRatePopup;
-    fx::InlineRow arpRateRow;
-    fx::FlatSliderRow arpGateSl;
-    fx::FlatPopup arpOctavesPopup;
-    fx::InlineRow arpOctavesRow;
-    fx::FlatPopup strumDirPopup;
-    fx::InlineRow strumDirRow;
-    fx::FlatSliderRow strumSpeedSl;
-    fx::FlatSliderRow strumAmountSl;
 
     fx::FlatStepper octaveStepper;
     fx::InlineRow octaveRow;
@@ -136,7 +125,7 @@ private:
     juce::Viewport viewport;
     juce::Component body;
 
-    static constexpr int kPanelW = 244;
+    static constexpr int kPanelW = 248;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EffectsInspector)
 };

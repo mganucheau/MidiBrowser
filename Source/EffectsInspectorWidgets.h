@@ -8,18 +8,21 @@ namespace fx {
 
 constexpr float kFontPt = 11.5f;
 constexpr float kAnnotPt = 10.5f;
-constexpr int kSectionPadT = 14;
-constexpr int kSectionPadH = 14;
-constexpr int kSectionPadB = 14;
-constexpr int kRowMinH = 24;
-constexpr int kControlH = 20;
-constexpr int kRowGap = 12;
-constexpr int kSectionHeaderH = 22;
-constexpr int kSectionTitleGap = 10;   // space between title and first row
-constexpr int kSectionRowInset = 18;   // align row labels with title text (past chevron)
-constexpr int kSliderRowH = 48;
-constexpr float kSliderThumbR = 6.5f;
-constexpr float kSliderTrackH = 5.0f;
+constexpr int kSectionPadT = 8;
+constexpr int kSectionPadH = 10;
+constexpr int kSectionPadB = 8;
+constexpr int kRowMinH = 20;
+constexpr int kControlH = 18;
+constexpr int kRowGap = 4;
+constexpr int kSectionHeaderH = 18;
+constexpr int kSectionTitleGap = 4;    // space between title and first row
+constexpr int kSectionRowInset = 12;   // align row labels with title text (past chevron)
+constexpr int kSliderRowH = 20;        // single-line: title | track | value
+constexpr int kSliderLabelW = 68;      // fixed title column
+constexpr int kSliderTrackW = 100;     // uniform track width across all rows
+constexpr int kSliderValueW = 36;      // readout after the track
+constexpr float kSliderThumbR = 5.0f;
+constexpr float kSliderTrackH = 3.0f;
 
 inline juce::Font inspectorFont(bool semibold = false) { return uiFont(kFontPt, semibold); }
 inline juce::Font inspectorMono(bool semibold = false) { return monoFont(kFontPt, semibold); }
@@ -524,10 +527,13 @@ public:
 
     void resized() override
     {
-        // Label row, gap, then a thicker track for readability.
-        track = getLocalBounds().toFloat()
-                    .withTrimmedTop(28.0f).withHeight(kSliderTrackH)
-                    .reduced(kSliderThumbR, 0.0f);
+        auto r = getLocalBounds().toFloat();
+        labelBounds = r.removeFromLeft((float) kSliderLabelW);
+        r.removeFromLeft(6.0f);
+        track = r.removeFromLeft((float) kSliderTrackW)
+                    .withSizeKeepingCentre((float) kSliderTrackW, kSliderTrackH);
+        r.removeFromLeft(6.0f);
+        valueBounds = r.removeFromLeft((float) kSliderValueW);
     }
 
     void mouseDown(const juce::MouseEvent& e) override { setFromX(e.position.x); }
@@ -537,16 +543,15 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto top = getLocalBounds().removeFromTop(16);
         g.setFont(inspectorFont());
         g.setColour(t.rowLabel);
-        g.drawText(label, top, juce::Justification::centredLeft);
+        g.drawText(label, labelBounds.toNearestInt(), juce::Justification::centredLeft, true);
 
-        g.setFont(inspectorMono());
-        g.setColour(t.valueText);
         const auto text = valueText.isNotEmpty() ? valueText
                       : grooveValueText({ label.toRawUTF8(), label.toRawUTF8(), minV, maxV, defV }, value);
-        g.drawText(text, top, juce::Justification::centredRight);
+        g.setFont(inspectorMono());
+        g.setColour(t.valueText);
+        g.drawText(text, valueBounds.toNearestInt(), juce::Justification::centredLeft, true);
 
         const float radius = kSliderTrackH * 0.5f;
         g.setColour(t.sliderTrack);
@@ -568,7 +573,6 @@ public:
             g.fillRoundedRectangle(track.withWidth(juce::jmax(0.0f, thumbX - track.getX())), radius);
         }
 
-        // Draw thumb last so it sits above the track fill at the ends.
         const float d = kSliderThumbR * 2.0f;
         g.setColour(t.sliderKnob);
         g.fillEllipse(thumbX - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d);
@@ -587,7 +591,7 @@ private:
     juce::String label;
     int minV, maxV, defV, value;
     bool bipolar = false;
-    juce::Rectangle<float> track;
+    juce::Rectangle<float> track, labelBounds, valueBounds;
 };
 
 // ── FlatRangeSliderRow (dual-thumb velocity / similar ranges) ─────────────────
@@ -622,9 +626,13 @@ public:
 
     void resized() override
     {
-        track = getLocalBounds().toFloat()
-                    .withTrimmedTop(28.0f).withHeight(kSliderTrackH)
-                    .reduced(kSliderThumbR, 0.0f);
+        auto r = getLocalBounds().toFloat();
+        labelBounds = r.removeFromLeft((float) kSliderLabelW);
+        r.removeFromLeft(6.0f);
+        track = r.removeFromLeft((float) kSliderTrackW)
+                    .withSizeKeepingCentre((float) kSliderTrackW, kSliderTrackH);
+        r.removeFromLeft(6.0f);
+        valueBounds = r.removeFromLeft((float) kSliderValueW);
     }
 
     void mouseDown(const juce::MouseEvent& e) override { dragThumb = hitThumb(e.position.x); setFromX(e.position.x); }
@@ -637,16 +645,15 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto top = getLocalBounds().removeFromTop(16);
         g.setFont(inspectorFont());
         g.setColour(t.rowLabel);
-        g.drawText(label, top, juce::Justification::centredLeft);
+        g.drawText(label, labelBounds.toNearestInt(), juce::Justification::centredLeft, true);
 
         g.setFont(inspectorMono());
         g.setColour(t.valueText);
         const auto text = valueText.isNotEmpty() ? valueText
                       : (juce::String(lo) + "-" + juce::String(hi));
-        g.drawText(text, top, juce::Justification::centredRight);
+        g.drawText(text, valueBounds.toNearestInt(), juce::Justification::centredLeft, true);
 
         const float radius = kSliderTrackH * 0.5f;
         g.setColour(t.sliderTrack);
@@ -700,7 +707,7 @@ private:
 
     juce::String label;
     int minV, maxV, lo, hi, defLoV, defHiV;
-    juce::Rectangle<float> track;
+    juce::Rectangle<float> track, labelBounds, valueBounds;
 };
 
 // ── InlineRow ────────────────────────────────────────────────────────────────
@@ -716,6 +723,8 @@ public:
     void resized() override
     {
         auto r = getLocalBounds();
+        r.removeFromLeft(kSliderLabelW);
+        r.removeFromLeft(6);
         const int w = controlW > 0 ? controlW
                     : (control.getWidth() > 0 ? control.getWidth() : 80);
         auto ctrl = r.removeFromRight(w);
@@ -732,7 +741,8 @@ public:
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText(label, getLocalBounds(), juce::Justification::centredLeft);
+        g.drawText(label, getLocalBounds().withWidth(kSliderLabelW),
+                   juce::Justification::centredLeft, true);
     }
 
     juce::Component& control;

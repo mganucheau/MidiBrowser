@@ -6,9 +6,10 @@ using namespace fx;
 
 EffectsInspector::EffectsInspector()
     : tempoRow("Tempo", tempoToggle)
+    , extendRow("Extend", extendPopup)
     , swingTimeRow("Swing Time", swingTimePopup)
     , quantizeTimeRow("Quantize Time", quantizeTimePopup)
-    , quantizeStrengthSl("Quantize Strength", 0, 100, 0, false)
+    , quantizeStrengthSl("Quantize", 0, 100, 0, false)
     , swing("Swing", 0, 100, 0, false)
     , pocket("Pocket", -100, 100, 0, true)
     , humanize("Humanize", 0, 100, 0, false)
@@ -16,27 +17,19 @@ EffectsInspector::EffectsInspector()
     , dynamicsSl("Dynamics", -100, 100, 0, true)
     , intensitySl("Intensity", 0, 200, 100, false)
     , articulationRow("Articulation", articulationPopup)
-    , articulationStrengthSl("Articulation Strength", 0, 100, 0, false)
-    , velocityRangeSl("Velocity Range", 1, 127, 1, 127)
+    , articulationStrengthSl("", 0, 100, 0, false)
+    , velocityRangeSl("Velocity", 1, 127, 1, 127)
     , sustainRow("Sustain Pedal", sustainPopup)
     , complexitySl("Complexity", 0, 100, 50, false)
     , variationsSl("Variations", 0, 16, 0, false)
     , delayTimeRow("Delay Time", delayTimePopup)
-    , delayAmountSl("Delay Amount", 0, 100, 0, false)
+    , delayAmountSl("Delay", 0, 100, 0, false)
     , delayFeedbackSl("Feedback", 0, 100, 40, false)
-    , arpModeRow("Arpeggiator", arpModePopup)
-    , arpRateRow("Arp Rate", arpRatePopup)
-    , arpGateSl("Arp Gate", 10, 100, 70, false)
-    , arpOctavesRow("Arp Octaves", arpOctavesPopup)
-    , strumDirRow("Strum", strumDirPopup)
-    , strumSpeedSl("Strum Speed", 0, 100, 40, false)
-    , strumAmountSl("Strum Amount", 0, 100, 0, false)
     , octaveRow("Octave", octaveStepper)
     , octaveRangeRow("Octave Range", octaveRangePopup)
     , pitchRangeRow(pitchMinPopup, pitchMaxPopup)
     , keyModeRow(keyPopup, modePopup)
     , trimRow("Trim empty measures", trimSwitch)
-    , extendRow("Extend", extendPopup)
     , fitRow("Fit to Scale", fitSwitch)
     , mapRow("Map to Root", mapSwitch)
 {
@@ -97,14 +90,7 @@ EffectsInspector::EffectsInspector()
     delayTimePopup.setTooltip("Delay tap spacing");
     delayAmountSl.setTooltip("How loud delayed repeats are");
     delayFeedbackSl.setTooltip("How many delay repeats and how long they decay");
-    arpModePopup.setTooltip("Arpeggiate held chords (Off leaves notes as written)");
-    arpRatePopup.setTooltip("Arpeggio step rate");
-    arpGateSl.setTooltip("Note length inside each arpeggio step");
-    arpOctavesPopup.setTooltip("How many octaves the arpeggio spans");
-    strumDirPopup.setTooltip("Chord strum direction");
-    strumSpeedSl.setTooltip("How quickly chord notes fan out");
-    strumAmountSl.setTooltip("Strum strength (0 = off)");
-    extendPopup.setTooltip("Tile the clip longer so arps and delays can evolve past the file length");
+    extendPopup.setTooltip("Tile the clip longer so delays can evolve past the file length");
     octaveStepper.setTooltip("Transpose the whole clip by octaves");
     octaveRangePopup.setTooltip("Fold or spread pitches into 1-3 octaves");
     pitchRow.stepper.setTooltip("Transpose the whole clip by semitones");
@@ -177,9 +163,6 @@ EffectsInspector::EffectsInspector()
 
     delayAmountSl.onChange = [this](int v) { groove.delayAmount = v; notifyGroove(); };
     delayFeedbackSl.onChange = [this](int v) { groove.delayFeedback = v; notifyGroove(); };
-    arpGateSl.onChange = [this](int v) { groove.arpGate = v; notifyGroove(); };
-    strumSpeedSl.onChange = [this](int v) { groove.strumSpeed = v; notifyGroove(); };
-    strumAmountSl.onChange = [this](int v) { groove.strumAmount = v; notifyGroove(); };
 
     swingTimePopup.setItems({ "1/16", "1/8", "1/4", "1/2", "1", "2" }, 1);
     swingTimePopup.onChange = [this](int idx)
@@ -245,42 +228,9 @@ EffectsInspector::EffectsInspector()
         notifyGroove();
     };
 
-    juce::StringArray arpModeItems;
-    for (int i = 0; i < (int) ArpMode::Count; ++i)
-        arpModeItems.add(arpModeLabel((ArpMode) i));
-    arpModePopup.setItems(arpModeItems, 0);
-    arpModePopup.onChange = [this](int idx)
-    {
-        groove.arpModeIndex = idx;
-        notifyGroove();
-    };
 
-    juce::StringArray arpRateItems;
-    for (int i = 0; i < (int) DelayTime::Count; ++i)
-        arpRateItems.add(delayTimeLabel((DelayTime) i));
-    arpRatePopup.setItems(arpRateItems, (int) DelayTime::Sixteenth);
-    arpRatePopup.onChange = [this](int idx)
-    {
-        groove.arpRateIndex = idx;
-        notifyGroove();
-    };
 
-    arpOctavesPopup.setItems({ "1", "2", "3", "4" }, 0);
-    arpOctavesPopup.onChange = [this](int idx)
-    {
-        groove.arpOctaves = juce::jlimit(1, 4, idx + 1);
-        notifyGroove();
-    };
 
-    juce::StringArray strumItems;
-    for (int i = 0; i < (int) StrumDirection::Count; ++i)
-        strumItems.add(strumDirectionLabel((StrumDirection) i));
-    strumDirPopup.setItems(strumItems, 0);
-    strumDirPopup.onChange = [this](int idx)
-    {
-        groove.strumDirectionIndex = idx;
-        notifyGroove();
-    };
 
     octaveStepper.minV = -3;
     octaveStepper.maxV = 3;
@@ -415,26 +365,6 @@ EffectsInspector::EffectsInspector()
     effectsSec.addRow(&delayFeedbackSl, kSliderRowH, [this] {
         return groove.delayAmount > 0 && groove.delayFeedback != 40;
     });
-    effectsSec.addRow(&arpModeRow, kRowMinH, [this] {
-        return groove.arpModeIndex != (int) ArpMode::Off;
-    });
-    effectsSec.addRow(&arpRateRow, kRowMinH, [this] {
-        return groove.arpModeIndex != (int) ArpMode::Off
-            && groove.arpRateIndex != (int) DelayTime::Sixteenth;
-    });
-    effectsSec.addRow(&arpGateSl, kSliderRowH, [this] {
-        return groove.arpModeIndex != (int) ArpMode::Off && groove.arpGate != 70;
-    });
-    effectsSec.addRow(&arpOctavesRow, kRowMinH, [this] {
-        return groove.arpModeIndex != (int) ArpMode::Off && groove.arpOctaves != 1;
-    });
-    effectsSec.addRow(&strumDirRow, kRowMinH, [this] {
-        return groove.strumAmount > 0 && groove.strumDirectionIndex != (int) StrumDirection::Up;
-    });
-    effectsSec.addRow(&strumSpeedSl, kSliderRowH, [this] {
-        return groove.strumAmount > 0 && groove.strumSpeed != 40;
-    });
-    effectsSec.addRow(&strumAmountSl, kSliderRowH, [this] { return groove.strumAmount > 0; });
 
     for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
     {
@@ -568,9 +498,6 @@ void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
     articulationStrengthSl.setValue(g.articulationStrength, juce::dontSendNotification);
     delayAmountSl.setValue(g.delayAmount, juce::dontSendNotification);
     delayFeedbackSl.setValue(g.delayFeedback, juce::dontSendNotification);
-    arpGateSl.setValue(g.arpGate, juce::dontSendNotification);
-    strumSpeedSl.setValue(g.strumSpeed, juce::dontSendNotification);
-    strumAmountSl.setValue(g.strumAmount, juce::dontSendNotification);
     velocityRangeSl.setRange(g.velocityRangeLo, g.velocityRangeHi, juce::dontSendNotification);
     variationsSl.setValue(g.variationIndex, juce::dontSendNotification);
 
@@ -583,13 +510,6 @@ void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
                           juce::dontSendNotification);
     delayTimePopup.setIndex(juce::jlimit(0, (int) DelayTime::Count - 1, g.delayTimeIndex),
                             juce::dontSendNotification);
-    arpModePopup.setIndex(juce::jlimit(0, (int) ArpMode::Count - 1, g.arpModeIndex),
-                          juce::dontSendNotification);
-    arpRatePopup.setIndex(juce::jlimit(0, (int) DelayTime::Count - 1, g.arpRateIndex),
-                          juce::dontSendNotification);
-    arpOctavesPopup.setIndex(juce::jlimit(0, 3, g.arpOctaves - 1), juce::dontSendNotification);
-    strumDirPopup.setIndex(juce::jlimit(0, (int) StrumDirection::Count - 1, g.strumDirectionIndex),
-                           juce::dontSendNotification);
 
     swing.valueText = grooveValueText(kKnobDefs[0], g.swing);
     pocket.valueText = grooveValueText(kKnobDefs[1], g.pocket);
@@ -601,9 +521,6 @@ void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
     articulationStrengthSl.valueText = juce::String(g.articulationStrength) + "%";
     delayAmountSl.valueText = juce::String(g.delayAmount) + "%";
     delayFeedbackSl.valueText = juce::String(g.delayFeedback) + "%";
-    arpGateSl.valueText = juce::String(g.arpGate) + "%";
-    strumSpeedSl.valueText = juce::String(g.strumSpeed) + "%";
-    strumAmountSl.valueText = juce::String(g.strumAmount) + "%";
     velocityRangeSl.valueText = juce::String(g.velocityRangeLo) + "-" + juce::String(g.velocityRangeHi);
     variationsSl.valueText = g.variationIndex <= 0 ? "Off" : ("#" + juce::String(g.variationIndex));
     refreshComplexitySlider();
@@ -646,9 +563,6 @@ void EffectsInspector::notifyGroove()
     articulationStrengthSl.valueText = juce::String(groove.articulationStrength) + "%";
     delayAmountSl.valueText = juce::String(groove.delayAmount) + "%";
     delayFeedbackSl.valueText = juce::String(groove.delayFeedback) + "%";
-    arpGateSl.valueText = juce::String(groove.arpGate) + "%";
-    strumSpeedSl.valueText = juce::String(groove.strumSpeed) + "%";
-    strumAmountSl.valueText = juce::String(groove.strumAmount) + "%";
     velocityRangeSl.valueText = juce::String(groove.velocityRangeLo) + "-"
                               + juce::String(groove.velocityRangeHi);
     variationsSl.valueText = groove.variationIndex <= 0 ? "Off"
@@ -711,14 +625,6 @@ void EffectsInspector::resized()
 
     delayTimePopup.setSize(delayTimePopup.idealWidth(), kControlH);
     delayTimeRow.setControlWidth(delayTimePopup.idealWidth());
-    arpModePopup.setSize(arpModePopup.idealWidth(), kControlH);
-    arpModeRow.setControlWidth(arpModePopup.idealWidth());
-    arpRatePopup.setSize(arpRatePopup.idealWidth(), kControlH);
-    arpRateRow.setControlWidth(arpRatePopup.idealWidth());
-    arpOctavesPopup.setSize(arpOctavesPopup.idealWidth(), kControlH);
-    arpOctavesRow.setControlWidth(arpOctavesPopup.idealWidth());
-    strumDirPopup.setSize(strumDirPopup.idealWidth(), kControlH);
-    strumDirRow.setControlWidth(strumDirPopup.idealWidth());
 
     octaveStepper.setSize(octaveStepper.idealWidth(), kControlH);
     octaveRow.setControlWidth(octaveStepper.idealWidth());

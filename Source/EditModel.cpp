@@ -264,7 +264,7 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
     }
     out.bars = std::max(1, bars);
 
-    // Extend: tile the resolved clip so arps/delays can evolve past the file length.
+    // Extend: tile the resolved clip so delays can evolve past the file length.
     const int mult = (e.extendMult == 2 || e.extendMult == 4 || e.extendMult == 8)
                    ? e.extendMult : 1;
     if (mult > 1 && !out.notes.empty())

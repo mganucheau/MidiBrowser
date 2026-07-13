@@ -57,8 +57,6 @@ bool GrooveParams::isDefault() const
         && sustainPedalMode == (int) SustainPedalMode::Off
         && complexityTarget < 0
         && delayAmount == 0
-        && arpModeIndex == (int) ArpMode::Off
-        && strumAmount == 0
         && velocityRangeLo <= 1 && velocityRangeHi >= 127
         && variationIndex == 0;
 }
@@ -74,8 +72,6 @@ int GrooveParams::activeCount() const
     if (sustainPedalMode != (int) SustainPedalMode::Off) ++n;
     if (complexityTarget >= 0) ++n;
     if (delayAmount > 0) ++n;
-    if (arpModeIndex != (int) ArpMode::Off) ++n;
-    if (strumAmount > 0) ++n;
     if (velocityRangeLo > 1 || velocityRangeHi < 127) ++n;
     if (variationIndex > 0) ++n;
     return n;
@@ -312,148 +308,6 @@ std::vector<RollNote> applyComplexityMorph(std::vector<RollNote> notes,
     return out;
 }
 
-std::vector<RollNote> applyStrum(std::vector<RollNote> notes, const GrooveParams& k)
-{
-    if (k.strumAmount <= 0 || notes.empty())
-        return notes;
-
-    const double amt = k.strumAmount / 100.0;
-    const double maxSpread = 0.15 + 1.85 * (k.strumSpeed / 100.0);
-    const auto dir = k.strumDirection();
-
-    std::stable_sort(notes.begin(), notes.end(),
-                     [](const RollNote& a, const RollNote& b)
-                     {
-                         if (std::abs(a.start - b.start) > 1.0e-6) return a.start < b.start;
-                         return a.pitch < b.pitch;
-                     });
-
-    size_t i = 0;
-    int chordIndex = 0;
-    while (i < notes.size())
-    {
-        size_t j = i + 1;
-        while (j < notes.size() && std::abs(notes[j].start - notes[i].start) < 0.2)
-            ++j;
-        const size_t count = j - i;
-        if (count >= 2)
-        {
-            std::vector<size_t> idx;
-            for (size_t t = i; t < j; ++t) idx.push_back(t);
-            const bool up = (dir == StrumDirection::Up)
-                         || (dir == StrumDirection::Alternate && (chordIndex % 2) == 0);
-            std::stable_sort(idx.begin(), idx.end(), [&](size_t a, size_t b)
-            {
-                return up ? notes[a].pitch < notes[b].pitch
-                          : notes[a].pitch > notes[b].pitch;
-            });
-            for (size_t n = 0; n < idx.size(); ++n)
-            {
-                const double t = (double) n / (double) juce::jmax(1, (int) idx.size() - 1);
-                notes[idx[n]].start += maxSpread * amt * t;
-            }
-            ++chordIndex;
-        }
-        i = j;
-    }
-    return notes;
-}
-
-std::vector<RollNote> applyArpeggiator(std::vector<RollNote> notes, const GrooveParams& k)
-{
-    if (k.arpMode() == ArpMode::Off || notes.empty())
-        return notes;
-
-    const double rate = delayPeriodSteps(k.arpRate());
-    const double gate = juce::jlimit(0.1, 1.0, k.arpGate / 100.0);
-    const int octaves = juce::jlimit(1, 4, k.arpOctaves);
-    const auto mode = k.arpMode();
-    const int baseId = nextGeneratedId(notes, 1000);
-    int gen = 0;
-
-    std::stable_sort(notes.begin(), notes.end(),
-                     [](const RollNote& a, const RollNote& b) { return a.start < b.start; });
-
-    std::vector<RollNote> out;
-    size_t i = 0;
-    while (i < notes.size())
-    {
-        size_t j = i + 1;
-        while (j < notes.size() && std::abs(notes[j].start - notes[i].start) < 0.35)
-            ++j;
-
-        double window = 0.0;
-        std::vector<int> pitches;
-        int vel = 100;
-        int ch = 1;
-        for (size_t t = i; t < j; ++t)
-        {
-            pitches.push_back(notes[t].pitch);
-            window = std::max(window, notes[t].len);
-            vel = notes[t].fileVelocity;
-            ch = notes[t].channel;
-        }
-        std::sort(pitches.begin(), pitches.end());
-        pitches.erase(std::unique(pitches.begin(), pitches.end()), pitches.end());
-
-        if (pitches.size() < 2 || window < rate)
-        {
-            for (size_t t = i; t < j; ++t)
-                out.push_back(notes[t]);
-            i = j;
-            continue;
-        }
-
-        std::vector<int> pattern;
-        for (int o = 0; o < octaves; ++o)
-            for (int p : pitches)
-                pattern.push_back(juce::jlimit(0, 127, p + o * 12));
-
-        if (mode == ArpMode::Down)
-            std::reverse(pattern.begin(), pattern.end());
-        else if (mode == ArpMode::UpDown && pattern.size() > 1)
-        {
-            auto down = pattern;
-            std::reverse(down.begin(), down.end());
-            if (!down.empty()) down.erase(down.begin());
-            if (!down.empty()) down.pop_back();
-            pattern.insert(pattern.end(), down.begin(), down.end());
-        }
-        else if (mode == ArpMode::Random)
-        {
-            for (size_t n = 0; n < pattern.size(); ++n)
-            {
-                const size_t swapWith = (size_t) (knuthHash((int) n + pitches[0]) % pattern.size());
-                std::swap(pattern[n], pattern[swapWith]);
-            }
-        }
-        else if (mode == ArpMode::AsPlayed)
-        {
-            pattern.clear();
-            for (int o = 0; o < octaves; ++o)
-                for (size_t t = i; t < j; ++t)
-                    pattern.push_back(juce::jlimit(0, 127, notes[t].pitch + o * 12));
-        }
-
-        const double start0 = notes[i].start;
-        int step = 0;
-        for (double t = 0.0; t + 1.0e-6 < window; t += rate, ++step)
-        {
-            RollNote a;
-            a.id = baseId + gen++;
-            a.pitch = pattern[(size_t) (step % (int) pattern.size())];
-            a.start = start0 + t;
-            a.len = std::max(0.25, rate * gate);
-            a.fileVelocity = vel;
-            a.channel = ch;
-            a.moved = true;
-            out.push_back(a);
-        }
-        i = j;
-    }
-    return out;
-}
-
 std::vector<RollNote> applyDelay(std::vector<RollNote> notes, const GrooveParams& k)
 {
     if (k.delayAmount <= 0 || notes.empty())
@@ -573,8 +427,6 @@ std::vector<RollNote> applyGroove(const std::vector<RollNote>& notes, const Groo
     if (complexityActive)
         out = applyComplexityMorph(std::move(out), srcCx, tgtCx);
 
-    out = applyStrum(std::move(out), k);
-    out = applyArpeggiator(std::move(out), k);
     out = applyDelay(std::move(out), k);
 
     // Velocity range: compress the clip's velocity span into [lo, hi].
