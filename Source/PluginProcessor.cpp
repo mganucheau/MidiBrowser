@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Theme.h"
+#include "LibraryStore.h"
 #include <algorithm>
 #include <cmath>
 
@@ -10,6 +11,44 @@ MidiBrowserProcessor::MidiBrowserProcessor()
     : AudioProcessor(BusesProperties()
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
+    library_.load();
+    applyLibraryToMemory();
+}
+
+void MidiBrowserProcessor::applyLibraryToMemory()
+{
+    starredFiles = library_.starredFiles;
+    savedSearches = library_.savedSearches;
+}
+
+void MidiBrowserProcessor::syncLibraryFromMemory()
+{
+    library_.starredFiles = starredFiles;
+    library_.savedSearches = savedSearches;
+    library_.save();
+}
+
+void MidiBrowserProcessor::saveLibrary()
+{
+    syncLibraryFromMemory();
+}
+
+void MidiBrowserProcessor::toggleStarred(const juce::String& path)
+{
+    library_.toggleStarred(path);
+    starredFiles = library_.starredFiles;
+}
+
+void MidiBrowserProcessor::addSavedSearch(const SavedSearchEntry& entry)
+{
+    library_.addSavedSearch(entry);
+    savedSearches = library_.savedSearches;
+}
+
+void MidiBrowserProcessor::removeSavedSearch(int index)
+{
+    library_.removeSavedSearch(index);
+    savedSearches = library_.savedSearches;
 }
 
 void MidiBrowserProcessor::prepareToPlay(double sr, int)
@@ -109,41 +148,45 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     if (!previewMuted && previewHasClip && previewClip.lengthBeats > 0.0)
     {
         const double sessionLenBeats = (double) (juce::jmax(1, syncSessionBars.load()) * 4);
+        const double clipLen = juce::jmax(0.25, previewClip.lengthBeats);
 
-        double pStart = beatPos;
-        double pEnd = endBeat;
-
-        if (!synced)
+        // Piano-roll loop region in preview beats. Invalid → full clip.
+        double loopStart = previewLoopStartBeat.load();
+        double loopEnd = previewLoopEndBeat.load();
+        if (loopEnd <= loopStart + 1.0e-9)
         {
-            // Internal clock: loop within the piano-roll loop region (or full clip).
-            const double clipLen = juce::jmax(0.25, previewClip.lengthBeats);
-            double loopStart = previewLoopStartBeat.load();
-            double loopEnd = previewLoopEndBeat.load();
-            if (loopEnd <= loopStart + 1.0e-9)
-            {
-                loopStart = 0.0;
-                loopEnd = clipLen;
-            }
-            loopStart = juce::jlimit(0.0, clipLen, loopStart);
-            loopEnd = juce::jlimit(loopStart + 0.25, clipLen, loopEnd);
-            const double loopLen = loopEnd - loopStart;
-            double local = beatPos;
+            loopStart = 0.0;
+            loopEnd = clipLen;
+        }
+        loopStart = juce::jlimit(0.0, clipLen, loopStart);
+        loopEnd = juce::jlimit(loopStart + 0.25, clipLen, loopEnd);
+        const double loopLen = loopEnd - loopStart;
+        const bool customLoop = loopStart > 1.0e-9 || loopEnd < clipLen - 1.0e-9;
+
+        auto wrapIntoLoop = [&](double pos) -> double
+        {
+            double local = pos;
             if (local < loopStart || local >= loopEnd)
                 local = loopStart + std::fmod(std::max(0.0, local - loopStart), loopLen);
             else
                 local = loopStart + std::fmod(local - loopStart, loopLen);
             if (local < loopStart) local += loopLen;
-            pStart = local;
-            pEnd = pStart + blockBeats;
+            if (local >= loopEnd) local = loopStart;
+            return local;
+        };
 
-            // If this block crosses the loop end, render the tail then the head
-            // so the last note gets a natural note-off before the wrap.
+        auto renderLoopingBlock = [&](double pStart)
+        {
+            double pEnd = pStart + blockBeats;
             if (pEnd > loopEnd + 1.0e-12)
             {
                 const double firstLen = loopEnd - pStart;
                 const int firstSamples = juce::jlimit(1, numSamples,
                     (int) std::lround(firstLen / blockBeats * (double) numSamples));
                 generatePreviewMidi(previewClip, pStart, loopEnd, generated, firstSamples, 0);
+                // Partial loop regions hard-cut hanging notes at the boundary.
+                if (customLoop)
+                    flushActiveNotes(generated, juce::jmax(0, firstSamples - 1));
                 const double remain = pEnd - loopEnd;
                 const int secondSamples = numSamples - firstSamples;
                 if (secondSamples > 0 && remain > 1.0e-12)
@@ -158,45 +201,47 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             double next = pStart + blockBeats;
             if (next >= loopEnd)
                 next = loopStart + std::fmod(next - loopStart, loopLen);
+            return next;
+        };
+
+        if (!synced)
+        {
+            const double pStart = wrapIntoLoop(beatPos);
+            const double next = renderLoopingBlock(pStart);
             freerunBeat.store(next);
-            // Continuity for the next block uses the wrapped clock.
             lastBeatPos_ = next;
         }
         else
         {
+            // Map host (or session/host-loop) phase into the clip, then into
+            // the piano-roll loop region so handles define the looping length.
+            double phase = beatPos;
             if (mult != 1.0)
             {
-                // Speed-shifted sync: wrap the scaled position over the clip.
-                const double clipLen = juce::jmax(0.25, previewClip.lengthBeats);
-                pStart = std::fmod(beatPos, clipLen);
-                if (pStart < 0.0) pStart += clipLen;
-                pEnd = pStart + blockBeats;
+                phase = std::fmod(beatPos, clipLen);
+                if (phase < 0.0) phase += clipLen;
             }
             else if (hostLoopActive.load())
             {
                 const double ls = hostLoopPpqStart.load();
                 const double le = hostLoopPpqEnd.load();
-                const double loopLen = le - ls;
-                if (loopLen > 1.0e-6 && beatPos + 1.0e-9 >= ls)
-                {
-                    pStart = ls + std::fmod(beatPos - ls, loopLen);
-                    pEnd = pStart + blockBeats;
-                }
+                const double hostLoopLen = le - ls;
+                if (hostLoopLen > 1.0e-6 && beatPos + 1.0e-9 >= ls)
+                    phase = ls + std::fmod(beatPos - ls, hostLoopLen);
                 else if (sessionLenBeats > 1.0e-9)
                 {
-                    pStart = std::fmod(beatPos, sessionLenBeats);
-                    if (pStart < 0.0) pStart += sessionLenBeats;
-                    pEnd = pStart + blockBeats;
+                    phase = std::fmod(beatPos, sessionLenBeats);
+                    if (phase < 0.0) phase += sessionLenBeats;
                 }
             }
             else if (sessionLenBeats > 1.0e-9)
             {
-                pStart = std::fmod(beatPos, sessionLenBeats);
-                if (pStart < 0.0) pStart += sessionLenBeats;
-                pEnd = pStart + blockBeats;
+                phase = std::fmod(beatPos, sessionLenBeats);
+                if (phase < 0.0) phase += sessionLenBeats;
             }
 
-            generatePreviewMidi(previewClip, pStart, pEnd, generated, numSamples);
+            const double pStart = wrapIntoLoop(phase);
+            renderLoopingBlock(pStart);
             lastBeatPos_ = endBeat;
         }
     }
@@ -321,20 +366,6 @@ void MidiBrowserProcessor::removeSavedBrowserDir(const juce::String& path)
     savedBrowserDirs.removeString(path);
 }
 
-void MidiBrowserProcessor::addSavedSearch(const SavedSearchEntry& entry)
-{
-    if (entry.name.isEmpty()) return;
-    savedSearches.push_back(entry);
-    while (savedSearches.size() > 24)
-        savedSearches.erase(savedSearches.begin());
-}
-
-void MidiBrowserProcessor::removeSavedSearch(int index)
-{
-    if (juce::isPositiveAndBelow(index, (int) savedSearches.size()))
-        savedSearches.erase(savedSearches.begin() + index);
-}
-
 void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
     juce::XmlElement xml("MidiBrowserState");
@@ -352,6 +383,14 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("effectsOpen", effectsOpen ? 1 : 0);
     xml.setAttribute("previewOpen", previewOpen ? 1 : 0);
     xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
+    xml.setAttribute("colKey", columnVisibility.key ? 1 : 0);
+    xml.setAttribute("colTempo", columnVisibility.tempo ? 1 : 0);
+    xml.setAttribute("colBars", columnVisibility.bars ? 1 : 0);
+    xml.setAttribute("colKind", columnVisibility.kind ? 1 : 0);
+    xml.setAttribute("colComplexity", columnVisibility.complexity ? 1 : 0);
+    xml.setAttribute("colDifNotes", columnVisibility.difNotes ? 1 : 0);
+    xml.setAttribute("colTimeSig", columnVisibility.timeSig ? 1 : 0);
+    xml.setAttribute("colNotes", columnVisibility.notes ? 1 : 0);
     xml.setAttribute("editLock", editLock ? 1 : 0);
     xml.setAttribute("effectsLock", effectsLock ? 1 : 0);
     xml.setAttribute("lockAutoTrim", lockAutoTrim ? 1 : 0);
@@ -389,9 +428,11 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         auto* child = xml.createNewChildElement("SavedSearch");
         child->setAttribute("name", ss.name);
         child->setAttribute("query", ss.search.query);
-        child->setAttribute("bpm", ss.search.bpm);
+        child->setAttribute("bpmMin", ss.search.bpmMin);
+        child->setAttribute("bpmMax", ss.search.bpmMax);
         child->setAttribute("key", ss.search.keyRoot);
-        child->setAttribute("bars", ss.search.bars);
+        child->setAttribute("barsMin", ss.search.barsMin);
+        child->setAttribute("barsMax", ss.search.barsMax);
         child->setAttribute("subdirs", ss.search.subdirs ? 1 : 0);
     }
 
@@ -489,6 +530,14 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             effectsOpen = xml->getIntAttribute("effectsOpen", 0) != 0;
             previewOpen = xml->getIntAttribute("previewOpen", 1) != 0;
             sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
+            columnVisibility.key = xml->getIntAttribute("colKey", 1) != 0;
+            columnVisibility.tempo = xml->getIntAttribute("colTempo", 1) != 0;
+            columnVisibility.bars = xml->getIntAttribute("colBars", 1) != 0;
+            columnVisibility.kind = xml->getIntAttribute("colKind", 1) != 0;
+            columnVisibility.complexity = xml->getIntAttribute("colComplexity", 0) != 0;
+            columnVisibility.difNotes = xml->getIntAttribute("colDifNotes", 0) != 0;
+            columnVisibility.timeSig = xml->getIntAttribute("colTimeSig", 0) != 0;
+            columnVisibility.notes = xml->getIntAttribute("colNotes", 0) != 0;
             editLock = xml->getIntAttribute("editLock", 0) != 0;
             effectsLock = xml->getIntAttribute("effectsLock", 0) != 0;
             lockAutoTrim = xml->getIntAttribute("lockAutoTrim", 0) != 0;
@@ -530,9 +579,29 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     SavedSearchEntry entry;
                     entry.name = child->getStringAttribute("name");
                     entry.search.query = child->getStringAttribute("query");
-                    entry.search.bpm = child->getDoubleAttribute("bpm", 0.0);
+                    if (child->hasAttribute("bpmMin") || child->hasAttribute("bpmMax"))
+                    {
+                        entry.search.bpmMin = child->getDoubleAttribute("bpmMin", 0.0);
+                        entry.search.bpmMax = child->getDoubleAttribute("bpmMax", 0.0);
+                    }
+                    else
+                    {
+                        const double bpm = child->getDoubleAttribute("bpm", 0.0);
+                        entry.search.bpmMin = bpm;
+                        entry.search.bpmMax = bpm;
+                    }
                     entry.search.keyRoot = juce::jlimit(-1, 11, child->getIntAttribute("key", -1));
-                    entry.search.bars = juce::jmax(0, child->getIntAttribute("bars", 0));
+                    if (child->hasAttribute("barsMin") || child->hasAttribute("barsMax"))
+                    {
+                        entry.search.barsMin = juce::jmax(0, child->getIntAttribute("barsMin", 0));
+                        entry.search.barsMax = juce::jmax(0, child->getIntAttribute("barsMax", 0));
+                    }
+                    else
+                    {
+                        const int bars = juce::jmax(0, child->getIntAttribute("bars", 0));
+                        entry.search.barsMin = bars;
+                        entry.search.barsMax = bars;
+                    }
                     entry.search.subdirs = child->getIntAttribute("subdirs", 0) != 0;
                     if (entry.name.isNotEmpty())
                         savedSearches.push_back(entry);
@@ -599,6 +668,11 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             }
         }
     }
+
+    // Host/project state may carry older stars/searches — merge into the
+    // app library so favorites survive upgrades and stay shared across formats.
+    library_.mergeFromPluginState(starredFiles, savedSearches);
+    applyLibraryToMemory();
 }
 
 juce::AudioProcessorEditor* MidiBrowserProcessor::createEditor()

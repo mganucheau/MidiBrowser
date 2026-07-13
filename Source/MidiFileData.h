@@ -36,6 +36,8 @@ struct MidiClip
     juce::String       filePath;
     double             bpm = 120.0;    // tempo from the file, if present
     double             lengthBeats = 4.0;
+    int                timeSigNum = 4;
+    int                timeSigDen = 4;
     std::vector<NoteEvent> notes;
     /** Copy of notes as loaded from file (for reverting transpose when Scale is off). Empty if not from a file load. */
     std::vector<NoteEvent> notesAtFileLoad;

@@ -700,7 +700,9 @@ void PatternFlowLookAndFeel::drawScrollbar(juce::Graphics& g, juce::ScrollBar&, 
     thumb = thumb.reduced(3.0f);
     const float alpha = isMouseDown ? 0.9f : (isMouseOver ? 0.65f : 0.35f);
     g.setColour(colours::textDim().withAlpha(alpha));
-    g.fillRoundedRectangle(thumb, thumb.getWidth() * 0.5f);
+    // Use the short axis so horizontal thumbs are pills like vertical ones.
+    const float r = juce::jmin(thumb.getWidth(), thumb.getHeight()) * 0.5f;
+    g.fillRoundedRectangle(thumb, r);
 }
 
 } // namespace pflow

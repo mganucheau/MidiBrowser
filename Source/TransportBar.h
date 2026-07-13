@@ -4,7 +4,7 @@
 
 namespace pflow {
 
-/** Toolbar: ⋯ Midi Browser · play/stop · bpm · editor / effects. */
+/** Toolbar: Midi Browser · play/stop · bpm · editor / effects. */
 class TransportBar : public juce::Component
 {
 public:
@@ -30,7 +30,7 @@ public:
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
     std::function<void()> onDragToDaw;
-    std::function<void()> onOpenSettings;
+    std::function<void()> onCopyToFolder;
 
 private:
     void refreshBpm();
@@ -63,6 +63,23 @@ private:
     public:
         using ChipBtn::ChipBtn;
         std::function<void()> onDragStart;
+        std::function<void()> onCopyToFolder;
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            if (e.mods.isPopupMenu())
+            {
+                juce::PopupMenu m;
+                m.addItem(1, "Copy to Folder…", onCopyToFolder != nullptr);
+                m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+                    [this](int result)
+                    {
+                        if (result == 1 && onCopyToFolder)
+                            onCopyToFolder();
+                    });
+                return;
+            }
+            ChipBtn::mouseDown(e);
+        }
         void mouseDrag(const juce::MouseEvent& e) override
         {
             if (!dragging && e.getDistanceFromDragStart() > 5 && onDragStart)
@@ -80,7 +97,6 @@ private:
         bool dragging = false;
     };
 
-    IconBtn btnMore { icons::more, "Settings" };
     IconBtn btnPlay { icons::play, "Play preview" };
     IconBtn btnStop { icons::stop, "Stop preview" };
     StatusPill statusPill;

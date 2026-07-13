@@ -1,12 +1,26 @@
 #include "EditModel.h"
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 namespace pflow {
 
 const std::array<const char*, 12> kNoteNames {
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
 };
+
+const char* clipKindName(ClipKind k)
+{
+    switch (k)
+    {
+        case ClipKind::Bass:   return "Bass";
+        case ClipKind::Piano:  return "Piano";
+        case ClipKind::Lead:   return "Lead";
+        case ClipKind::Drums:  return "Drums";
+        case ClipKind::Single: return "Single";
+    }
+    return "Lead";
+}
 
 namespace {
 
@@ -293,12 +307,15 @@ StepClip makeStepClip(const MidiClip& clip)
     s.name = clip.name;
     s.filePath = clip.filePath;
     s.bpm = clip.bpm;
+    s.timeSigNum = juce::jmax(1, clip.timeSigNum);
+    s.timeSigDen = juce::jmax(1, clip.timeSigDen);
 
     constexpr double stepsPerBeat = 4.0;
 
     double maxEnd = 0.0;
     bool anyDrumChannel = false;
     int pitchSum = 0;
+    std::set<int> distinctPitches;
 
     int nextId = 0;
     s.notes.reserve(clip.notes.size());
@@ -316,18 +333,53 @@ StepClip makeStepClip(const MidiClip& clip)
         maxEnd = std::max(maxEnd, r.start + r.len);
         anyDrumChannel = anyDrumChannel || (n.channel == 10);
         pitchSum += n.noteNumber;
+        distinctPitches.insert(n.noteNumber);
     }
 
     const double lengthSteps = std::max(clip.lengthBeats * stepsPerBeat, maxEnd);
     s.bars = std::max(1, (int) std::ceil(lengthSteps / kStepsPerBar));
+    s.noteCount = (int) s.notes.size();
+    s.difNotes = (int) distinctPitches.size();
+
+    const double notesPerBar = (double) s.noteCount / (double) juce::jmax(1, s.bars);
+    s.complexity = juce::jlimit(1, 99,
+        (int) std::lround((double) s.difNotes * notesPerBar));
 
     if (!clip.notes.empty())
     {
         s.root = estimatePitchClassFromNotes(clip.notes);
         const int meanPitch = pitchSum / (int) clip.notes.size();
-        s.kind = anyDrumChannel ? ClipKind::Drums
-               : meanPitch < 48 ? ClipKind::Bass
-                                : ClipKind::Keys;
+
+        int maxPoly = 1;
+        double polySum = 0.0;
+        int polySamples = 0;
+        int chord3Hits = 0;
+        for (const auto& n : clip.notes)
+        {
+            int active = 0;
+            for (const auto& o : clip.notes)
+                if (o.startBeat <= n.startBeat + 1.0e-9
+                    && o.startBeat + o.lengthBeats > n.startBeat + 1.0e-9)
+                    ++active;
+            maxPoly = std::max(maxPoly, active);
+            polySum += (double) active;
+            ++polySamples;
+            if (active >= 3)
+                ++chord3Hits;
+        }
+        const double meanPoly = polySamples > 0 ? polySum / (double) polySamples : 1.0;
+        const bool frequentChords = polySamples > 0 && chord3Hits * 4 >= polySamples;
+
+        if (anyDrumChannel)
+            s.kind = ClipKind::Drums;
+        else if (s.difNotes <= 2 && maxPoly <= 1)
+            s.kind = ClipKind::Single;
+        else if (meanPitch < 48)
+            s.kind = ClipKind::Bass;
+        else if (meanPoly >= 2.5 || frequentChords)
+            s.kind = ClipKind::Piano;
+        else
+            s.kind = ClipKind::Lead;
     }
     return s;
 }

@@ -8,15 +8,18 @@ namespace fx {
 
 constexpr float kFontPt = 11.5f;
 constexpr float kAnnotPt = 10.5f;
-constexpr int kSectionPadT = 9;
+constexpr int kSectionPadT = 14;
 constexpr int kSectionPadH = 14;
-constexpr int kSectionPadB = 11;
+constexpr int kSectionPadB = 14;
 constexpr int kRowMinH = 24;
 constexpr int kControlH = 20;
-constexpr int kRowGap = 8;
-constexpr int kSectionHeaderH = 18;
-constexpr int kSliderRowH = 36;
-constexpr float kSliderThumbR = 4.5f;
+constexpr int kRowGap = 12;
+constexpr int kSectionHeaderH = 22;
+constexpr int kSectionTitleGap = 10;   // space between title and first row
+constexpr int kSectionRowInset = 18;   // align row labels with title text (past chevron)
+constexpr int kSliderRowH = 48;
+constexpr float kSliderThumbR = 6.5f;
+constexpr float kSliderTrackH = 5.0f;
 
 inline juce::Font inspectorFont(bool semibold = false) { return uiFont(kFontPt, semibold); }
 inline juce::Font inspectorMono(bool semibold = false) { return monoFont(kFontPt, semibold); }
@@ -172,7 +175,8 @@ public:
         for (const auto& l : labels)
             w = juce::jmax(w, juce::GlyphArrangement::getStringWidth(inspectorFont(), l));
         const auto& t = inspectorTokens();
-        return (int) std::ceil(w) + (t.dark ? 22 : 30);
+        // Chevron + side padding must leave room for the longest label (e.g. "1/16").
+        return (int) std::ceil(w) + (t.dark ? 30 : 40);
     }
 
     void paint(juce::Graphics& g) override
@@ -190,7 +194,7 @@ public:
         g.setColour(t.rowLabel);
         g.setFont(inspectorFont());
         const juce::String val = labels.size() > index ? labels[index] : juce::String();
-        g.drawFittedText(val, textArea.toNearestInt(), juce::Justification::centredLeft, 1);
+        g.drawFittedText(val, textArea.toNearestInt(), juce::Justification::centredLeft, 1, 1.0f);
 
         if (!t.dark)
         {
@@ -213,7 +217,11 @@ private:
             : owner(o), labels(std::move(items)), index(selected)
         {
             const int rowH = 24;
-            setSize(juce::jmax(120, o.getWidth()), labels.size() * rowH + 8);
+            float textW = 0.0f;
+            for (const auto& l : labels)
+                textW = juce::jmax(textW, juce::GlyphArrangement::getStringWidth(inspectorFont(), l));
+            const int menuW = juce::jmax(o.getWidth(), (int) std::ceil(textW) + 28);
+            setSize(menuW, labels.size() * rowH + 8);
         }
 
         void paint(juce::Graphics& g) override
@@ -413,10 +421,11 @@ public:
     int idealWidth() const
     {
         const auto f = inspectorFont();
-        const float w = juce::jmax(juce::GlyphArrangement::getStringWidth(f, "Half"),
-                                   juce::GlyphArrangement::getStringWidth(f, "Double"));
-        // Two segments + divider: give each word comfortable padding.
-        return (int) std::ceil(w) * 2 + 28;
+        // Size each segment for the longer label so neither word is condensed.
+        const float labelW = juce::jmax(juce::GlyphArrangement::getStringWidth(f, "Half"),
+                                        juce::GlyphArrangement::getStringWidth(f, "Double"));
+        const float segW = labelW + 28.0f;
+        return (int) std::ceil(segW * 2.0f);
     }
 
     void paint(juce::Graphics& g) override
@@ -445,10 +454,11 @@ public:
         {
             return selected == s ? juce::Colours::white : t.segmentText;
         };
+        // drawText (not fitted) — never horizontally compress the labels.
         g.setColour(textCol(Sel::Half));
-        g.drawFittedText("Half", left.toNearestInt(), juce::Justification::centred, 1);
+        g.drawText("Half", left.toNearestInt(), juce::Justification::centred, false);
         g.setColour(textCol(Sel::Double));
-        g.drawFittedText("Double", right.toNearestInt(), juce::Justification::centred, 1);
+        g.drawText("Double", right.toNearestInt(), juce::Justification::centred, false);
     }
 
 private:
@@ -483,9 +493,9 @@ public:
 
     void resized() override
     {
-        // Label row (~15), gap (~5), then track — uniform title-to-slider spacing.
+        // Label row, gap, then a thicker track for readability.
         track = getLocalBounds().toFloat()
-                    .withTrimmedTop(20.0f).withHeight(3.0f)
+                    .withTrimmedTop(28.0f).withHeight(kSliderTrackH)
                     .reduced(kSliderThumbR, 0.0f);
     }
 
@@ -496,7 +506,7 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto top = getLocalBounds().removeFromTop(15);
+        auto top = getLocalBounds().removeFromTop(16);
         g.setFont(inspectorFont());
         g.setColour(t.rowLabel);
         g.drawText(label, top, juce::Justification::centredLeft);
@@ -507,8 +517,9 @@ public:
                       : grooveValueText({ label.toRawUTF8(), label.toRawUTF8(), minV, maxV, defV }, value);
         g.drawText(text, top, juce::Justification::centredRight);
 
+        const float radius = kSliderTrackH * 0.5f;
         g.setColour(t.sliderTrack);
-        g.fillRoundedRectangle(track, 2.0f);
+        g.fillRoundedRectangle(track, radius);
 
         const float norm = (float) (value - minV) / (float) juce::jmax(1, maxV - minV);
         const float thumbX = track.getX() + norm * track.getWidth();
@@ -519,22 +530,20 @@ public:
         {
             g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(
                                        juce::jmin(mid, thumbX), track.getY(),
-                                       juce::jmax(mid, thumbX), track.getBottom()), 2.0f);
+                                       juce::jmax(mid, thumbX), track.getBottom()), radius);
         }
         else
         {
-            g.fillRoundedRectangle(track.withWidth(juce::jmax(0.0f, thumbX - track.getX())), 2.0f);
+            g.fillRoundedRectangle(track.withWidth(juce::jmax(0.0f, thumbX - track.getX())), radius);
         }
 
         // Draw thumb last so it sits above the track fill at the ends.
         const float d = kSliderThumbR * 2.0f;
         g.setColour(t.sliderKnob);
         g.fillEllipse(thumbX - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d);
-        if (!t.dark)
-        {
-            g.setColour(t.controlHairline);
-            g.drawEllipse(thumbX - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d, 0.5f);
-        }
+        g.setColour(t.dark ? t.accent.withAlpha(0.55f) : t.controlHairline);
+        g.drawEllipse(thumbX - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d,
+                      t.dark ? 1.0f : 0.75f);
     }
 
 private:
@@ -691,6 +700,7 @@ public:
     {
         int h = kSectionPadT + kSectionHeaderH + kSectionPadB;
         if (!open) return h;
+        h += kSectionTitleGap;
         for (size_t i = 0; i < rows.size(); ++i)
         {
             if (i > 0) h += kRowGap;
@@ -702,9 +712,12 @@ public:
     void resized() override
     {
         auto r = getLocalBounds();
-        r.removeFromTop(kSectionPadT + kSectionHeaderH);
+        r.removeFromTop(kSectionPadT + kSectionHeaderH + kSectionTitleGap);
         r.removeFromBottom(kSectionPadB);
-        r = r.reduced(kSectionPadH, 0);
+        // Keep the right edge; inset left so row labels line up with the title text
+        // (title sits past the chevron).
+        r.removeFromLeft(kSectionPadH + kSectionRowInset);
+        r.removeFromRight(kSectionPadH);
         for (size_t i = 0; i < rows.size(); ++i)
         {
             if (!open) { rows[i].comp->setBounds({}); continue; }

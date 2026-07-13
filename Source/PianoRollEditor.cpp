@@ -3,6 +3,11 @@
 
 namespace pflow {
 
+namespace {
+constexpr int kBarsZoomChoices[] = { 0, 2, 4, 8, 16 }; // 0 = File (fit clip)
+constexpr int kDivisionChoices[] = { 16, 8, 4, 2, 1 };  // steps per grid unit
+} // namespace
+
 void PitchRowMap::fit(const std::vector<RollNote>& notes, float height, int rootPc, int minRange)
 {
     rootPc = juce::jlimit(0, 11, rootPc);
@@ -266,42 +271,15 @@ PianoRollEditor::PianoRollEditor()
     };
     addAndMakeVisible(btnFold);
 
-    divisionPicker.addItem("1 bar", 16);
-    divisionPicker.addItem("1/2", 8);
-    divisionPicker.addItem("1/4", 4);
-    divisionPicker.addItem("1/8", 2);
-    divisionPicker.addItem("1/16", 1);
-    divisionPicker.setSelectedId(divisionSteps, juce::dontSendNotification);
-    divisionPicker.setWantsKeyboardFocus(false);
-    divisionPicker.onChange = [this]
-    {
-        if (divisionPicker.getSelectedId() > 0)
-        {
-            divisionSteps = divisionPicker.getSelectedId();
-            rollContent.repaint();
-            timeRuler.repaint();
-        }
-    };
-    addAndMakeVisible(divisionPicker);
+    barsZoomPopup.setItems({ "File", "2 bars", "4 bars", "8 bars", "16 bars" }, 0);
+    barsZoomPopup.setWantsKeyboardFocus(false);
+    barsZoomPopup.onChange = [this](int) { applyBarsZoomFromPopup(); };
+    addAndMakeVisible(barsZoomPopup);
 
-    for (int b : { 2, 4, 8, 16 })
-        barsZoomPicker.addItem(juce::String(b) + " bars", b);
-    barsZoomPicker.setSelectedId(visibleBarsZoom, juce::dontSendNotification);
-    barsZoomPicker.setWantsKeyboardFocus(false);
-    barsZoomPicker.onChange = [this]
-    {
-        const int id = barsZoomPicker.getSelectedId();
-        if (id > 0)
-        {
-            visibleBarsZoom = id;
-            computePxPerStepBase();
-            updateRollSize();
-            rollContent.repaint();
-            timeRuler.repaint();
-            velocityLane.repaint();
-        }
-    };
-    addAndMakeVisible(barsZoomPicker);
+    divisionPopup.setItems({ "1 bar", "1/2", "1/4", "1/8", "1/16" }, divisionPopupIndex());
+    divisionPopup.setWantsKeyboardFocus(false);
+    divisionPopup.onChange = [this](int) { applyDivisionFromPopup(); };
+    addAndMakeVisible(divisionPopup);
 
     btnZoomOut.setVisible(false);
     btnZoomIn.setVisible(false);
@@ -344,8 +322,9 @@ void PianoRollEditor::setClip(const StepClip& c, const ClipEdit& e, const Groove
     {
         selection.clear();
         resetLoopToClip();
-        visibleBarsZoom = snapBarsZoom(resolved.bars);
-        barsZoomPicker.setSelectedId(visibleBarsZoom, juce::dontSendNotification);
+        visibleBarsZoom = 0; // File — fit the whole clip
+        zoomX = 1.0f;
+        barsZoomPopup.setIndex(barsZoomPopupIndex(), juce::dontSendNotification);
         computePxPerStepBase();
         updateRollSize();
         pendingScrollToContent = true;
@@ -833,17 +812,51 @@ const RollNote* PianoRollEditor::noteAt(juce::Point<float> pos) const
 void PianoRollEditor::computePxPerStepBase()
 {
     const int visW = juce::jmax(60, rollViewport.getMaximumVisibleWidth());
-    const int bars = juce::jmax(1, juce::jmin(visibleBarsZoom, juce::jmax(1, resolved.bars)));
-    const int stepsToShow = bars * kStepsPerBar;
-    pxPerStepBase = juce::jmax(0.75f, (float) visW / (float) juce::jmax(1, stepsToShow));
+    const int clipBars = juce::jmax(1, resolved.bars);
+    // 0 = File: fit the whole clip. Otherwise fit exactly N bars in the viewport
+    // so e.g. "2 bars" on an 8-bar loop zooms into two measures of notes.
+    const int bars = (visibleBarsZoom <= 0) ? clipBars : juce::jmax(1, visibleBarsZoom);
+    const double stretch = juce::jmax(0.25, timeStretch);
+    const double stepsToShow = (double) bars * (double) kStepsPerBar * stretch;
+    pxPerStepBase = juce::jmax(0.75f, (float) ((double) visW / juce::jmax(1.0, stepsToShow)));
 }
 
-int PianoRollEditor::snapBarsZoom(int clipBars) const
+int PianoRollEditor::barsZoomPopupIndex() const
 {
-    const int t = juce::jmin(16, juce::jmax(1, clipBars));
-    for (int o : { 2, 4, 8, 16 })
-        if (o >= t) return o;
-    return 16;
+    for (int i = 0; i < (int) (sizeof(kBarsZoomChoices) / sizeof(kBarsZoomChoices[0])); ++i)
+        if (kBarsZoomChoices[i] == visibleBarsZoom)
+            return i;
+    return 0; // File
+}
+
+int PianoRollEditor::divisionPopupIndex() const
+{
+    for (int i = 0; i < (int) (sizeof(kDivisionChoices) / sizeof(kDivisionChoices[0])); ++i)
+        if (kDivisionChoices[i] == divisionSteps)
+            return i;
+    return 2; // 1/4
+}
+
+void PianoRollEditor::applyBarsZoomFromPopup()
+{
+    const int idx = juce::jlimit(0, (int) (sizeof(kBarsZoomChoices) / sizeof(kBarsZoomChoices[0])) - 1,
+                                 barsZoomPopup.getIndex());
+    visibleBarsZoom = kBarsZoomChoices[idx];
+    zoomX = 1.0f; // dropdown defines the fit; discard pinch/scroll zoom
+    computePxPerStepBase();
+    updateRollSize();
+    rollContent.repaint();
+    timeRuler.repaint();
+    velocityLane.repaint();
+}
+
+void PianoRollEditor::applyDivisionFromPopup()
+{
+    const int idx = juce::jlimit(0, (int) (sizeof(kDivisionChoices) / sizeof(kDivisionChoices[0])) - 1,
+                                 divisionPopup.getIndex());
+    divisionSteps = kDivisionChoices[idx];
+    rollContent.repaint();
+    timeRuler.repaint();
 }
 
 int PianoRollEditor::velocityForNote(const RollNote& n) const
@@ -1047,31 +1060,22 @@ void PianoRollEditor::resized()
     btnZoomOut.setVisible(false);
     selBadge.setVisible(false);
 
-    // Toolbar: Notes in Key | ………… | Zoom [n bars] · Grid Size [div]
+    // Toolbar: Notes in Key | ………… | Zoom [File/n bars] · Grid Size [div]
     auto bar = r.removeFromTop(toolbarH).reduced(8, 4);
-    const int ctrlH = 20;
+    const int ctrlH = fx::kControlH;
     const int foldW = juce::jmin(btnFold.idealWidth(), bar.getWidth() / 2);
     btnFold.setBounds(bar.removeFromLeft(foldW).withSizeKeepingCentre(foldW, ctrlH));
 
-    // Content-sized combo boxes — padding matches Theme combo LnF.
-    auto comboW = [](juce::ComboBox& c) -> int
-    {
-        auto f = fontFor(TextStyle::Body);
-        float w = 0.0f;
-        for (int i = 0; i < c.getNumItems(); ++i)
-            w = juce::jmax(w, juce::GlyphArrangement::getStringWidth(f, c.getItemText(i)));
-        return (int) std::ceil(w) + metrics::comboTextPadding + 18;
-    };
-    const int zoomW = comboW(barsZoomPicker);
-    const int gridW = comboW(divisionPicker);
+    const int zoomW = barsZoomPopup.idealWidth();
+    const int gridW = divisionPopup.idealWidth();
     const int zoomLabelW = 38;
     const int gridLabelW = 62;
 
-    divisionPicker.setBounds(bar.removeFromRight(gridW).withSizeKeepingCentre(gridW, ctrlH));
+    divisionPopup.setBounds(bar.removeFromRight(gridW).withSizeKeepingCentre(gridW, ctrlH));
     bar.removeFromRight(6);
     gridLabelBounds = bar.removeFromRight(gridLabelW);
     bar.removeFromRight(10);
-    barsZoomPicker.setBounds(bar.removeFromRight(zoomW).withSizeKeepingCentre(zoomW, ctrlH));
+    barsZoomPopup.setBounds(bar.removeFromRight(zoomW).withSizeKeepingCentre(zoomW, ctrlH));
     bar.removeFromRight(6);
     zoomLabelBounds = bar.removeFromRight(zoomLabelW);
 
@@ -1309,10 +1313,11 @@ void PianoRollEditor::RollContent::mouseDrag(const juce::MouseEvent& e)
     if (drag == Drag::LoopStart || drag == Drag::LoopEnd)
     {
         const double step = ed.stepFromContentX(e.position.x);
+        // Live-update the processor so the audible loop follows the handles.
         if (drag == Drag::LoopStart)
-            ed.setLoopSteps(step, ed.loopEndStep, false);
+            ed.setLoopSteps(step, ed.loopEndStep, true);
         else
-            ed.setLoopSteps(ed.loopStartStep, step, false);
+            ed.setLoopSteps(ed.loopStartStep, step, true);
         return;
     }
     if (drag == Drag::Note)
@@ -1437,9 +1442,9 @@ void PianoRollEditor::TimeRuler::mouseDrag(const juce::MouseEvent& e)
     const float contentX = e.position.x + (float) ed.rollViewport.getViewPositionX();
     const double step = ed.stepFromContentX(contentX);
     if (drag == Drag::LoopStart)
-        ed.setLoopSteps(step, ed.loopEndStep, false);
+        ed.setLoopSteps(step, ed.loopEndStep, true);
     else
-        ed.setLoopSteps(ed.loopStartStep, step, false);
+        ed.setLoopSteps(ed.loopStartStep, step, true);
 }
 
 void PianoRollEditor::TimeRuler::mouseUp(const juce::MouseEvent&)

@@ -280,10 +280,16 @@ void EffectsInspector::layoutSections()
 void EffectsInspector::resized()
 {
     auto r = getLocalBounds();
-    auto header = r.removeFromTop(kHeaderBarH).reduced(10, 4);
-    btnEffectsLock.setBounds(header.removeFromRight(22).withSizeKeepingCentre(20, 20));
+    const int headerH = metrics::listHeaderH();
+    auto header = r.removeFromTop(headerH).reduced(10, 4);
+    const int iconBtn = metrics::chromeIconButton();
+    btnEffectsLock.ghost = true;
+    btnEffectsLock.iconScale = 1.0f;
+    btnReset.ghost = true;
+    btnReset.iconScale = 1.0f;
+    btnEffectsLock.setBounds(header.removeFromRight(iconBtn).withSizeKeepingCentre(iconBtn, iconBtn));
     header.removeFromRight(4);
-    btnReset.setBounds(header.removeFromRight(22).withSizeKeepingCentre(20, 20));
+    btnReset.setBounds(header.removeFromRight(iconBtn).withSizeKeepingCentre(iconBtn, iconBtn));
 
     viewport.setBounds(r);
     body.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()), body.getHeight());
@@ -310,13 +316,13 @@ void EffectsInspector::paint(juce::Graphics& g)
     g.setColour(t.divider);
     g.fillRect(getLocalBounds().removeFromLeft(1));
 
-    auto header = getLocalBounds().removeFromTop(kHeaderBarH);
+    auto header = getLocalBounds().removeFromTop(metrics::listHeaderH());
     g.setColour(t.divider);
     g.fillRect(header.getX(), header.getBottom() - 1, header.getWidth(), 1);
 
     g.setColour(t.headerText);
     g.setFont(inspectorFont(true));
-    g.drawText("Effects", 14, 8, 120, 18, juce::Justification::centredLeft);
+    g.drawText("Effects", 14, 0, 120, header.getHeight(), juce::Justification::centredLeft);
 }
 
 void EffectsInspector::mouseDown(const juce::MouseEvent&)

@@ -1,4 +1,5 @@
 #include "MidiFileData.h"
+#include <set>
 
 namespace pflow {
 
@@ -64,7 +65,9 @@ MidiClip parseMidiFile(const juce::File& file)
     midiFile.convertTimestampTicksToSeconds();
 
     double bpm = 120.0; // default
-    // Try to read tempo from the file
+    int timeSigNum = 4;
+    int timeSigDen = 4;
+    // Try to read tempo / time signature from the file
     if (midiFile.getNumTracks() > 0)
     {
         auto* track = midiFile.getTrack(0);
@@ -77,9 +80,46 @@ MidiClip parseMidiFile(const juce::File& file)
                 break;
             }
         }
+        for (int i = 0; i < track->getNumEvents(); ++i)
+        {
+            auto& ev = track->getEventPointer(i)->message;
+            if (ev.isTimeSignatureMetaEvent())
+            {
+                int num = 4, den = 4;
+                ev.getTimeSignatureInfo(num, den);
+                timeSigNum = juce::jmax(1, num);
+                timeSigDen = juce::jmax(1, den);
+                break;
+            }
+        }
+        // Also scan other tracks for a time signature if track 0 had none.
+        if (timeSigNum == 4 && timeSigDen == 4)
+        {
+            for (int t = 0; t < midiFile.getNumTracks(); ++t)
+            {
+                auto* tr = midiFile.getTrack(t);
+                if (tr == nullptr) continue;
+                for (int i = 0; i < tr->getNumEvents(); ++i)
+                {
+                    auto& ev = tr->getEventPointer(i)->message;
+                    if (ev.isTimeSignatureMetaEvent())
+                    {
+                        int num = 4, den = 4;
+                        ev.getTimeSignatureInfo(num, den);
+                        timeSigNum = juce::jmax(1, num);
+                        timeSigDen = juce::jmax(1, den);
+                        break;
+                    }
+                }
+                if (timeSigNum != 4 || timeSigDen != 4)
+                    break;
+            }
+        }
     }
 
     clip.bpm = bpm;
+    clip.timeSigNum = timeSigNum;
+    clip.timeSigDen = timeSigDen;
     double secPerBeat = 60.0 / bpm;
     double maxBeat = 0.0;
 

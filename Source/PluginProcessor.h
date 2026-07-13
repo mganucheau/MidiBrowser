@@ -4,6 +4,7 @@
 #include "EditModel.h"
 #include "GrooveEngine.h"
 #include "BrowserPanels.h"
+#include "LibraryStore.h"
 #include <atomic>
 #include <map>
 
@@ -103,11 +104,12 @@ public:
     bool effectsOpen = false;
     bool previewOpen = true;
     bool sidebarCollapsed = true;
+    BrowserColumnVisibility columnVisibility;
 
     juce::String lastBrowserDir;
     bool trimEmptyMeasuresPreview = false;
     juce::StringArray savedBrowserDirs;
-    juce::StringArray starredFiles;   // favourited file paths (persisted)
+    juce::StringArray starredFiles;   // favourites — mirrored from LibraryStore
     std::vector<SavedSearchEntry> savedSearches;
 
     void addSavedBrowserDir(const juce::String& path);
@@ -115,11 +117,14 @@ public:
     void addSavedSearch(const SavedSearchEntry& entry);
     void removeSavedSearch(int index);
     bool isStarred(const juce::String& path) const { return starredFiles.contains(path); }
-    void toggleStarred(const juce::String& path)
-    {
-        if (!starredFiles.contains(path)) starredFiles.add(path);
-        else starredFiles.removeString(path);
-    }
+    void toggleStarred(const juce::String& path);
+
+    /** App-owned library (stars, saved searches, search result cache). */
+    LibraryStore& library() { return library_; }
+    const LibraryStore& library() const { return library_; }
+
+    /** Persist library to disk now (e.g. after search cache update). */
+    void saveLibrary();
 
     void setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed);
 
@@ -150,6 +155,10 @@ private:
     bool previewMuted_ = false;
     bool previewFlushPending_ = false;   // release held notes before the next block
     juce::uint64 previewFingerprint_ = 0;
+
+    LibraryStore library_;
+    void syncLibraryFromMemory();
+    void applyLibraryToMemory();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiBrowserProcessor)
 };

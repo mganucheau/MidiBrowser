@@ -105,11 +105,6 @@ TransportBar::TransportBar()
         b.setWantsKeyboardFocus(false);
     };
 
-    prep(btnMore);
-    btnMore.setTooltip("Settings");
-    btnMore.onClick = [this] { if (onOpenSettings) onOpenSettings(); };
-    addAndMakeVisible(btnMore);
-
     prep(btnPlay);
     btnPlay.onClick = [this] { if (onPlayPause) onPlayPause(); };
     addAndMakeVisible(btnPlay);
@@ -141,6 +136,7 @@ TransportBar::TransportBar()
     btnDragToDaw.setTooltip("Drag edited clip onto a DAW track");
     btnDragToDaw.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
+    btnDragToDaw.onCopyToFolder = [this] { if (onCopyToFolder) onCopyToFolder(); };
     addAndMakeVisible(btnDragToDaw);
 
     prep(btnEditor);
@@ -237,7 +233,7 @@ void TransportBar::refreshBpm()
 void TransportBar::resized()
 {
     auto r = getLocalBounds().reduced(0, 8);
-    const int btn = 28;
+    const int btn = metrics::chromeIconButton();
     const int gap = 6;
     const int brandPad = 10;
 
@@ -246,11 +242,9 @@ void TransportBar::resized()
         return a.withSizeKeepingCentre(a.getWidth(), h);
     };
 
-    // Brand cluster: ⋯ Midi Browser
-    auto brand = r.removeFromLeft(148);
+    // Brand: Midi Browser
+    auto brand = r.removeFromLeft(130);
     brand.removeFromLeft(brandPad);
-    btnMore.setBounds(mid(brand.removeFromLeft(btn), btn));
-    brand.removeFromLeft(2);
     titleBounds = brand;
 
     r.removeFromRight(kTitlePad);

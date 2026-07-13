@@ -27,16 +27,23 @@ struct RollNote
     bool   moved = false;   // set by resolveClip when a manual move applies
 };
 
-enum class ClipKind { Bass, Keys, Drums };
+enum class ClipKind { Bass, Piano, Lead, Drums, Single };
+
+const char* clipKindName(ClipKind k);
 
 struct StepClip
 {
     juce::String name;
     juce::String filePath;
-    ClipKind kind = ClipKind::Keys;
+    ClipKind kind = ClipKind::Lead;
     int    root = -1;       // pitch-class 0..11, -1 = unknown
     double bpm  = 120.0;
     int    bars = 1;
+    int    timeSigNum = 4;
+    int    timeSigDen = 4;
+    int    noteCount = 0;
+    int    difNotes = 0;    // distinct pitches
+    int    complexity = 1;  // 1..99 density × variety score
     std::vector<RollNote> notes;
 };
 

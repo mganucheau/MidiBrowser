@@ -45,6 +45,9 @@ private:
     void pushPreviewToProcessor();
     void startDragExport();
     void startDragOriginalFile(const juce::File& file);
+    void copyFileToFolder(const juce::File& file);
+    void copyStarredToFolder();
+    void copyRenderedClipToFolder();
     void applyLayoutState();
     void layoutContent();
     void toggleEditorFold();

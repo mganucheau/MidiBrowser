@@ -102,6 +102,7 @@ target_sources(MidiBrowser PRIVATE
     Source/EffectsInspector.cpp
     Source/PianoRollEditor.cpp
     Source/Theme.cpp
+    Source/LibraryStore.cpp
 )
 
 target_compile_definitions(MidiBrowser PUBLIC
@@ -159,6 +160,7 @@ if(MIDIBROWSER_BUILD_TESTS)
         Tests/EditModelTests.cpp
         Tests/GrooveEngineTests.cpp
         Tests/EditorUiTests.cpp
+        Tests/LibraryStoreTests.cpp
     )
     target_link_libraries(MidiBrowserTests PRIVATE
         MidiBrowser

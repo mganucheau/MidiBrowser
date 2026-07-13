@@ -9,9 +9,11 @@ namespace pflow {
 struct BrowserSearch
 {
     juce::String query;
-    double bpm = 0.0;   // 0 = any
-    int keyRoot = -1;   // -1 = any
-    int bars = 0;       // 0 = any
+    double bpmMin = 0.0; // 0 = no lower bound
+    double bpmMax = 0.0; // 0 = no upper bound
+    int keyRoot = -1;    // -1 = any
+    int barsMin = 0;     // 0 = any; 64 = 64+ (≥64)
+    int barsMax = 0;     // 0 = any; 64 = 64+ (unlimited upper)
     bool subdirs = false;
 };
 
@@ -33,6 +35,8 @@ public:
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
 
     void setSavedDirs(const juce::StringArray& paths, const juce::String& activePath);
     void setSavedSearches(const std::vector<SavedSearchEntry>& searches, int activeSearchIdx);
@@ -41,7 +45,11 @@ public:
     bool isStarredFilter() const { return starredFilter; }
     bool isCollapsed() const { return collapsed; }
     void setCollapsed(bool shouldCollapse);
-    int idealWidth() const { return collapsed ? metrics::sidebarRailWidth() : metrics::sidebarExpandedWidth(); }
+    /** Current layout width (rail when folded, otherwise the resizable expanded width). */
+    int idealWidth() const;
+    /** Expanded width while open — never wider than the default sidebar. */
+    int getExpandedWidth() const { return expandedWidth; }
+    void setExpandedWidth(int w);
 
     std::function<void()> onOpenFolder;
     std::function<void(const juce::String&)> onPickDir;
@@ -53,7 +61,11 @@ public:
     std::function<void(int)> onPickSavedSearch;
     std::function<void(int)> onRemoveSavedSearch;
     std::function<void()> onSaveCurrentSearch;
+    std::function<void()> onCopyStarredToFolder;
     std::function<void()> onCollapsedChanged;
+    std::function<void()> onOpenSettings;
+    /** Fired while the user drags the sidebar width (before fold). */
+    std::function<void()> onWidthChanged;
 
     void setSearchFormOpen(bool open);
     bool isSearchFormOpen() const { return searchFormOpen; }
@@ -75,6 +87,7 @@ private:
     int searchFormOccupiedHeight() const;
 
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
+    IconBtn btnSettings { icons::gear, "Settings" };
     juce::StringArray dirs;
     juce::String active;
     std::vector<SavedSearchEntry> savedSearches;
@@ -82,8 +95,12 @@ private:
     int browseMode = 0;
     bool starredFilter = false;
     bool collapsed = true;
+    int expandedWidth = 0; // pixels; 0 → default expanded width
     int hoverRow = -1;
     bool hoverRemove = false;
+    bool resizing = false;
+    int resizeStartWidth = 0;
+    int resizeStartX = 0;
 
     struct Row { RowKind kind; int index = -1; };
     std::vector<Row> rows;
@@ -99,14 +116,16 @@ private:
         BrowserSearch getCriteria() const;
         void setCriteria(const BrowserSearch&);
         void lookAndFeelChanged() override;
-        static constexpr int kHeight = 188;
+        static constexpr int kHeight = 210;
         std::function<void(const BrowserSearch&)> onSearch;
     private:
         void styleEditors();
         juce::TextEditor queryField;
-        juce::TextEditor bpmField;
+        juce::TextEditor bpmMinField;
+        juce::TextEditor bpmMaxField;
         fx::FlatPopup keyPicker;
-        juce::TextEditor barsField;
+        fx::FlatPopup barsMinPopup;
+        fx::FlatPopup barsMaxPopup;
         fx::FlatSwitch subdirsSwitch;
         fx::FlatTextButton btnSearch { "Search" };
         juce::Rectangle<int> bpmRow, keyRow, barsRow, subdirsRow;
@@ -116,16 +135,33 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FavoritesSidebar)
 };
 
-// Sortable 4-column file table: Name · Key · Tempo · Bars.
+// Sortable file table with optional metadata columns.
+
+struct BrowserColumnVisibility
+{
+    bool key = true;
+    bool tempo = true;
+    bool bars = true;
+    bool kind = true;
+    bool complexity = false;
+    bool difNotes = false;
+    bool timeSig = false;
+    bool notes = false;
+};
 
 struct FileListEntry
 {
     juce::File file;
     juce::String name;
-    ClipKind kind = ClipKind::Keys;
+    ClipKind kind = ClipKind::Lead;
     juce::String rootName;
     double bpm = 0.0;
     int bars = 0;
+    int timeSigNum = 4;
+    int timeSigDen = 4;
+    int noteCount = 0;
+    int difNotes = 0;
+    int complexity = 0;
     bool edited = false;
     bool starred = false;
     bool isDirectory = false;
@@ -134,7 +170,10 @@ struct FileListEntry
 class FileListPanel : public juce::Component, private juce::Timer
 {
 public:
-    enum class SortColumn { Name, Key, Tempo, Bars };
+    enum class SortColumn
+    {
+        Name, Key, Tempo, Bars, Kind, Complexity, DifNotes, TimeSig, Notes
+    };
 
     FileListPanel();
 
@@ -155,6 +194,10 @@ public:
     void selectAdjacent(int direction);
     void grabBrowseFocus();
 
+    void setColumnVisibility(const BrowserColumnVisibility& v);
+    BrowserColumnVisibility getColumnVisibility() const { return columnsVisible; }
+    std::function<void(const BrowserColumnVisibility&)> onColumnVisibilityChanged;
+
     std::function<void(int)> onSelect;       // entry index
     std::function<void(int)> onPlayRow;      // entry index
     std::function<void(int)> onToggleStar;   // entry index
@@ -164,6 +207,8 @@ public:
     std::function<void()> onEmptyOpenFolder;
     /** Fired when the user clicks the file list (sticky browser key-nav). */
     std::function<void()> onActivated;
+    std::function<void(const juce::File&)> onRevealFile;
+    std::function<void(const juce::File&)> onCopyFileToFolder;
 
     void setSort(SortColumn column, bool ascending);
 
@@ -193,13 +238,18 @@ private:
 
     struct ColumnRects
     {
-        juce::Rectangle<int> name, key, tempo, bars;
+        juce::Rectangle<int> name, key, tempo, bars, kind, complexity, difNotes, timeSig, notes;
     };
 
     static constexpr int kNameW = 148;
     static constexpr int kKeyW = 44;
     static constexpr int kTempoW = 52;
     static constexpr int kBarsW = 44;
+    static constexpr int kKindW = 56;
+    static constexpr int kComplexityW = 52;
+    static constexpr int kDifNotesW = 56;
+    static constexpr int kTimeSigW = 52;
+    static constexpr int kNotesW = 48;
     static constexpr int kSortArrowW = 12;
     static constexpr int kIconW = 23;
 
@@ -214,12 +264,16 @@ private:
     int entryToDisplay(int entryIdx) const;
     juce::Rectangle<int> headerColumnBounds(SortColumn col) const;
     ColumnRects splitRowColumns(juce::Rectangle<int> row) const;
+    int totalContentWidth() const;
+    bool isColumnVisible(SortColumn col) const;
+    void showColumnVisibilityMenu();
 
     juce::String folderName { "Select a folder" };
     std::vector<FileListEntry> entries;
     std::vector<int> sortOrder;
     SortColumn sortColumn = SortColumn::Name;
     bool sortAscending = true;
+    BrowserColumnVisibility columnsVisible;
     int selected = -1;
     bool playing = false;
     bool searching = false;
@@ -227,6 +281,8 @@ private:
 
     juce::Viewport viewport;
     ListContent content { *this };
+    IconBtn scrollTopBtn { icons::caretUp, "Scroll to top" };
+    void updateScrollTopButton();
 
     friend class ListContent;
 

@@ -4,6 +4,7 @@
 #include "EditModel.h"
 #include "GrooveEngine.h"
 #include "UiAtoms.h"
+#include "EffectsInspectorWidgets.h"
 
 namespace pflow {
 
@@ -209,7 +210,10 @@ private:
     int velocityForNote(const RollNote& n) const;
     const RollNote* noteAtVelocityX(float laneX) const;
     void setVelocityFromLaneY(int noteId, float laneY);
-    int snapBarsZoom(int clipBars) const;
+    void applyBarsZoomFromPopup();
+    void applyDivisionFromPopup();
+    int barsZoomPopupIndex() const;
+    int divisionPopupIndex() const;
     void removeBadge(const juce::String& key);
     void resetLoopToClip();
     void setLoopSteps(double start, double end, bool notify);
@@ -236,7 +240,7 @@ private:
     bool folded = false;
     float pxPerStepBase = 6.0f;             // fit-to-width at zoomX 1
     float zoomX = 1.0f;                     // horizontal zoom, 1..6
-    int visibleBarsZoom = 8;
+    int visibleBarsZoom = 0;                // 0 = File (fit clip length); else 2/4/8/16
     float rowH = 13.0f;                     // vertical zoom (px per semitone)
     int divisionSteps = 4;                  // grid + snap (1/4 default)
     double playheadStep = 0.0;
@@ -254,7 +258,9 @@ private:
 
     // ── children ──
     Stepper octaveStepper;
-    juce::ComboBox rootPicker, modePicker, divisionPicker, barsZoomPicker;
+    juce::ComboBox rootPicker, modePicker;
+    fx::FlatPopup divisionPopup;
+    fx::FlatPopup barsZoomPopup;
     MiniSwitch fitSwitch { "Fit to scale" };
     MiniSwitch mapSwitch { "Map to root" };
     IconBtn btnLock { icons::lockOpen, "Lock pitch edits while browsing" };
@@ -271,7 +277,7 @@ private:
     NotifyingViewport rollViewport;
     RollContent rollContent { *this };
     VelocityLane velocityLane { *this };
-    bool velocityOpen = false;
+    bool velocityOpen = true;
     ScalePanel scalePanel { *this };
 
     static constexpr int stripH = 0;

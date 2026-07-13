@@ -248,6 +248,10 @@ namespace metrics {
     constexpr int openRollMinW      = 360;
     constexpr int foldedWindowW     = sidebarW + fileTableW;
     constexpr int openWindowW       = sidebarW + fileTableW + editorPaneW;
+    /** Header chrome icon button (play / effects / etc.). */
+    constexpr int chromeIconBtn     = 28;
+    /** Drawn glyph size inside a chromeIconBtn with iconScale 1. */
+    constexpr int chromeIconGlyph   = 18;
 
     inline int transportH()       { return scaled(toolbarH); }
     inline int listRowH()         { return scaled(currentDensity() == Density::Comfortable ? 28 : 24); }
@@ -256,6 +260,8 @@ namespace metrics {
     inline int miniRollH()        { return scaled(112); }
     inline int sidebarRailWidth() { return scaled(sidebarRailW); }
     inline int sidebarExpandedWidth() { return scaled(sidebarExpandedW); }
+    inline int chromeIconButton() { return scaled(chromeIconBtn); }
+    inline int chromeIconGlyphSize() { return scaled(chromeIconGlyph); }
     inline int fileTableWidth()   { return scaled(fileTableW); }
     inline int editorPaneWidth()  { return scaled(editorPaneW); }
     inline int effectsPaneWidth() { return scaled(effectsPaneW); }
