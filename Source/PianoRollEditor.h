@@ -242,7 +242,7 @@ private:
     bool folded = false;
     float pxPerStepBase = 6.0f;             // fit-to-width at zoomX 1
     float zoomX = 1.0f;                     // horizontal zoom, 1..6
-    int visibleBarsZoom = 0;                // 0 = File (fit clip length); else 2/4/8/16
+    int visibleBarsZoom = -1;               // -1 = Clip (fit width + notes); else 2/4/8/16
     float rowH = 13.0f;                     // vertical zoom (px per semitone)
     int divisionSteps = 4;                  // grid + snap (1/4 default)
     double playheadStep = 0.0;

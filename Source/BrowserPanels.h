@@ -101,6 +101,7 @@ private:
     void layoutSearchForm();
     int contentTopY() const;
     int contentBottomY() const;
+    int footerPad() const;
     int footerHeight() const;
 
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };

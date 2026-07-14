@@ -27,7 +27,7 @@ EffectsInspector::EffectsInspector()
     , delayFeedbackSl("Delay Feedback", 0, 100, 40, false)
     , octaveRow("Octave", octaveStepper)
     , octaveRangeRow("Octave Range", octaveRangePopup)
-    , pitchRangeRow(pitchMinPopup, pitchMaxPopup)
+    , pitchRangeSl("Range", 0, 127, 0, 127)
     , keyRow("Key", keyPopup)
     , modeRow("Mode", modePopup)
     , trimRow("Trim empty measures", trimSwitch)
@@ -87,8 +87,7 @@ EffectsInspector::EffectsInspector()
     octaveStepper.setTooltip("Transpose the whole clip by octaves");
     octaveRangePopup.setTooltip("Fold or spread pitches into 1-3 octaves");
     pitchRow.stepper.setTooltip("Transpose the whole clip by semitones");
-    pitchMinPopup.setTooltip("Lowest note allowed after folding");
-    pitchMaxPopup.setTooltip("Highest note allowed after folding");
+    pitchRangeSl.setTooltip("Clamp pitches into this MIDI note range");
     keyPopup.setTooltip("Target key root for Fit to Scale / Map to Root");
     modePopup.setTooltip("Scale mode used with Fit to Scale");
     fitSwitch.setTooltip("Snap pitches into the selected key and mode");
@@ -242,31 +241,19 @@ EffectsInspector::EffectsInspector()
         notifyEdit();
     };
 
-    juce::StringArray noteItems;
-    for (int m = 0; m <= 127; ++m)
-        noteItems.add(pitchName(m));
-    pitchMinPopup.setItems(noteItems, 0);
-    pitchMaxPopup.setItems(noteItems, 127);
-    pitchMinPopup.onChange = [this](int idx)
+    auto syncPitchRangeText = [this]
     {
-        edit.pitchMin = juce::jlimit(0, 127, idx);
-        if (edit.pitchMax < edit.pitchMin)
-        {
-            edit.pitchMax = edit.pitchMin;
-            pitchMaxPopup.setIndex(edit.pitchMax, juce::dontSendNotification);
-        }
+        pitchRangeSl.valueText = pitchName(edit.pitchMin) + "-" + pitchName(edit.pitchMax);
+        pitchRangeSl.repaint();
+    };
+    pitchRangeSl.onChange = [this, syncPitchRangeText](int lo, int hi)
+    {
+        edit.pitchMin = lo;
+        edit.pitchMax = hi;
+        syncPitchRangeText();
         notifyEdit();
     };
-    pitchMaxPopup.onChange = [this](int idx)
-    {
-        edit.pitchMax = juce::jlimit(0, 127, idx);
-        if (edit.pitchMin > edit.pitchMax)
-        {
-            edit.pitchMin = edit.pitchMax;
-            pitchMinPopup.setIndex(edit.pitchMin, juce::dontSendNotification);
-        }
-        notifyEdit();
-    };
+    syncPitchRangeText();
 
     pitchRow.stepper.onChange = [this](int v)
     {
@@ -342,7 +329,7 @@ EffectsInspector::EffectsInspector()
     pitchSec.addRow(&octaveRow, kRowMinH, [this] { return edit.octave != 0; });
     pitchSec.addRow(&octaveRangeRow, kRowMinH, [this] { return edit.octaveRange != 0; });
     pitchSec.addRow(&pitchRow, kRowMinH, [this] { return edit.pitchShift != 0; });
-    pitchSec.addRow(&pitchRangeRow, kRowMinH, [this] { return edit.hasPitchRange(); });
+    pitchSec.addRow(&pitchRangeSl, kSliderRowH, [this] { return edit.hasPitchRange(); });
     pitchSec.addRow(&keyRow, kRowMinH, [this] {
         return edit.root >= 0 && (edit.fitScale || edit.mapToRoot);
     });
@@ -643,8 +630,8 @@ void EffectsInspector::setEdit(const ClipEdit& e, juce::NotificationType)
     octaveStepper.setValue(e.octave, juce::dontSendNotification);
     octaveRangePopup.setIndex(juce::jlimit(0, 3, e.octaveRange), juce::dontSendNotification);
     pitchRow.stepper.setValue(e.pitchShift, juce::dontSendNotification);
-    pitchMinPopup.setIndex(juce::jlimit(0, 127, e.pitchMin), juce::dontSendNotification);
-    pitchMaxPopup.setIndex(juce::jlimit(0, 127, e.pitchMax), juce::dontSendNotification);
+    pitchRangeSl.setRange(e.pitchMin, e.pitchMax, juce::dontSendNotification);
+    pitchRangeSl.valueText = pitchName(e.pitchMin) + "-" + pitchName(e.pitchMax);
     {
         int extIdx = 0;
         if (e.extendMult == 2) extIdx = 1;
@@ -697,6 +684,8 @@ void EffectsInspector::layoutSections()
         sec->resized();
         y += h;
     }
+    // Match header / section top pad so the last control isn't flush to the scroll edge.
+    y += toolkitBodyPadB();
     body.setSize(w, juce::jmax(y, viewport.getMaximumVisibleHeight()));
 }
 
@@ -741,8 +730,6 @@ void EffectsInspector::resized()
     pitchRow.stepper.setSize(pitchRow.stepper.idealWidth(), kControlH);
     fitRow.setControlWidth(fitSwitch.idealWidth());
     mapRow.setControlWidth(mapSwitch.idealWidth());
-    pitchMinPopup.setSize(72, kControlH);
-    pitchMaxPopup.setSize(72, kControlH);
 
     layoutSections();
 }

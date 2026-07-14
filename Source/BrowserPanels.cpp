@@ -20,7 +20,6 @@ constexpr int kIconCol = 16;
 constexpr int kRowIconGap = 8;
 constexpr int kPlusSize = 24;
 constexpr int kCollapsedBtn = 28; // CTRL_H + 4
-constexpr int kFooterPadT = 8;
 constexpr int kCapPt = 11;
 constexpr int kTitlePt = 11;
 constexpr int kCtrlPt = 12;
@@ -423,9 +422,15 @@ int FavoritesSidebar::contentTopY() const
     return sidebarHeaderH() + sidebarBodyPadT();
 }
 
+int FavoritesSidebar::footerPad() const
+{
+    // Match the pad under the LIBRARY header so Settings sits with the same rhythm.
+    return sidebarBodyPadT();
+}
+
 int FavoritesSidebar::footerHeight() const
 {
-    return sidebarRowH() + kFooterPadT + metrics::scaled(kBodyPadB);
+    return footerPad() + sidebarRowH() + metrics::scaled(kBodyPadB);
 }
 
 int FavoritesSidebar::contentBottomY() const
@@ -434,6 +439,7 @@ int FavoritesSidebar::contentBottomY() const
     const int gap = sidebarRowGap();
     int y = contentTopY();
     bool sawSaved = false, sawSearch = false;
+    int lastBottom = y;
 
     for (int i = 0; i < (int) rows.size(); ++i)
     {
@@ -454,13 +460,15 @@ int FavoritesSidebar::contentBottomY() const
 
         if (!collapsed && kind == RowKind::Search)
         {
-            y += searchFormOccupiedHeight() + gap;
+            lastBottom = y + searchFormOccupiedHeight();
+            y = lastBottom + gap;
             continue;
         }
 
-        y += rowH + gap;
+        lastBottom = y + rowH;
+        y = lastBottom + gap;
     }
-    return y;
+    return lastBottom;
 }
 
 int FavoritesSidebar::idealMinHeight() const
@@ -719,9 +727,10 @@ void FavoritesSidebar::resized()
 
     const int footerH = footerHeight();
     const int contentBottom = contentBottomY();
+    const int pad = footerPad();
     // Keep Settings under the last content row — never overlap when height is tight.
-    const int settingsTop = juce::jmax(contentBottom + kFooterPadT,
-                                       getHeight() - footerH + kFooterPadT);
+    const int settingsTop = juce::jmax(contentBottom + pad,
+                                       getHeight() - footerH + pad);
     if (collapsed)
     {
         settingsRowBounds = juce::Rectangle<int>(0, settingsTop, getWidth(), sidebarRowH())
@@ -998,7 +1007,7 @@ void FavoritesSidebar::paint(juce::Graphics& g)
     }
 
     // Footer hairline
-    const int footerTop = settingsRowBounds.getY() - kFooterPadT;
+    const int footerTop = settingsRowBounds.getY() - footerPad();
     if (footerTop > headerH)
     {
         g.setColour(colours::line());

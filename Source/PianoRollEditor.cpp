@@ -4,8 +4,8 @@
 namespace pflow {
 
 namespace {
-// -1 = Clip (fit width + note range); 0 = File (fit width); else N bars across view.
-constexpr int kBarsZoomChoices[] = { -1, 0, 2, 4, 8, 16 };
+// -1 = Clip (fit width + note range); else N bars across view.
+constexpr int kBarsZoomChoices[] = { -1, 2, 4, 8, 16 };
 constexpr int kDivisionChoices[] = { 16, 8, 4, 2, 1 };  // steps per grid unit
 } // namespace
 
@@ -275,7 +275,7 @@ PianoRollEditor::PianoRollEditor()
     };
     addAndMakeVisible(btnFold);
 
-    barsZoomPopup.setItems({ "Clip", "File", "2 bars", "4 bars", "8 bars", "16 bars" }, 0);
+    barsZoomPopup.setItems({ "Clip", "2 bars", "4 bars", "8 bars", "16 bars" }, 0);
     barsZoomPopup.setWantsKeyboardFocus(false);
     barsZoomPopup.onChange = [this](int) { applyBarsZoomFromPopup(); };
     addAndMakeVisible(barsZoomPopup);
@@ -826,8 +826,8 @@ void PianoRollEditor::computePxPerStepBase()
     visW = juce::jmax(60, visW);
 
     const int clipBars = juce::jmax(1, resolved.bars);
-    // Clip/File (≤0): fit the whole clip. Otherwise fit exactly N bars across
-    // the piano-roll viewport so "8 bars" fills the window with 8 bars of content.
+    // Clip (≤0 legacy / -1): fit the whole clip. Otherwise fit exactly N bars
+    // across the piano-roll viewport so "8 bars" fills the window with 8 bars.
     const int bars = (visibleBarsZoom <= 0) ? clipBars : juce::jmax(1, visibleBarsZoom);
     const double stretch = juce::jmax(0.25, timeStretch);
     // Visual span of one musical bar at zoomX=1.
@@ -860,7 +860,7 @@ int PianoRollEditor::barsZoomPopupIndex() const
     for (int i = 0; i < (int) (sizeof(kBarsZoomChoices) / sizeof(kBarsZoomChoices[0])); ++i)
         if (kBarsZoomChoices[i] == visibleBarsZoom)
             return i;
-    return 0; // File
+    return 0; // Clip
 }
 
 int PianoRollEditor::divisionPopupIndex() const
@@ -947,8 +947,8 @@ void PianoRollEditor::zoomToClip()
     if (!hasClip)
         return;
 
-    // Horizontal: fit the full clip width (Zoom → File).
-    visibleBarsZoom = 0;
+    // Horizontal: fit the full clip width (Zoom → Clip).
+    visibleBarsZoom = -1;
     zoomX = 1.0f;
     barsZoomPopup.setIndex(0, juce::dontSendNotification);
     computePxPerStepBase();
@@ -1101,7 +1101,7 @@ void PianoRollEditor::resized()
     btnZoomOut.setVisible(false);
     selBadge.setVisible(false);
 
-    // Toolbar: Fold | ………… | Zoom [Clip/File/n bars] · Grid Size [div]
+    // Toolbar: Fold | ………… | Zoom [Clip/n bars] · Grid Size [div]
     auto bar = r.removeFromTop(toolbarH).reduced(8, 6);
     const int ctrlH = fx::kControlH;
     const int foldW = juce::jmin(btnFold.idealWidth(), bar.getWidth() / 2);

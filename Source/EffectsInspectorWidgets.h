@@ -12,20 +12,36 @@ constexpr float kFontPt = 12.0f;
 constexpr float kAnnotPt = 11.0f;
 constexpr float kPopupFontPt = 12.0f;
 constexpr float kSectionTitlePt = 14.0f;
-constexpr int kSectionPadT = 8;
 constexpr int kSectionPadH = 12;       // shell horizontal pad
-constexpr int kSectionPadB = 4;        // + padT of next = 12 section gap
 constexpr int kRowMinH = 26;
 constexpr int kControlH = 26;
-constexpr int kRowGap = 7;
 constexpr int kSectionHeaderH = 30;
-constexpr int kSectionTitleGap = 8;    // HEADER_TO_ROWS
 constexpr int kSectionRowInset = 22;   // INDENT past padded edge (chevron column)
 constexpr int kSliderRowH = 26;
 constexpr int kSelectW = 96;
 constexpr int kHeaderIconW = 20; // match library sidebar glyph hit target
 constexpr float kTallRadius = 4.0f;
 constexpr float kTallPadX = 10.0f;
+
+/** Compact / Comfortable spacing between Toolkit rows and section chrome. */
+inline int toolkitRowGap()
+{
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 6);
+}
+inline int toolkitSectionPadT()
+{
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 6);
+}
+inline int toolkitSectionPadB()
+{
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 6 : 3);
+}
+inline int toolkitTitleGap()
+{
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 6);
+}
+/** Bottom inset under the last Toolkit section — matches section top pad / header rhythm. */
+inline int toolkitBodyPadB() { return toolkitSectionPadT(); }
 
 inline juce::Font inspectorFont(bool semibold = false) { return uiFontFixed(kFontPt, semibold); }
 inline juce::Font inspectorMono(bool semibold = false) { return monoFontFixed(kFontPt, semibold); }
@@ -546,7 +562,8 @@ public:
         const auto& t = inspectorTokens();
         auto r = getLocalBounds().toFloat();
         const bool hot = isMouseOverOrDragging();
-        fillTallWell(g, r, hot);
+        // Neutral well; value fill is accent — outline only while interacting.
+        fillTallWell(g, r, false);
 
         const float norm = (float) (value - minV) / (float) juce::jmax(1, maxV - minV);
         juce::Rectangle<float> fill;
@@ -561,19 +578,36 @@ public:
         {
             fill = r.withWidth(juce::jmax(0.0f, r.getWidth() * norm));
         }
-        g.setColour(t.tallFill);
+        g.setColour(t.accent);
         g.fillRoundedRectangle(fill, kTallRadius);
 
-        auto pad = r.reduced(kTallPadX, 0.0f);
-        g.setFont(inspectorFont());
-        g.setColour(hot ? t.headerText : t.rowLabel);
-        g.drawText(label, pad.toNearestInt(), juce::Justification::centredLeft, true);
+        if (hot)
+        {
+            g.setColour(t.accent);
+            g.drawRoundedRectangle(r.reduced(0.5f), kTallRadius, 1.2f);
+        }
 
+        auto pad = r.reduced(kTallPadX, 0.0f).toNearestInt();
         const auto text = valueText.isNotEmpty() ? valueText
                       : grooveValueText({ label.toRawUTF8(), label.toRawUTF8(), minV, maxV, defV }, value);
-        g.setFont(inspectorMono());
-        g.setColour(t.headerText);
-        g.drawText(text, pad.toNearestInt(), juce::Justification::centredRight, true);
+
+        auto drawTexts = [&](juce::Colour labelCol, juce::Colour valueCol)
+        {
+            g.setFont(inspectorFont());
+            g.setColour(labelCol);
+            g.drawText(label, pad, juce::Justification::centredLeft, true);
+            g.setFont(inspectorMono());
+            g.setColour(valueCol);
+            g.drawText(text, pad, juce::Justification::centredRight, true);
+        };
+        // Base colours on the well; white wherever text sits on the accent fill.
+        drawTexts(hot ? t.headerText : t.rowLabel, t.headerText);
+        if (fill.getWidth() > 0.5f)
+        {
+            juce::Graphics::ScopedSaveState state(g);
+            g.reduceClipRegion(fill.getSmallestIntegerContainer());
+            drawTexts(juce::Colours::white, juce::Colours::white);
+        }
     }
 
 private:
@@ -603,7 +637,7 @@ public:
 
     std::function<void(int, int)> onChange;
     juce::String valueText;
-    /** When true, selected span uses accent (library search); else tallFill (effects). */
+    /** Library search: white label/value on accent fill (toolkit uses accent fill too). */
     bool accentFill = false;
 
     void setRange(int newLo, int newHi, juce::NotificationType notify = juce::sendNotification)
@@ -631,28 +665,42 @@ public:
         const auto& t = inspectorTokens();
         auto r = getLocalBounds().toFloat();
         const bool hot = isMouseOverOrDragging();
-        fillTallWell(g, r, hot);
+        fillTallWell(g, r, false);
 
         const float span = (float) juce::jmax(1, maxV - minV);
         const float xLo = r.getX() + r.getWidth() * ((float) (lo - minV) / span);
         const float xHi = r.getX() + r.getWidth() * ((float) (hi - minV) / span);
-        g.setColour(accentFill ? t.accent.withAlpha(0.85f) : t.tallFill);
-        g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(
-                                   xLo, r.getY(), xHi, r.getBottom()), kTallRadius);
+        auto fill = juce::Rectangle<float>::leftTopRightBottom(
+            xLo, r.getY(), xHi, r.getBottom());
+        g.setColour(t.accent);
+        g.fillRoundedRectangle(fill, kTallRadius);
 
-        auto pad = r.reduced(accentFill ? 8.0f : kTallPadX, 0.0f);
+        if (hot)
+        {
+            g.setColour(t.accent);
+            g.drawRoundedRectangle(r.reduced(0.5f), kTallRadius, 1.2f);
+        }
+
+        auto pad = r.reduced(accentFill ? 8.0f : kTallPadX, 0.0f).toNearestInt();
         // Library search filters use compact 11pt (Caps B2 FILTER_PT).
-        g.setFont(accentFill ? uiFontFixed(kAnnotPt) : inspectorFont());
-        const auto labelCol = accentFill ? juce::Colours::white
-                                         : (hot ? t.headerText : t.rowLabel);
-        g.setColour(labelCol);
-        g.drawText(label, pad.toNearestInt(), juce::Justification::centredLeft, true);
-
-        g.setFont(accentFill ? monoFontFixed(kAnnotPt) : inspectorMono());
-        g.setColour(accentFill ? juce::Colours::white : t.headerText);
         const auto text = valueText.isNotEmpty() ? valueText
                       : (juce::String(lo) + "-" + juce::String(hi));
-        g.drawText(text, pad.toNearestInt(), juce::Justification::centredRight, true);
+        auto drawTexts = [&](juce::Colour labelCol, juce::Colour valueCol)
+        {
+            g.setFont(accentFill ? uiFontFixed(kAnnotPt) : inspectorFont());
+            g.setColour(labelCol);
+            g.drawText(label, pad, juce::Justification::centredLeft, true);
+            g.setFont(accentFill ? monoFontFixed(kAnnotPt) : inspectorMono());
+            g.setColour(valueCol);
+            g.drawText(text, pad, juce::Justification::centredRight, true);
+        };
+        drawTexts(hot ? t.headerText : t.rowLabel, t.headerText);
+        if (fill.getWidth() > 0.5f)
+        {
+            juce::Graphics::ScopedSaveState state(g);
+            g.reduceClipRegion(fill.getSmallestIntegerContainer());
+            drawTexts(juce::Colours::white, juce::Colours::white);
+        }
     }
 
 private:
@@ -760,42 +808,6 @@ private:
     FlatPopup& modePopup;
 };
 
-// ── RangeRow (Min / Max note pickers) ────────────────────────────────────────
-
-class RangeRow : public juce::Component
-{
-public:
-    RangeRow(FlatPopup& minP, FlatPopup& maxP) : minPopup(minP), maxPopup(maxP)
-    {
-        addAndMakeVisible(minPopup);
-        addAndMakeVisible(maxPopup);
-    }
-
-    void resized() override
-    {
-        auto r = getLocalBounds();
-        // Two popups must share the row — slightly under half of typical content width.
-        constexpr int kRangeSelectW = 72;
-        maxPopup.setBounds(r.removeFromRight(kRangeSelectW).withSizeKeepingCentre(kRangeSelectW, kControlH));
-        r.removeFromRight(6);
-        minPopup.setBounds(r.removeFromRight(kRangeSelectW).withSizeKeepingCentre(kRangeSelectW, kControlH));
-        labelBounds = r.withTrimmedRight(8);
-    }
-
-    void paint(juce::Graphics& g) override
-    {
-        g.setFont(inspectorFont());
-        g.setColour(inspectorTokens().rowLabel);
-        g.drawText("Range", labelBounds, juce::Justification::centredLeft, true);
-    }
-
-    juce::Rectangle<int> labelBounds;
-
-private:
-    FlatPopup& minPopup;
-    FlatPopup& maxPopup;
-};
-
 // ── PitchRow (plain text + note tight against bare stepper) ──────────────────
 
 class PitchRow : public juce::Component
@@ -880,26 +892,34 @@ public:
 
     int idealHeight() const
     {
-        int h = kSectionPadT + kSectionHeaderH + kSectionPadB;
+        const int padT = toolkitSectionPadT();
+        const int padB = toolkitSectionPadB();
+        const int rowGap = toolkitRowGap();
+        const int titleGap = toolkitTitleGap();
+        int h = padT + kSectionHeaderH + padB;
         int shown = 0;
         int content = 0;
         for (const auto& r : rows)
         {
             if (!isRowShowing(r)) continue;
-            if (shown > 0) content += kRowGap;
+            if (shown > 0) content += rowGap;
             content += r.h;
             ++shown;
         }
         if (shown > 0)
-            h += kSectionTitleGap + content;
+            h += titleGap + content;
         return h;
     }
 
     void resized() override
     {
+        const int padT = toolkitSectionPadT();
+        const int padB = toolkitSectionPadB();
+        const int rowGap = toolkitRowGap();
+        const int titleGap = toolkitTitleGap();
         auto r = getLocalBounds();
-        r.removeFromTop(kSectionPadT + kSectionHeaderH + kSectionTitleGap);
-        r.removeFromBottom(kSectionPadB);
+        r.removeFromTop(padT + kSectionHeaderH + titleGap);
+        r.removeFromBottom(padB);
         r.removeFromLeft(kSectionPadH + kSectionRowInset);
         r.removeFromRight(kSectionPadH);
         bool first = true;
@@ -910,7 +930,7 @@ public:
                 row.comp->setBounds({});
                 continue;
             }
-            if (!first) r.removeFromTop(kRowGap);
+            if (!first) r.removeFromTop(rowGap);
             first = false;
             row.comp->setBounds(r.removeFromTop(row.h));
         }
@@ -918,9 +938,10 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override
     {
-        if (e.y > kSectionPadT + kSectionHeaderH) return;
+        const int padT = toolkitSectionPadT();
+        if (e.y > padT + kSectionHeaderH) return;
 
-        auto header = getLocalBounds().withTrimmedTop(kSectionPadT).removeFromTop(kSectionHeaderH)
+        auto header = getLocalBounds().withTrimmedTop(padT).removeFromTop(kSectionHeaderH)
                           .reduced(kSectionPadH, 0);
         auto lockR = header.removeFromRight(kHeaderIconW);
         auto resetR = header.removeFromRight(kHeaderIconW);
@@ -941,7 +962,7 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto header = getLocalBounds().withTrimmedTop(kSectionPadT).removeFromTop(kSectionHeaderH);
+        auto header = getLocalBounds().withTrimmedTop(toolkitSectionPadT()).removeFromTop(kSectionHeaderH);
         header = header.reduced(kSectionPadH, 0);
 
         auto lockR = header.removeFromRight(kHeaderIconW).toFloat()
