@@ -125,7 +125,7 @@ private:
     juce::Viewport viewport;
     juce::Component body;
 
-    static constexpr int kPanelW = 248;
+    static constexpr int kPanelW = 216;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EffectsInspector)
 };

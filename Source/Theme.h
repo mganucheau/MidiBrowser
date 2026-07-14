@@ -244,7 +244,7 @@ namespace metrics {
     constexpr int sidebarExpandedW  = 176;
     constexpr int fileTableW        = 300;
     constexpr int editorPaneW       = 470;
-    constexpr int effectsPaneW      = 244;
+    constexpr int effectsPaneW      = 216;
     constexpr int openRollW         = editorPaneW;
     constexpr int openRollMinW      = 360;
     constexpr int foldedWindowW     = sidebarW + fileTableW;

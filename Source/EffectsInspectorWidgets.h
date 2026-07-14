@@ -8,24 +8,27 @@ namespace fx {
 
 constexpr float kFontPt = 11.5f;
 constexpr float kAnnotPt = 10.5f;
-constexpr int kSectionPadT = 8;
-constexpr int kSectionPadH = 10;
-constexpr int kSectionPadB = 8;
-constexpr int kRowMinH = 20;
-constexpr int kControlH = 18;
-constexpr int kRowGap = 4;
+constexpr float kPopupFontPt = 10.5f;
+constexpr int kSectionPadT = 6;
+constexpr int kSectionPadH = 8;
+constexpr int kSectionPadB = 6;
+constexpr int kRowMinH = 18;
+constexpr int kControlH = 16;
+constexpr int kRowGap = 3;
 constexpr int kSectionHeaderH = 18;
 constexpr int kSectionTitleGap = 4;    // space between title and first row
-constexpr int kSectionRowInset = 12;   // align row labels with title text (past chevron)
-constexpr int kSliderRowH = 20;        // single-line: title | track | value
-constexpr int kSliderLabelW = 68;      // fixed title column
-constexpr int kSliderTrackW = 100;     // uniform track width across all rows
-constexpr int kSliderValueW = 36;      // readout after the track
-constexpr float kSliderThumbR = 5.0f;
+constexpr int kSectionRowInset = 10;   // align row labels with title text (past chevron)
+constexpr int kSliderRowH = 18;        // single-line: title | track | value
+constexpr int kSliderLabelW = 62;      // fixed title column
+constexpr int kSliderTrackW = 88;      // uniform track width across all rows
+constexpr int kSliderValueW = 32;      // readout after the track (right-aligned)
+constexpr int kSliderGap = 4;          // gaps: label|track and track|value
+constexpr float kSliderThumbR = 4.5f;
 constexpr float kSliderTrackH = 3.0f;
 
 inline juce::Font inspectorFont(bool semibold = false) { return uiFont(kFontPt, semibold); }
 inline juce::Font inspectorMono(bool semibold = false) { return monoFont(kFontPt, semibold); }
+inline juce::Font popupFont(bool semibold = false) { return uiFont(kPopupFontPt, semibold); }
 
 inline void drawCaretDown(juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour)
 {
@@ -176,10 +179,10 @@ public:
     {
         float w = 0.0f;
         for (const auto& l : labels)
-            w = juce::jmax(w, juce::GlyphArrangement::getStringWidth(inspectorFont(), l));
+            w = juce::jmax(w, juce::GlyphArrangement::getStringWidth(popupFont(), l));
         const auto& t = inspectorTokens();
-        // Chevron + side padding must leave room for the longest label (e.g. "1/16").
-        return (int) std::ceil(w) + (t.dark ? 30 : 40);
+        // Compact chevron + side padding (longest labels e.g. "Alternate", "1/16").
+        return (int) std::ceil(w) + (t.dark ? 20 : 26);
     }
 
     void paint(juce::Graphics& g) override
@@ -188,27 +191,27 @@ public:
         auto r = getLocalBounds().toFloat();
         drawInspectorControlSurface(g, r, isMouseOver(), false);
 
-        auto textArea = r.reduced(t.dark ? 8.0f : 8.0f, 2.0f);
+        auto textArea = r.reduced(6.0f, 1.0f);
         if (!t.dark)
-            textArea.removeFromRight(16.0f);
+            textArea.removeFromRight(13.0f);
         else
-            textArea.removeFromRight(14.0f);
+            textArea.removeFromRight(12.0f);
 
         g.setColour(t.rowLabel);
-        g.setFont(inspectorFont());
+        g.setFont(popupFont());
         const juce::String val = labels.size() > index ? labels[index] : juce::String();
         g.drawFittedText(val, textArea.toNearestInt(), juce::Justification::centredLeft, 1, 1.0f);
 
         if (!t.dark)
         {
-            auto cap = r.removeFromRight(15.0f).reduced(1.0f, 3.0f);
+            auto cap = r.removeFromRight(12.0f).reduced(1.0f, 2.5f);
             g.setColour(t.accent);
-            g.fillRoundedRectangle(cap, 3.5f);
+            g.fillRoundedRectangle(cap, 3.0f);
             drawCaretUpDown(g, cap, juce::Colours::white);
         }
         else
         {
-            drawCaretUpDown(g, r.removeFromRight(14.0f), t.chevron);
+            drawCaretUpDown(g, r.removeFromRight(12.0f), t.chevron);
         }
     }
 
@@ -380,7 +383,7 @@ public:
         else if (e.x > seg * 2.0f) setValue(value + 1);
     }
 
-    int idealWidth() const { return 72; }
+    int idealWidth() const { return 64; }
 
     void paint(juce::Graphics& g) override
     {
@@ -527,13 +530,14 @@ public:
 
     void resized() override
     {
+        // Label left; track + value hug the right so they share an edge with dropdowns.
         auto r = getLocalBounds().toFloat();
         labelBounds = r.removeFromLeft((float) kSliderLabelW);
-        r.removeFromLeft(6.0f);
-        track = r.removeFromLeft((float) kSliderTrackW)
+        valueBounds = r.removeFromRight((float) kSliderValueW);
+        r.removeFromRight((float) kSliderGap);
+        r.removeFromLeft((float) kSliderGap);
+        track = r.removeFromRight((float) kSliderTrackW)
                     .withSizeKeepingCentre((float) kSliderTrackW, kSliderTrackH);
-        r.removeFromLeft(6.0f);
-        valueBounds = r.removeFromLeft((float) kSliderValueW);
     }
 
     void mouseDown(const juce::MouseEvent& e) override { setFromX(e.position.x); }
@@ -551,7 +555,7 @@ public:
                       : grooveValueText({ label.toRawUTF8(), label.toRawUTF8(), minV, maxV, defV }, value);
         g.setFont(inspectorMono());
         g.setColour(t.valueText);
-        g.drawText(text, valueBounds.toNearestInt(), juce::Justification::centredLeft, true);
+        g.drawText(text, valueBounds.toNearestInt(), juce::Justification::centredRight, true);
 
         const float radius = kSliderTrackH * 0.5f;
         g.setColour(t.sliderTrack);
@@ -628,11 +632,11 @@ public:
     {
         auto r = getLocalBounds().toFloat();
         labelBounds = r.removeFromLeft((float) kSliderLabelW);
-        r.removeFromLeft(6.0f);
-        track = r.removeFromLeft((float) kSliderTrackW)
+        valueBounds = r.removeFromRight((float) kSliderValueW);
+        r.removeFromRight((float) kSliderGap);
+        r.removeFromLeft((float) kSliderGap);
+        track = r.removeFromRight((float) kSliderTrackW)
                     .withSizeKeepingCentre((float) kSliderTrackW, kSliderTrackH);
-        r.removeFromLeft(6.0f);
-        valueBounds = r.removeFromLeft((float) kSliderValueW);
     }
 
     void mouseDown(const juce::MouseEvent& e) override { dragThumb = hitThumb(e.position.x); setFromX(e.position.x); }
@@ -653,7 +657,7 @@ public:
         g.setColour(t.valueText);
         const auto text = valueText.isNotEmpty() ? valueText
                       : (juce::String(lo) + "-" + juce::String(hi));
-        g.drawText(text, valueBounds.toNearestInt(), juce::Justification::centredLeft, true);
+        g.drawText(text, valueBounds.toNearestInt(), juce::Justification::centredRight, true);
 
         const float radius = kSliderTrackH * 0.5f;
         g.setColour(t.sliderTrack);
@@ -724,11 +728,14 @@ public:
     {
         auto r = getLocalBounds();
         r.removeFromLeft(kSliderLabelW);
-        r.removeFromLeft(6);
+        r.removeFromLeft(kSliderGap);
         const int w = controlW > 0 ? controlW
-                    : (control.getWidth() > 0 ? control.getWidth() : 80);
-        auto ctrl = r.removeFromRight(w);
-        control.setBounds(ctrl.withSizeKeepingCentre(w, kControlH));
+                    : (control.getWidth() > 0 ? control.getWidth() : 72);
+        // Cap width so long labels (e.g. articulation) don't blow past the value column.
+        const int maxW = juce::jmax(40, r.getWidth());
+        const int useW = juce::jmin(w, maxW);
+        auto ctrl = r.removeFromRight(useW);
+        control.setBounds(ctrl.withSizeKeepingCentre(useW, kControlH));
     }
 
     void setControlWidth(int w)
@@ -777,7 +784,8 @@ public:
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText("Key", getLocalBounds(), juce::Justification::centredLeft);
+        g.drawText("Key", getLocalBounds().withWidth(kSliderLabelW),
+                   juce::Justification::centredLeft, true);
     }
 
 private:
@@ -810,7 +818,8 @@ public:
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText("Range", getLocalBounds(), juce::Justification::centredLeft);
+        g.drawText("Range", getLocalBounds().withWidth(kSliderLabelW),
+                   juce::Justification::centredLeft, true);
     }
 
 private:
@@ -839,9 +848,8 @@ public:
         auto r = getLocalBounds();
         const int stepW = stepper.idealWidth();
         stepper.setBounds(r.removeFromRight(stepW).withSizeKeepingCentre(stepW, kControlH));
-        r.removeFromRight(8);
-        // Leave room for the "Pitch" label on the left.
-        r.removeFromLeft(42);
+        r.removeFromRight(kSliderGap);
+        r.removeFromLeft(kSliderLabelW);
         annotBounds = r;
     }
 
@@ -849,7 +857,8 @@ public:
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText("Pitch", getLocalBounds().withWidth(42), juce::Justification::centredLeft);
+        g.drawText("Pitch", getLocalBounds().withWidth(kSliderLabelW),
+                   juce::Justification::centredLeft, true);
 
         g.setFont(uiFont(kAnnotPt, false));
         g.setColour(inspectorTokens().valueText);
