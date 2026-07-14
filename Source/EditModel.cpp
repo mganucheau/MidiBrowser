@@ -96,6 +96,44 @@ int fitToScale(int midi, int rootPc, Mode mode)
     return best;
 }
 
+int foldToEnabledPitchClasses(int midi, uint16_t enabledMask, int rootPc, Mode mode)
+{
+    enabledMask = (uint16_t) (enabledMask & 0x0FFF);
+    if (enabledMask == 0)
+        return midi;
+
+    const int pc = wrapPc(midi);
+    if ((enabledMask & (uint16_t) (1u << pc)) != 0)
+        return midi;
+
+    bool preferScale = rootPc >= 0;
+    bool scalePc[12] = {};
+    if (preferScale)
+        for (int iv : modeIntervals(mode))
+            scalePc[wrapPc(rootPc + iv)] = true;
+
+    int best = midi;
+    int bestDist = 99;
+    int bestScore = -1; // higher is better: in-scale preferred on ties
+    for (int d = -6; d <= 6; ++d)
+    {
+        const int cand = midi + d;
+        if (cand < 0 || cand > 127) continue;
+        const int cpc = wrapPc(cand);
+        if ((enabledMask & (uint16_t) (1u << cpc)) == 0) continue;
+        const int dist = std::abs(d);
+        const int score = (preferScale && scalePc[cpc]) ? 1 : 0;
+        if (dist < bestDist || (dist == bestDist && score > bestScore)
+            || (dist == bestDist && score == bestScore && cand < best))
+        {
+            bestDist = dist;
+            bestScore = score;
+            best = cand;
+        }
+    }
+    return best;
+}
+
 juce::String scaleDegreeLabel(int midi, int rootPc, Mode mode)
 {
     if (rootPc < 0) return {};
@@ -128,13 +166,15 @@ void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
     target.mapToRoot = locked.mapToRoot;
     target.root = locked.root;
     target.mode = locked.mode;
+    target.noteFilterMask = locked.noteFilterMask;
+    target.noteFilterType = locked.noteFilterType;
 }
 
 bool editIsClean(const ClipEdit& e)
 {
     if (e.octave != 0 || e.pitchShift != 0 || e.octaveRange != 0 || e.hasPitchRange()
         || e.extendMult > 1
-        || e.fitScale || e.mapToRoot || e.hasTrim()
+        || e.fitScale || e.mapToRoot || e.hasNoteFilter() || e.hasTrim()
         || e.legacyTrimLead != 0 || e.legacyTrimTail != 0)
         return false;
     if (!e.velocities.empty() || !e.deleted.empty())
@@ -254,6 +294,32 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
         }
     }
 
+    // Note Filter: Mute drops disabled pitch-classes; Fold remaps to nearest kept.
+    if (e.hasNoteFilter() && !out.notes.empty())
+    {
+        if (e.noteFilterType == NoteFilterType::Mute)
+        {
+            std::vector<RollNote> kept;
+            kept.reserve(out.notes.size());
+            for (const auto& n : out.notes)
+                if (e.isNoteFilterEnabled(n.pitch))
+                    kept.push_back(n);
+            out.notes = std::move(kept);
+        }
+        else
+        {
+            for (auto& n : out.notes)
+            {
+                const int next = foldToEnabledPitchClasses(n.pitch, e.noteFilterMask, e.root, e.mode);
+                if (next != n.pitch)
+                {
+                    n.pitch = next;
+                    n.moved = true;
+                }
+            }
+        }
+    }
+
     const auto removed = effectiveRemovedBars(clip, e);
     int bars = clip.bars;
     if (!removed.empty())
@@ -369,6 +435,16 @@ std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
 
     if (e.hasPitchRange())
         out.push_back({ "range", pitchName(e.pitchMin) + "-" + pitchName(e.pitchMax) });
+
+    if (e.hasNoteFilter())
+    {
+        int off = 0;
+        for (int pc = 0; pc < 12; ++pc)
+            if (!e.isNoteFilterEnabled(pc))
+                ++off;
+        const char* kind = e.noteFilterType == NoteFilterType::Fold ? "Fold" : "Mute";
+        out.push_back({ "noteFilter", juce::String(kind) + " " + juce::String(off) });
+    }
 
     if (e.fitScale && e.root >= 0)
         out.push_back({ "scale", juce::String(kNoteNames[(size_t) e.root]) + " " + modeName(e.mode) });

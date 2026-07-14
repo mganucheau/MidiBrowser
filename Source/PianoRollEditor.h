@@ -32,7 +32,8 @@ class PianoRollMini : public juce::Component
 public:
     void setNotes(std::vector<RollNote> resolvedGrooved, int bars, const GrooveParams& groove,
                   int rootPc = 0, std::vector<RollNote> frameNotes = {},
-                  Mode mode = Mode::Ionian, int divisionSteps = 4);
+                  Mode mode = Mode::Ionian, int divisionSteps = 4,
+                  uint16_t noteFilterMask = 0x0FFF);
     void setPlayheadStep(double step, bool playing);
     void setTimeStretch(double stretch);
     void paint(juce::Graphics&) override;
@@ -45,6 +46,7 @@ private:
     int rootPc = 0;
     Mode mode = Mode::Ionian;
     int divisionSteps = 4;
+    uint16_t noteFilterMask = 0x0FFF;
     double playheadStep = 0.0;
     bool playing = false;
     double timeStretch = 1.0;

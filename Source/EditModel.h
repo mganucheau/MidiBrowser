@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_core/juce_core.h>
 #include <array>
+#include <cstdint>
 #include <map>
 #include <set>
 #include <vector>
@@ -68,6 +69,13 @@ int  noteNameIndex(const juce::String& name);   // "C"..."B" -> 0..11, else -1
     Searches ±6 semitones; on distance ties the lower candidate wins. */
 int fitToScale(int midi, int rootPc, Mode mode);
 
+/** Note Filter: Mute drops filtered pitch-classes; Fold remaps to nearest kept class. */
+enum class NoteFilterType { Mute = 0, Fold = 1 };
+
+/** Snap midi to the nearest pitch-class allowed by `enabledMask` (bit = PC enabled).
+    Prefers tones in scale(root, mode) when rootPc >= 0. */
+int foldToEnabledPitchClasses(int midi, uint16_t enabledMask, int rootPc, Mode mode);
+
 /** Scale degree label for a pitch class in key/mode, e.g. "3rd". Empty if out of scale. */
 juce::String scaleDegreeLabel(int midi, int rootPc, Mode mode);
 
@@ -93,6 +101,9 @@ struct ClipEdit
     bool mapToRoot = false;
     int  root      = -1;            // target root pitch-class, -1 = unset
     Mode mode      = Mode::Ionian;  // displayed as "Major"
+    /** Bit i set = pitch-class i is kept (default: all 12 on). */
+    uint16_t noteFilterMask = 0x0FFF;
+    NoteFilterType noteFilterType = NoteFilterType::Mute;
     std::map<int, NoteMove> moves;  // per-note manual moves keyed by note id
     /** Empty bars removed by Trim (any position, including middle gaps).
         Sorted ascending. Legacy trimLead/trimTail are migrated on load. */
@@ -111,6 +122,32 @@ struct ClipEdit
     bool hasPitchRange() const
     {
         return pitchMin > 0 || pitchMax < 127;
+    }
+
+    bool hasNoteFilter() const
+    {
+        return (noteFilterMask & 0x0FFF) != 0x0FFF;
+    }
+
+    bool isNoteFilterEnabled(int pitchClass) const
+    {
+        const int pc = ((pitchClass % 12) + 12) % 12;
+        return (noteFilterMask & (uint16_t) (1u << pc)) != 0;
+    }
+
+    void setNoteFilterEnabled(int pitchClass, bool on)
+    {
+        const int pc = ((pitchClass % 12) + 12) % 12;
+        const uint16_t bit = (uint16_t) (1u << pc);
+        if (on)
+            noteFilterMask = (uint16_t) ((noteFilterMask | bit) & 0x0FFF);
+        else
+        {
+            const uint16_t next = (uint16_t) (noteFilterMask & (uint16_t) ~bit & 0x0FFF);
+            // Keep at least one pitch-class enabled.
+            if (next != 0)
+                noteFilterMask = next;
+        }
     }
 
     void clearTrim()

@@ -262,6 +262,18 @@ EffectsInspector::EffectsInspector()
         notifyEdit();
     };
 
+    noteFilter.onChange = [this]
+    {
+        edit.noteFilterMask = noteFilter.getMask();
+        edit.noteFilterType = noteFilter.getType();
+        notifyEdit();
+    };
+    noteFilter.onLayoutChanged = [this]
+    {
+        refreshDirtySections();
+        layoutSections();
+    };
+
     juce::StringArray keys;
     for (int i = 0; i < 12; ++i) keys.add(kNoteNames[(size_t) i]);
     keyPopup.setItems(keys, 0);
@@ -329,6 +341,8 @@ EffectsInspector::EffectsInspector()
     pitchSec.addRow(&octaveRow, kRowMinH, [this] { return edit.octave != 0; });
     pitchSec.addRow(&octaveRangeRow, kRowMinH, [this] { return edit.octaveRange != 0; });
     pitchSec.addRow(&pitchRow, kRowMinH, [this] { return edit.pitchShift != 0; });
+    pitchSec.addRow(&noteFilter, [this] { return noteFilter.idealHeight(); },
+                    [this] { return edit.hasNoteFilter(); });
     pitchSec.addRow(&pitchRangeSl, kSliderRowH, [this] { return edit.hasPitchRange(); });
     pitchSec.addRow(&keyRow, kRowMinH, [this] {
         return edit.root >= 0 && (edit.fitScale || edit.mapToRoot);
@@ -392,6 +406,8 @@ void EffectsInspector::resetPitchEditFields()
     edit.mapToRoot = false;
     edit.root = -1;
     edit.mode = Mode::Ionian;
+    edit.noteFilterMask = 0x0FFF;
+    edit.noteFilterType = NoteFilterType::Mute;
 }
 
 void EffectsInspector::resetPlaybackSection()
@@ -643,6 +659,7 @@ void EffectsInspector::setEdit(const ClipEdit& e, juce::NotificationType)
     modePopup.setIndex((int) e.mode, juce::dontSendNotification);
     fitSwitch.setToggleState(e.fitScale, juce::dontSendNotification);
     mapSwitch.setToggleState(e.mapToRoot, juce::dontSendNotification);
+    noteFilter.setState(e.noteFilterMask, e.noteFilterType, juce::dontSendNotification);
     refreshPitchAnnotation();
     refreshDirtySections();
 }

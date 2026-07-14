@@ -65,7 +65,8 @@ double effectiveVelocity(const RollNote& n, const GrooveParams& k)
 
 void PianoRollMini::setNotes(std::vector<RollNote> resolvedGrooved, int numBars,
                              const GrooveParams& groove, int root,
-                             std::vector<RollNote> frame, Mode m, int div)
+                             std::vector<RollNote> frame, Mode m, int div,
+                             uint16_t filterMask)
 {
     notes = std::move(resolvedGrooved);
     frameNotes = frame.empty() ? notes : std::move(frame);
@@ -74,6 +75,7 @@ void PianoRollMini::setNotes(std::vector<RollNote> resolvedGrooved, int numBars,
     rootPc = juce::jlimit(0, 11, root);
     mode = m;
     divisionSteps = juce::jmax(1, div);
+    noteFilterMask = (uint16_t) (filterMask == 0 ? 0x0FFF : (filterMask & 0x0FFF));
     repaint();
 }
 
@@ -138,6 +140,14 @@ void PianoRollMini::paint(juce::Graphics& g)
         {
             g.setColour(colours::accent().withAlpha(usesDarkAppearance() ? 0.05f : 0.06f));
             g.fillRect(b.getX(), y, b.getWidth(), h);
+        }
+        if ((noteFilterMask & (uint16_t) (1u << (p % 12))) == 0)
+        {
+            // Note Filter off — dim the pitch lane (preview + editor).
+            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.16f : 0.12f));
+            g.fillRect(b.getX(), y, b.getWidth(), h);
+            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.22f : 0.16f));
+            g.fillRect(gutter.getX(), y, gutter.getWidth(), h);
         }
         // Soft pitch lanes — keep notes readable over the grid.
         g.setColour(colours::rollRowline().withAlpha(usesDarkAppearance() ? 0.10f : 0.14f));
@@ -1220,6 +1230,12 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
             g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.03f : 0.025f));
             g.fillRect(clipB.getX(), y, clipB.getWidth(), ed.effRowH());
         }
+        if (!ed.edit.isNoteFilterEnabled(pitch))
+        {
+            // Note Filter: dim filtered-off pitch-class rows across the roll.
+            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.14f : 0.10f));
+            g.fillRect(clipB.getX(), y, clipB.getWidth(), ed.effRowH());
+        }
         if (pitch % 12 == 0)
         {
             g.setColour(colours::lineStrong().withAlpha(usesDarkAppearance() ? 0.18f : 0.22f));
@@ -1561,6 +1577,12 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
             g.fillRect(key);
         }
 
+        if (!ed.edit.isNoteFilterEnabled(pitch))
+        {
+            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.28f : 0.20f));
+            g.fillRect(key);
+        }
+
         if (selectedPitches.count(pitch) > 0)
         {
             g.setColour(colours::accentSoft());
@@ -1595,6 +1617,12 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
         if (pitchInScale(pitch, rootPc, mode))
         {
             g.setColour(colours::accent().withAlpha(0.22f));
+            g.fillRoundedRectangle(key, juce::jmin(2.0f, rowH * 0.25f));
+        }
+
+        if (!ed.edit.isNoteFilterEnabled(pitch))
+        {
+            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.35f : 0.28f));
             g.fillRoundedRectangle(key, juce::jmin(2.0f, rowH * 0.25f));
         }
 

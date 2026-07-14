@@ -431,6 +431,8 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("lockMapToRoot", lockedEdit.mapToRoot ? 1 : 0);
     xml.setAttribute("lockRoot", lockedEdit.root);
     xml.setAttribute("lockMode", (int) lockedEdit.mode);
+    xml.setAttribute("lockNoteFilterMask", (int) lockedEdit.noteFilterMask);
+    xml.setAttribute("lockNoteFilterType", (int) lockedEdit.noteFilterType);
     xml.setAttribute("lockSwing", lockedGroove.swing);
     xml.setAttribute("lockPocket", lockedGroove.pocket);
     xml.setAttribute("lockHumanize", lockedGroove.humanize);
@@ -507,6 +509,8 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         e->setAttribute("mapToRoot", edit.mapToRoot ? 1 : 0);
         e->setAttribute("root", edit.root);
         e->setAttribute("mode", (int) edit.mode);
+        e->setAttribute("noteFilterMask", (int) edit.noteFilterMask);
+        e->setAttribute("noteFilterType", (int) edit.noteFilterType);
         if (!edit.removedBars.empty())
         {
             juce::StringArray parts;
@@ -659,6 +663,14 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             lockedEdit.root = juce::jlimit(-1, 11, xml->getIntAttribute("lockRoot", -1));
             lockedEdit.mode = (Mode) juce::jlimit(0, kNumModes - 1,
                 xml->getIntAttribute("lockMode", (int) Mode::Dorian));
+            {
+                const int mask = xml->getIntAttribute("lockNoteFilterMask", 0x0FFF);
+                lockedEdit.noteFilterMask = (uint16_t) juce::jlimit(1, 0x0FFF, mask & 0x0FFF);
+                if (lockedEdit.noteFilterMask == 0)
+                    lockedEdit.noteFilterMask = 0x0FFF;
+                lockedEdit.noteFilterType = xml->getIntAttribute("lockNoteFilterType", 0) != 0
+                    ? NoteFilterType::Fold : NoteFilterType::Mute;
+            }
             lockedGroove = GrooveParams();
             lockedGroove.set(0, xml->getIntAttribute("lockSwing", 0));
             lockedGroove.set(1, xml->getIntAttribute("lockPocket", 0));
@@ -777,6 +789,14 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     e.root = juce::jlimit(-1, 11, child->getIntAttribute("root", -1));
                     e.mode = (Mode) juce::jlimit(0, kNumModes - 1,
                                                  child->getIntAttribute("mode", (int) Mode::Dorian));
+                    {
+                        const int mask = child->getIntAttribute("noteFilterMask", 0x0FFF);
+                        e.noteFilterMask = (uint16_t) juce::jlimit(1, 0x0FFF, mask & 0x0FFF);
+                        if (e.noteFilterMask == 0)
+                            e.noteFilterMask = 0x0FFF;
+                        e.noteFilterType = child->getIntAttribute("noteFilterType", 0) != 0
+                            ? NoteFilterType::Fold : NoteFilterType::Mute;
+                    }
                     const auto removedAttr = child->getStringAttribute("removedBars");
                     if (removedAttr.isNotEmpty())
                     {

@@ -517,6 +517,8 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
                 e.mapToRoot = false;
                 e.root = -1;
                 e.mode = Mode::Ionian;
+                e.noteFilterMask = 0x0FFF;
+                e.noteFilterType = NoteFilterType::Mute;
             }
             if ((locks & toolkitLock::Playback) == 0)
                 e.extendMult = 1;
@@ -1273,7 +1275,7 @@ void MidiBrowserEditor::updateMiniPreview()
     // (fitting to resolved notes would re-center and hide transposition).
     const int rootPc = edit.root >= 0 ? edit.root : (clip->root >= 0 ? clip->root : 0);
     miniRoll.setNotes(applyGroove(resolved.notes, groove, clip->complexity), resolved.bars, groove,
-                      rootPc, clip->notes, edit.mode, 4);
+                      rootPc, clip->notes, edit.mode, 4, edit.noteFilterMask);
     const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
     miniRoll.setTimeStretch(stretch);
     previewHeader.repaint();

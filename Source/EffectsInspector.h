@@ -117,6 +117,7 @@ private:
     fx::FlatPopup octaveRangePopup;
     fx::InlineRow octaveRangeRow;
     fx::PitchRow pitchRow;
+    fx::NoteFilterBlock noteFilter;
     fx::FlatRangeSliderRow pitchRangeSl;
     fx::FlatPopup keyPopup;
     fx::FlatPopup modePopup;

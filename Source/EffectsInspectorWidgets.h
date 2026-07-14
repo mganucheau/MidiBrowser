@@ -850,6 +850,205 @@ public:
     juce::Rectangle<int> annotBounds;
 };
 
+// ── NoteFilterBlock (fold header + 1-oct keyboard + Filter Type) ─────────────
+
+class NoteFilterBlock : public juce::Component
+{
+public:
+    NoteFilterBlock()
+    {
+        typePopup.setItems({ "Mute", "Fold" }, 0);
+        typePopup.onChange = [this](int idx)
+        {
+            filterType = idx == 1 ? NoteFilterType::Fold : NoteFilterType::Mute;
+            if (onChange) onChange();
+        };
+        addChildComponent(typePopup);
+        setWantsKeyboardFocus(false);
+    }
+
+    std::function<void()> onChange;
+    std::function<void()> onLayoutChanged;
+
+    void setState(uint16_t mask, NoteFilterType type, juce::NotificationType notify)
+    {
+        mask = (uint16_t) (mask & 0x0FFF);
+        if (mask == 0) mask = 0x0FFF;
+        const bool changed = mask != noteFilterMask || type != filterType;
+        noteFilterMask = mask;
+        filterType = type;
+        typePopup.setIndex(type == NoteFilterType::Fold ? 1 : 0, juce::dontSendNotification);
+        if (changed) repaint();
+        if (notify != juce::dontSendNotification && onChange)
+            onChange();
+    }
+
+    uint16_t getMask() const { return noteFilterMask; }
+    NoteFilterType getType() const { return filterType; }
+    bool isOpen() const { return open; }
+
+    int idealHeight() const
+    {
+        if (!open)
+            return kHeaderH;
+        return kHeaderH + toolkitRowGap() + kKeysH + toolkitRowGap() + kRowMinH;
+    }
+
+    void resized() override
+    {
+        typePopup.setVisible(open);
+        if (!open)
+        {
+            typePopup.setBounds({});
+            keysBounds = {};
+            return;
+        }
+        auto r = getLocalBounds();
+        r.removeFromTop(kHeaderH + toolkitRowGap());
+        keysBounds = r.removeFromTop(kKeysH);
+        r.removeFromTop(toolkitRowGap());
+        auto typeRow = r.removeFromTop(kRowMinH);
+        typePopup.setBounds(typeRow.removeFromRight(kSelectW).withSizeKeepingCentre(kSelectW, kControlH));
+        typeLabelBounds = typeRow.withTrimmedRight(8);
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (e.y < kHeaderH)
+        {
+            open = !open;
+            resized();
+            if (onLayoutChanged) onLayoutChanged();
+            repaint();
+            return;
+        }
+        if (!open || !keysBounds.contains(e.getPosition()))
+            return;
+        const int pc = hitPitchClass(e.x - keysBounds.getX(), e.y - keysBounds.getY(),
+                                     keysBounds.getWidth(), keysBounds.getHeight());
+        if (pc < 0) return;
+        const bool on = (noteFilterMask & (uint16_t) (1u << pc)) != 0;
+        uint16_t next = noteFilterMask;
+        if (on)
+        {
+            next = (uint16_t) (next & (uint16_t) ~(1u << pc) & 0x0FFF);
+            if (next == 0) return; // keep at least one
+        }
+        else
+        {
+            next = (uint16_t) ((next | (uint16_t) (1u << pc)) & 0x0FFF);
+        }
+        noteFilterMask = next;
+        repaint(keysBounds);
+        if (onChange) onChange();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& t = inspectorTokens();
+        auto header = getLocalBounds().removeFromTop(kHeaderH);
+        auto chev = header.removeFromLeft(14).toFloat().withSizeKeepingCentre(12.0f, 12.0f);
+        header.removeFromLeft(6);
+        if (open)
+            drawCaretDown(g, chev, t.chevron);
+        else
+            drawCaretRight(g, chev, t.chevron);
+        g.setFont(inspectorFont());
+        g.setColour(t.rowLabel);
+        g.drawText("Note Filter", header, juce::Justification::centredLeft, true);
+
+        if (!open)
+            return;
+
+        paintKeyboard(g, keysBounds.toFloat());
+
+        g.setFont(inspectorFont());
+        g.setColour(t.rowLabel);
+        g.drawText("Filter Type", typeLabelBounds, juce::Justification::centredLeft, true);
+    }
+
+private:
+    static constexpr int kHeaderH = 26;
+    static constexpr int kKeysH = 40;
+
+    void paintKeyboard(juce::Graphics& g, juce::Rectangle<float> area) const
+    {
+        if (area.getWidth() < 8.0f || area.getHeight() < 8.0f)
+            return;
+
+        // White keys: C D E F G A B
+        static constexpr int kWhitePc[7] = { 0, 2, 4, 5, 7, 9, 11 };
+        static constexpr int kBlackPc[5] = { 1, 3, 6, 8, 10 };
+        // Black sits after white index: C#, D#, F#, G#, A#
+        static constexpr int kBlackAfterWhite[5] = { 0, 1, 3, 4, 5 };
+
+        const float whiteW = area.getWidth() / 7.0f;
+        const float whiteH = area.getHeight();
+        const float blackW = whiteW * 0.62f;
+        const float blackH = whiteH * 0.58f;
+
+        auto enabled = [this](int pc)
+        {
+            return (noteFilterMask & (uint16_t) (1u << pc)) != 0;
+        };
+
+        for (int i = 0; i < 7; ++i)
+        {
+            const int pc = kWhitePc[i];
+            auto key = juce::Rectangle<float>(area.getX() + whiteW * (float) i,
+                                              area.getY(), whiteW - 1.0f, whiteH);
+            const bool on = enabled(pc);
+            g.setColour(on ? colours::kbWhite() : colours::kbWhite().withMultipliedAlpha(0.35f));
+            g.fillRoundedRectangle(key, 2.0f);
+            g.setColour(colours::line().withAlpha(on ? 0.55f : 0.25f));
+            g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
+        }
+
+        for (int i = 0; i < 5; ++i)
+        {
+            const int pc = kBlackPc[i];
+            const float cx = area.getX() + whiteW * ((float) kBlackAfterWhite[i] + 1.0f);
+            auto key = juce::Rectangle<float>(cx - blackW * 0.5f, area.getY(), blackW, blackH);
+            const bool on = enabled(pc);
+            g.setColour(on ? colours::kbBlack() : colours::kbBlack().withMultipliedAlpha(0.40f));
+            g.fillRoundedRectangle(key, 2.0f);
+            if (!on)
+            {
+                g.setColour(juce::Colours::white.withAlpha(0.12f));
+                g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
+            }
+        }
+    }
+
+    static int hitPitchClass(int x, int y, int width, int height)
+    {
+        if (width <= 0 || height <= 0) return -1;
+        static constexpr int kWhitePc[7] = { 0, 2, 4, 5, 7, 9, 11 };
+        static constexpr int kBlackPc[5] = { 1, 3, 6, 8, 10 };
+        static constexpr int kBlackAfterWhite[5] = { 0, 1, 3, 4, 5 };
+        const float whiteW = (float) width / 7.0f;
+        const float blackW = whiteW * 0.62f;
+        const float blackH = (float) height * 0.58f;
+        if ((float) y <= blackH)
+        {
+            for (int i = 0; i < 5; ++i)
+            {
+                const float cx = whiteW * ((float) kBlackAfterWhite[i] + 1.0f);
+                if (std::abs((float) x - cx) <= blackW * 0.5f)
+                    return kBlackPc[i];
+            }
+        }
+        const int wi = juce::jlimit(0, 6, (int) ((float) x / whiteW));
+        return kWhitePc[wi];
+    }
+
+    bool open = false;
+    uint16_t noteFilterMask = 0x0FFF;
+    NoteFilterType filterType = NoteFilterType::Mute;
+    FlatPopup typePopup;
+    juce::Rectangle<int> keysBounds, typeLabelBounds;
+};
+
 // ── Section (fold chevron + large title + refresh + lock) ────────────────────
 
 class Section : public juce::Component
@@ -859,7 +1058,14 @@ public:
 
     void addRow(juce::Component* c, int h = kRowMinH, std::function<bool()> dirtyFn = {})
     {
-        rows.push_back({ c, h, std::move(dirtyFn) });
+        rows.push_back({ c, h, {}, std::move(dirtyFn) });
+        addChildComponent(c);
+        refreshRowVisibility();
+    }
+
+    void addRow(juce::Component* c, std::function<int()> heightFn, std::function<bool()> dirtyFn = {})
+    {
+        rows.push_back({ c, kRowMinH, std::move(heightFn), std::move(dirtyFn) });
         addChildComponent(c);
         refreshRowVisibility();
     }
@@ -903,7 +1109,7 @@ public:
         {
             if (!isRowShowing(r)) continue;
             if (shown > 0) content += rowGap;
-            content += r.h;
+            content += r.height();
             ++shown;
         }
         if (shown > 0)
@@ -932,7 +1138,7 @@ public:
             }
             if (!first) r.removeFromTop(rowGap);
             first = false;
-            row.comp->setBounds(r.removeFromTop(row.h));
+            row.comp->setBounds(r.removeFromTop(row.height()));
         }
     }
 
@@ -998,7 +1204,9 @@ public:
     {
         juce::Component* comp = nullptr;
         int h = kRowMinH;
+        std::function<int()> heightFn;
         std::function<bool()> dirty;
+        int height() const { return heightFn ? juce::jmax(1, heightFn()) : h; }
     };
     std::vector<Row> rows;
 
