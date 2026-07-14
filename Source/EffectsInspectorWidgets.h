@@ -40,8 +40,11 @@ inline int toolkitTitleGap()
 {
     return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 6);
 }
-/** Bottom inset under the last Toolkit section — matches section top pad / header rhythm. */
-inline int toolkitBodyPadB() { return toolkitSectionPadT(); }
+/** Bottom inset under the last Toolkit section — a bit more than section top pad. */
+inline int toolkitBodyPadB()
+{
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 18 : 14);
+}
 
 inline juce::Font inspectorFont(bool semibold = false) { return uiFontFixed(kFontPt, semibold); }
 inline juce::Font inspectorMono(bool semibold = false) { return monoFontFixed(kFontPt, semibold); }
@@ -850,7 +853,7 @@ public:
     juce::Rectangle<int> annotBounds;
 };
 
-// ── NoteFilterBlock (fold header + 1-oct keyboard + Filter Type) ─────────────
+// ── NoteFilterBlock (Filter label + 1-oct keyboard + Filter Type) ────────────
 
 class NoteFilterBlock : public juce::Component
 {
@@ -863,12 +866,11 @@ public:
             filterType = idx == 1 ? NoteFilterType::Fold : NoteFilterType::Mute;
             if (onChange) onChange();
         };
-        addChildComponent(typePopup);
+        addAndMakeVisible(typePopup);
         setWantsKeyboardFocus(false);
     }
 
     std::function<void()> onChange;
-    std::function<void()> onLayoutChanged;
 
     void setState(uint16_t mask, NoteFilterType type, juce::NotificationType notify)
     {
@@ -885,26 +887,16 @@ public:
 
     uint16_t getMask() const { return noteFilterMask; }
     NoteFilterType getType() const { return filterType; }
-    bool isOpen() const { return open; }
 
     int idealHeight() const
     {
-        if (!open)
-            return kHeaderH;
-        return kHeaderH + toolkitRowGap() + kKeysH + toolkitRowGap() + kRowMinH;
+        return kLabelH + toolkitRowGap() + kKeysH + toolkitRowGap() + kRowMinH;
     }
 
     void resized() override
     {
-        typePopup.setVisible(open);
-        if (!open)
-        {
-            typePopup.setBounds({});
-            keysBounds = {};
-            return;
-        }
         auto r = getLocalBounds();
-        r.removeFromTop(kHeaderH + toolkitRowGap());
+        r.removeFromTop(kLabelH + toolkitRowGap());
         keysBounds = r.removeFromTop(kKeysH);
         r.removeFromTop(toolkitRowGap());
         auto typeRow = r.removeFromTop(kRowMinH);
@@ -914,15 +906,7 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override
     {
-        if (e.y < kHeaderH)
-        {
-            open = !open;
-            resized();
-            if (onLayoutChanged) onLayoutChanged();
-            repaint();
-            return;
-        }
-        if (!open || !keysBounds.contains(e.getPosition()))
+        if (!keysBounds.contains(e.getPosition()))
             return;
         const int pc = hitPitchClass(e.x - keysBounds.getX(), e.y - keysBounds.getY(),
                                      keysBounds.getWidth(), keysBounds.getHeight());
@@ -946,19 +930,10 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto header = getLocalBounds().removeFromTop(kHeaderH);
-        auto chev = header.removeFromLeft(14).toFloat().withSizeKeepingCentre(12.0f, 12.0f);
-        header.removeFromLeft(6);
-        if (open)
-            drawCaretDown(g, chev, t.chevron);
-        else
-            drawCaretRight(g, chev, t.chevron);
+        auto label = getLocalBounds().removeFromTop(kLabelH);
         g.setFont(inspectorFont());
         g.setColour(t.rowLabel);
-        g.drawText("Note Filter", header, juce::Justification::centredLeft, true);
-
-        if (!open)
-            return;
+        g.drawText("Filter", label, juce::Justification::centredLeft, true);
 
         paintKeyboard(g, keysBounds.toFloat());
 
@@ -968,7 +943,7 @@ public:
     }
 
 private:
-    static constexpr int kHeaderH = 26;
+    static constexpr int kLabelH = 18;
     static constexpr int kKeysH = 40;
 
     void paintKeyboard(juce::Graphics& g, juce::Rectangle<float> area) const
@@ -1042,7 +1017,6 @@ private:
         return kWhitePc[wi];
     }
 
-    bool open = false;
     uint16_t noteFilterMask = 0x0FFF;
     NoteFilterType filterType = NoteFilterType::Mute;
     FlatPopup typePopup;

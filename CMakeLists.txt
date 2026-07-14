@@ -6,36 +6,27 @@ else()
 endif()
 
 set(PF_VERSION "${PROJECT_VERSION}")
-set(GIT_HASH "unknown")
-set(GIT_DATE "unknown")
-set(GIT_SUBJECT "dev build")
-find_program(GIT_EXECUTABLE git)
-if(GIT_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        OUTPUT_VARIABLE GIT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET)
-    execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E env "TZ=America/Los_Angeles"
-            "${GIT_EXECUTABLE}" log -1 --format=%cd --date=iso-local
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        OUTPUT_VARIABLE GIT_DATE
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET)
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" log -1 --format=%s
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        OUTPUT_VARIABLE GIT_SUBJECT
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET)
-endif()
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/Generated")
-configure_file(
-    "${CMAKE_SOURCE_DIR}/Source/BuildInfo.h.in"
-    "${CMAKE_BINARY_DIR}/Generated/BuildInfo.h"
-    @ONLY)
+
+# Fresh version stamp (semver · build time · git hash) on every build for testers.
+set(PF_BUILDINFO_CPP "${CMAKE_BINARY_DIR}/Generated/BuildInfo.cpp")
+set(PF_BUILDINFO_H   "${CMAKE_BINARY_DIR}/Generated/BuildInfo.h")
+add_custom_target(MidiBrowserBuildInfo ALL
+    COMMAND "${CMAKE_COMMAND}"
+        -DPF_VERSION=${PF_VERSION}
+        -DSRC_DIR=${CMAKE_SOURCE_DIR}
+        -DOUT_DIR=${CMAKE_BINARY_DIR}/Generated
+        -P "${CMAKE_SOURCE_DIR}/cmake/GenerateBuildInfo.cmake"
+    BYPRODUCTS "${PF_BUILDINFO_CPP}" "${PF_BUILDINFO_H}"
+    COMMENT "Updating BuildInfo stamp"
+    VERBATIM)
+# Seed so the first configure can resolve the source path before the first build.
+execute_process(
+    COMMAND "${CMAKE_COMMAND}"
+        -DPF_VERSION=${PF_VERSION}
+        -DSRC_DIR=${CMAKE_SOURCE_DIR}
+        -DOUT_DIR=${CMAKE_BINARY_DIR}/Generated
+        -P "${CMAKE_SOURCE_DIR}/cmake/GenerateBuildInfo.cmake")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -87,7 +78,9 @@ juce_add_binary_data(MidiBrowserAssets
         Resources/Fonts/JetBrainsMono-SemiBold.ttf
 )
 
-target_include_directories(MidiBrowser PRIVATE "${CMAKE_BINARY_DIR}/Generated")
+target_include_directories(MidiBrowser PRIVATE
+    "${CMAKE_BINARY_DIR}/Generated"
+    "${CMAKE_SOURCE_DIR}/Source")
 
 target_sources(MidiBrowser PRIVATE
     Source/PluginProcessor.cpp
@@ -103,7 +96,9 @@ target_sources(MidiBrowser PRIVATE
     Source/PianoRollEditor.cpp
     Source/Theme.cpp
     Source/LibraryStore.cpp
+    "${PF_BUILDINFO_CPP}"
 )
+add_dependencies(MidiBrowser MidiBrowserBuildInfo)
 
 target_compile_definitions(MidiBrowser PUBLIC
     JUCE_WEB_BROWSER=0

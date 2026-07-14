@@ -268,11 +268,6 @@ EffectsInspector::EffectsInspector()
         edit.noteFilterType = noteFilter.getType();
         notifyEdit();
     };
-    noteFilter.onLayoutChanged = [this]
-    {
-        refreshDirtySections();
-        layoutSections();
-    };
 
     juce::StringArray keys;
     for (int i = 0; i < 12; ++i) keys.add(kNoteNames[(size_t) i]);

@@ -1537,7 +1537,7 @@ public:
         closeBtn.onClick = [this] { if (onClose) onClose(); };
         addAndMakeVisible(closeBtn);
 
-        setSize(kPanelW, kPanelH);
+        setSize(kPanelW, kPanelH + 28);
     }
 
     void paint(juce::Graphics& g) override
@@ -1593,6 +1593,15 @@ public:
             }
             body.removeFromTop(rowGap);
         }
+
+        // Build stamp for user testing — version · build time · commit.
+        auto footer = getLocalBounds().removeFromBottom(28).reduced(18, 0);
+        g.setColour(t.divider);
+        g.fillRect(18, footer.getY(), getWidth() - 36, 1);
+        g.setFont(monoFont(10.0f, false));
+        g.setColour(colours::text3());
+        g.drawText(build_info::stamp(), footer.withTrimmedTop(6),
+                   juce::Justification::centredLeft, true);
     }
 
     void resized() override
@@ -1647,7 +1656,7 @@ void MidiBrowserEditor::showTweaksMenu()
         Overlay()
         {
             addAndMakeVisible(panel);
-            panel.setSize(SettingsPanel::kPanelW, SettingsPanel::kPanelH);
+            panel.setSize(panel.getWidth(), panel.getHeight());
         }
 
         void resized() override
