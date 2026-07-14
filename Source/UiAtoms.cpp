@@ -93,7 +93,7 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
         p.closeSubPath();
         g.strokePath(p, st);
     }
-    else if (name == icons::star)
+    else if (name == icons::star || name == icons::starOutline)
     {
         for (int i = 0; i < 10; ++i)
         {
@@ -104,8 +104,10 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
             if (i == 0) p.startNewSubPath(x, y); else p.lineTo(x, y);
         }
         p.closeSubPath();
-        // Solid star — outline-only was hard to see when inactive.
-        g.fillPath(p);
+        if (name == icons::starOutline)
+            g.strokePath(p, st);
+        else
+            g.fillPath(p);
     }
     else if (name == icons::plus)
     {
@@ -152,12 +154,15 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
     }
     else if (name == icons::noteKeys)
     {
-        auto r = juce::Rectangle<float>(cx - s, cy - s * 0.8f, s * 2.0f, s * 1.6f);
-        g.drawRoundedRectangle(r, px, px);
-        g.drawLine(cx - s * 0.33f, cy - s * 0.8f, cx - s * 0.33f, cy + s * 0.8f, px * 0.8f);
-        g.drawLine(cx + s * 0.33f, cy - s * 0.8f, cx + s * 0.33f, cy + s * 0.8f, px * 0.8f);
-        g.fillRect(cx - s * 0.5f, cy - s * 0.8f, s * 0.34f, s * 0.85f);
-        g.fillRect(cx + s * 0.16f, cy - s * 0.8f, s * 0.34f, s * 0.85f);
+        // Mini piano: white key frame + two black keys.
+        auto r = juce::Rectangle<float>(cx - s * 1.05f, cy - s * 0.75f, s * 2.1f, s * 1.5f);
+        g.drawRoundedRectangle(r, px * 0.9f, px);
+        const float keyW = r.getWidth() / 3.0f;
+        g.drawLine(r.getX() + keyW, r.getY(), r.getX() + keyW, r.getBottom(), px * 0.85f);
+        g.drawLine(r.getX() + keyW * 2.0f, r.getY(), r.getX() + keyW * 2.0f, r.getBottom(), px * 0.85f);
+        const float bkW = keyW * 0.55f, bkH = r.getHeight() * 0.58f;
+        g.fillRoundedRectangle(r.getX() + keyW - bkW * 0.5f, r.getY(), bkW, bkH, px * 0.4f);
+        g.fillRoundedRectangle(r.getX() + keyW * 2.0f - bkW * 0.5f, r.getY(), bkW, bkH, px * 0.4f);
     }
     else if (name == icons::noteDrums)
     {
@@ -170,11 +175,19 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
                           juce::MathConstants<float>::pi * 1.5f, true);
         g.strokePath(arc, st);
     }
-    else if (name == icons::sidebar)
+    else if (name == icons::sidebar || name == icons::sidebarRight)
     {
         auto r = juce::Rectangle<float>(cx - s, cy - s * 0.8f, s * 2.0f, s * 1.6f);
         g.drawRoundedRectangle(r, px, px);
-        g.drawLine(cx - s * 0.3f, cy - s * 0.8f, cx - s * 0.3f, cy + s * 0.8f, px);
+        const float x = (name == icons::sidebarRight) ? (cx + s * 0.3f) : (cx - s * 0.3f);
+        g.drawLine(x, cy - s * 0.8f, x, cy + s * 0.8f, px);
+    }
+    else if (name == icons::sync)
+    {
+        // Two linked loops (host ↔ plugin) — reads as “sync”, not refresh.
+        const float rr = s * 0.55f;
+        g.drawEllipse(cx - s * 0.95f, cy - rr, rr * 2.0f, rr * 2.0f, px);
+        g.drawEllipse(cx - s * 0.05f, cy - rr, rr * 2.0f, rr * 2.0f, px);
     }
     else if (name == icons::lockOpen || name == icons::lockClosed)
     {
@@ -300,7 +313,13 @@ void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
                            : isEnabled() ? (over ? colours::text() : colours::text2())
                                          : colours::text2();
     const float inset = juce::jmin(b.getWidth(), b.getHeight()) * (0.5f - 0.32f * iconScale);
-    drawIcon(g, icon, b.reduced(inset), col, 1.6f);
+    // Glyph area follows Text size %; button hit target follows UI size.
+    const float glyphScale = juce::jlimit(0.7f, 1.4f, textIconScale());
+    auto glyph = b.reduced(inset).withSizeKeepingCentre(
+        b.reduced(inset).getWidth() * glyphScale,
+        b.reduced(inset).getHeight() * glyphScale);
+    const float stroke = 1.6f * juce::jlimit(0.85f, 1.35f, contentScale() * textIconScale());
+    drawIcon(g, icon, glyph, col, stroke);
     if (!isEnabled())
     {
         g.setColour(colours::elev().withAlpha(0.35f));
@@ -330,7 +349,8 @@ int ChipBtn::idealWidth() const
 void ChipBtn::paintButton(juce::Graphics& g, bool over, bool down)
 {
     auto b = getLocalBounds().toFloat().reduced(0.5f);
-    const float r = b.getHeight() * 0.5f;
+    const float r = cornerRadius >= 0.0f ? cornerRadius : b.getHeight() * 0.5f;
+    const bool well = cornerRadius >= 0.0f;
 
     juce::Colour fill = active ? colours::accent() : colours::elev();
     if (!isEnabled()) fill = fill.withAlpha(0.5f);
@@ -338,7 +358,7 @@ void ChipBtn::paintButton(juce::Graphics& g, bool over, bool down)
     else if (over) fill = fill.brighter(0.06f);
     g.setColour(fill);
     g.fillRoundedRectangle(b, r);
-    if (!active)
+    if (!active && !well)
     {
         g.setColour(accentText ? colours::accentLine() : colours::line());
         g.drawRoundedRectangle(b, r, 1.0f);

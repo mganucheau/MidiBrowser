@@ -71,7 +71,7 @@ juce_add_plugin(MidiBrowser
     PLUGIN_MANUFACTURER_CODE MdbR
     PLUGIN_CODE              MdbB
     FORMATS                  ${_midibrowser_formats}
-    PRODUCT_NAME             "Midi Browser"
+    PRODUCT_NAME             "Midi Toolkit"
     IS_SYNTH                 TRUE
     NEEDS_MIDI_INPUT         TRUE
     NEEDS_MIDI_OUTPUT        TRUE

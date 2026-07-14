@@ -21,6 +21,8 @@ namespace icons {
     inline constexpr const char* folder        = "folder";
     inline constexpr const char* folderOpen    = "folder-open";
     inline constexpr const char* star          = "star";
+    /** Stroke star for Photos-style nav (Favorites). */
+    inline constexpr const char* starOutline   = "star-outline";
     inline constexpr const char* plus          = "plus";
     inline constexpr const char* minus         = "minus";
     inline constexpr const char* x             = "x";
@@ -31,6 +33,10 @@ namespace icons {
     inline constexpr const char* noteKeys      = "piano-keys";  // keys clips
     inline constexpr const char* noteDrums     = "drum";        // drum clips
     inline constexpr const char* sidebar       = "sidebar";
+    /** Panel with divider on the right — effects / inspector rail. */
+    inline constexpr const char* sidebarRight  = "sidebar-right";
+    /** Linked tempo / host sync (not a refresh arrow). */
+    inline constexpr const char* sync          = "sync";
     inline constexpr const char* gear          = "gear";
     inline constexpr const char* more          = "more";
     inline constexpr const char* lockOpen      = "lock-open";
@@ -82,6 +88,8 @@ public:
     bool active = false;       // accent style
     bool accentText = false;   // accent-tinted text/icon when inactive
     bool mono = false;
+    /** If >= 0, use this corner radius; otherwise capsule (height/2). */
+    float cornerRadius = -1.0f;
 };
 
 /** Pill toggle with a status dot (DAW-sync). */

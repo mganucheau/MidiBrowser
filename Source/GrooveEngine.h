@@ -277,6 +277,23 @@ struct GrooveParams
     }
 };
 
+/** Per-section browse locks in the Toolkit pane. */
+namespace toolkitLock
+{
+    constexpr uint32_t Playback     = 1u << 0; // tempo mult + extend
+    constexpr uint32_t Timing       = 1u << 1;
+    constexpr uint32_t Performance  = 1u << 2;
+    constexpr uint32_t Pitch        = 1u << 3;
+    constexpr uint32_t Effects      = 1u << 4;
+    constexpr uint32_t All = Playback | Timing | Performance | Pitch | Effects;
+    constexpr uint32_t AnyGroove = Timing | Performance | Effects;
+}
+
+/** Overlay Timing / Performance / Effects fields from `locked` when those bits are set. */
+void applyGrooveSectionLock(const GrooveParams& locked, GrooveParams& target, uint32_t locks);
+/** Copy those section fields from `src` into `locked` (for updating the snapshot). */
+void captureGrooveSectionLock(const GrooveParams& src, GrooveParams& locked, uint32_t locks);
+
 /** Timing + generative transforms. sourceComplexity is the clip's baseline (1..100). */
 std::vector<RollNote> applyGroove(const std::vector<RollNote>& notes, const GrooveParams& k,
                                   int sourceComplexity = -1);

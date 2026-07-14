@@ -24,7 +24,7 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
 
-    const juce::String getName() const override { return "Midi Browser"; }
+    const juce::String getName() const override { return "Midi Toolkit"; }
 
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override;
@@ -88,16 +88,24 @@ public:
     std::map<juce::String, ClipEdit> clipEdits;
     std::map<juce::String, GrooveParams> clipGrooves;
 
-    // Browse-lock: when set, the locked pitch edits (octave / fit / map /
-    // root / mode) are stamped onto every clip selected while browsing.
-    // lockAutoTrim also applies empty-edge-bar trim to each browsed clip.
-    bool editLock = false;
+    // Toolkit browse-locks: bitmask of toolkitLock::* — locked sections are
+    // stamped onto every clip while browsing. lockAutoTrim applies empty-edge
+    // trim when Playback or Pitch is locked with trim engaged.
+    uint32_t sectionLocks = 0;
     bool lockAutoTrim = false;
     ClipEdit lockedEdit;
-
-    // Effects browse-lock: when set, groove params persist across file selection.
-    bool effectsLock = false;
     GrooveParams lockedGroove;
+
+    /** Legacy mirrors derived from sectionLocks (tests / older call sites). */
+    bool editLock = false;
+    bool effectsLock = false;
+
+    void syncLockFlagsFromSections()
+    {
+        editLock = (sectionLocks & toolkitLock::Pitch) != 0;
+        effectsLock = (sectionLocks & toolkitLock::AnyGroove) != 0
+                   || (sectionLocks & toolkitLock::Playback) != 0;
+    }
 
     // UI layout state (persisted)
     bool editorOpen = false;

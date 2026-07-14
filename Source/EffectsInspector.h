@@ -26,8 +26,8 @@ public:
     void setBpmMultiplier(double mult, juce::NotificationType notify = juce::dontSendNotification);
     double getBpmMultiplier() const { return bpmMultiplier; }
 
-    void setEffectsLocked(bool locked);
-    void setPitchLocked(bool locked);
+    void setSectionLocks(uint32_t locks);
+    uint32_t getSectionLocks() const { return sectionLocks; }
     void setHasClip(bool has);
     void setClipRoot(int rootPc);
     /** Clip baseline complexity (1..100) — drives the Complexity slider position. */
@@ -37,9 +37,10 @@ public:
     std::function<void(const GrooveParams&)> onGrooveChanged;
     std::function<void(const ClipEdit&)> onEditChanged;
     std::function<void(double)> onBpmMultiplierChanged;
-    std::function<void(bool)> onEffectsLockToggled;
-    std::function<void(bool)> onPitchLockToggled;
-    std::function<void()> onResetGroove;
+    /** Fired when header or section lock bits change. */
+    std::function<void(uint32_t)> onSectionLocksChanged;
+    /** Reset unlocked sections only (header refresh). */
+    std::function<void()> onResetUnlocked;
     std::function<void()> onTrimClicked;
     std::function<void()> onActivated;
 
@@ -53,12 +54,19 @@ private:
     void syncArticulationKnobsToUi();
     int resolvedPitchMidi() const;
     void resetPitchEditFields();
+    void resetPlaybackSection();
+    void resetTimingSection();
+    void resetPerformanceSection();
+    void resetEffectsSection();
+    void toggleSectionLock(uint32_t bit);
+    void setAllSectionsLocked(bool locked);
+    void refreshHeaderLockButton();
+    void resetUnlockedSections();
 
     GrooveParams groove;
     ClipEdit edit;
     double bpmMultiplier = 1.0;
-    bool effectsLocked = false;
-    bool pitchLocked = false;
+    uint32_t sectionLocks = 0;
     bool hasClip = false;
     int clipRootPc = -1;
     int clipComplexity = 50;
@@ -114,7 +122,8 @@ private:
     fx::RangeRow pitchRangeRow;
     fx::FlatPopup keyPopup;
     fx::FlatPopup modePopup;
-    fx::KeyModeRow keyModeRow;
+    fx::InlineRow keyRow;
+    fx::InlineRow modeRow;
     fx::FlatSwitch fitSwitch;
     fx::FlatSwitch mapSwitch;
 
@@ -125,7 +134,7 @@ private:
     juce::Viewport viewport;
     juce::Component body;
 
-    static constexpr int kPanelW = 216;
+    static constexpr int kPanelW = 248;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EffectsInspector)
 };

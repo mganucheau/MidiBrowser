@@ -1,34 +1,48 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Theme.h"
+#include "UiAtoms.h"
 #include "GrooveEngine.h"
 
 namespace pflow {
 namespace fx {
 
-constexpr float kFontPt = 11.5f;
-constexpr float kAnnotPt = 10.5f;
-constexpr float kPopupFontPt = 10.5f;
-constexpr int kSectionPadT = 6;
-constexpr int kSectionPadH = 8;
-constexpr int kSectionPadB = 6;
-constexpr int kRowMinH = 18;
-constexpr int kControlH = 16;
-constexpr int kRowGap = 3;
-constexpr int kSectionHeaderH = 18;
-constexpr int kSectionTitleGap = 4;    // space between title and first row
-constexpr int kSectionRowInset = 10;   // align row labels with title text (past chevron)
-constexpr int kSliderRowH = 18;        // single-line: title | track | value
-constexpr int kSliderLabelW = 62;      // fixed title column
-constexpr int kSliderTrackW = 88;      // uniform track width across all rows
-constexpr int kSliderValueW = 32;      // readout after the track (right-aligned)
-constexpr int kSliderGap = 4;          // gaps: label|track and track|value
-constexpr float kSliderThumbR = 4.5f;
-constexpr float kSliderTrackH = 3.0f;
+// Caps B2 canvas metrics (fixed px — see effects-photos-caps-b2.canvas.tsx)
+constexpr float kFontPt = 12.0f;
+constexpr float kAnnotPt = 11.0f;
+constexpr float kPopupFontPt = 12.0f;
+constexpr float kSectionTitlePt = 14.0f;
+constexpr int kSectionPadT = 8;
+constexpr int kSectionPadH = 12;       // shell horizontal pad
+constexpr int kSectionPadB = 4;        // + padT of next = 12 section gap
+constexpr int kRowMinH = 26;
+constexpr int kControlH = 26;
+constexpr int kRowGap = 7;
+constexpr int kSectionHeaderH = 30;
+constexpr int kSectionTitleGap = 8;    // HEADER_TO_ROWS
+constexpr int kSectionRowInset = 22;   // INDENT past padded edge (chevron column)
+constexpr int kSliderRowH = 26;
+constexpr int kSelectW = 96;
+constexpr int kHeaderIconW = 20; // match library sidebar glyph hit target
+constexpr float kTallRadius = 4.0f;
+constexpr float kTallPadX = 10.0f;
 
-inline juce::Font inspectorFont(bool semibold = false) { return uiFont(kFontPt, semibold); }
-inline juce::Font inspectorMono(bool semibold = false) { return monoFont(kFontPt, semibold); }
-inline juce::Font popupFont(bool semibold = false) { return uiFont(kPopupFontPt, semibold); }
+inline juce::Font inspectorFont(bool semibold = false) { return uiFontFixed(kFontPt, semibold); }
+inline juce::Font inspectorMono(bool semibold = false) { return monoFontFixed(kFontPt, semibold); }
+inline juce::Font popupFont(bool semibold = false) { return uiFontFixed(kPopupFontPt, semibold); }
+inline juce::Font sectionTitleFont() { return uiFontFixed(kSectionTitlePt, true); }
+
+inline void fillTallWell(juce::Graphics& g, juce::Rectangle<float> r, bool hot)
+{
+    const auto& t = inspectorTokens();
+    g.setColour(hot ? t.tallWellHot : t.tallWell);
+    g.fillRoundedRectangle(r, kTallRadius);
+    if (hot)
+    {
+        g.setColour(t.controlHairline);
+        g.drawRoundedRectangle(r.reduced(0.5f), kTallRadius, 1.0f);
+    }
+}
 
 inline void drawCaretDown(juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour)
 {
@@ -126,20 +140,21 @@ public:
     {
         const auto& t = inspectorTokens();
         const bool on = getToggleState();
-        auto track = getLocalBounds().toFloat().withSizeKeepingCentre(26.0f, 15.0f);
+        // Caps B2 library / Photos: 28×15 track.
+        auto track = getLocalBounds().toFloat().withSizeKeepingCentre(28.0f, 15.0f);
         g.setColour(on ? t.accent : t.switchOffTrack);
         g.fillRoundedRectangle(track, 7.5f);
-        const float kx = on ? track.getX() + 12.0f : track.getX() + 1.0f;
+        const float kx = on ? track.getX() + 14.0f : track.getX() + 1.5f;
         g.setColour(on ? juce::Colours::white : (t.dark ? juce::Colour(0xffd4d4d8) : juce::Colours::white));
-        g.fillEllipse(kx, track.getCentreY() - 6.5f, 13.0f, 13.0f);
+        g.fillEllipse(kx, track.getCentreY() - 6.0f, 12.0f, 12.0f);
         if (!t.dark && !on)
         {
             g.setColour(t.controlHairline);
-            g.drawEllipse(kx, track.getCentreY() - 6.5f, 13.0f, 13.0f, 0.5f);
+            g.drawEllipse(kx, track.getCentreY() - 6.0f, 12.0f, 12.0f, 0.5f);
         }
     }
 
-    int idealWidth() const { return 26; }
+    int idealWidth() const { return 28; }
 };
 
 // ── FlatPopup ────────────────────────────────────────────────────────────────
@@ -177,42 +192,29 @@ public:
 
     int idealWidth() const
     {
-        float w = 0.0f;
-        for (const auto& l : labels)
-            w = juce::jmax(w, juce::GlyphArrangement::getStringWidth(popupFont(), l));
-        const auto& t = inspectorTokens();
-        // Compact chevron + side padding (longest labels e.g. "Alternate", "1/16").
-        return (int) std::ceil(w) + (t.dark ? 20 : 26);
+        auto font = popupFont();
+        float maxW = 0.0f;
+        for (const auto& s : labels)
+            maxW = juce::jmax(maxW, font.getStringWidthFloat(s));
+        // pad + caret column; never narrower than the Caps select.
+        return juce::jmax(kSelectW, (int) std::ceil((double) maxW) + 28);
     }
 
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
         auto r = getLocalBounds().toFloat();
-        drawInspectorControlSurface(g, r, isMouseOver(), false);
+        fillTallWell(g, r, isMouseOver());
 
-        auto textArea = r.reduced(6.0f, 1.0f);
-        if (!t.dark)
-            textArea.removeFromRight(13.0f);
-        else
-            textArea.removeFromRight(12.0f);
+        auto textArea = r.reduced(8.0f, 0.0f);
+        textArea.removeFromRight(14.0f);
 
-        g.setColour(t.rowLabel);
+        g.setColour(t.headerText);
         g.setFont(popupFont());
         const juce::String val = labels.size() > index ? labels[index] : juce::String();
-        g.drawFittedText(val, textArea.toNearestInt(), juce::Justification::centredLeft, 1, 1.0f);
+        g.drawText(val, textArea.toNearestInt(), juce::Justification::centredLeft, false);
 
-        if (!t.dark)
-        {
-            auto cap = r.removeFromRight(12.0f).reduced(1.0f, 2.5f);
-            g.setColour(t.accent);
-            g.fillRoundedRectangle(cap, 3.0f);
-            drawCaretUpDown(g, cap, juce::Colours::white);
-        }
-        else
-        {
-            drawCaretUpDown(g, r.removeFromRight(12.0f), t.chevron);
-        }
+        drawCaretUpDown(g, r.removeFromRight(14.0f), t.chevron);
     }
 
 private:
@@ -383,18 +385,24 @@ public:
         else if (e.x > seg * 2.0f) setValue(value + 1);
     }
 
-    int idealWidth() const { return 64; }
+    bool bare = false; // no chrome — plain − value + (Pitch row)
+
+    int idealWidth() const { return bare ? 56 : kSelectW; }
 
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
         auto r = getLocalBounds().toFloat();
-        drawInspectorControlSurface(g, r, isMouseOver(), false);
+        if (!bare)
+            fillTallWell(g, r, isMouseOver());
 
         const float seg = r.getWidth() / 3.0f;
-        g.setColour(t.controlSeparator);
-        g.fillRect(r.getX() + seg, r.getY() + 2.0f, 0.5f, r.getHeight() - 4.0f);
-        g.fillRect(r.getX() + seg * 2.0f, r.getY() + 2.0f, 0.5f, r.getHeight() - 4.0f);
+        if (!bare)
+        {
+            g.setColour(t.controlSeparator);
+            g.fillRect(r.getX() + seg, r.getY() + 3.0f, 0.5f, r.getHeight() - 6.0f);
+            g.fillRect(r.getX() + seg * 2.0f, r.getY() + 3.0f, 0.5f, r.getHeight() - 6.0f);
+        }
 
         g.setColour(t.rowLabel);
         g.setFont(inspectorFont());
@@ -403,6 +411,7 @@ public:
 
         const juce::String text = format ? format(value) : signedIntText(value);
         g.setFont(inspectorMono(true));
+        g.setColour(t.headerText);
         g.drawFittedText(text, r.withTrimmedLeft(seg).withTrimmedRight(seg).toNearestInt(),
                          juce::Justification::centred, 1);
     }
@@ -468,29 +477,28 @@ public:
     {
         const auto& t = inspectorTokens();
         auto r = getLocalBounds().toFloat();
-        drawInspectorControlSurface(g, r, isMouseOver(), false);
+        fillTallWell(g, r, isMouseOver());
         g.setColour(t.controlSeparator);
-        g.fillRect(r.getCentreX() - 0.25f, r.getY() + 2.0f, 0.5f, r.getHeight() - 4.0f);
+        g.fillRect(r.getCentreX() - 0.25f, r.getY() + 4.0f, 0.5f, r.getHeight() - 8.0f);
 
         auto left = r.withTrimmedRight(r.getWidth() * 0.5f);
         auto right = r.withTrimmedLeft(r.getWidth() * 0.5f);
         if (selected == Sel::Half)
         {
             g.setColour(t.accent);
-            g.fillRoundedRectangle(left.reduced(1.0f), 4.0f);
+            g.fillRoundedRectangle(left.reduced(1.5f, 2.0f), 3.0f);
         }
         if (selected == Sel::Double)
         {
             g.setColour(t.accent);
-            g.fillRoundedRectangle(right.reduced(1.0f), 4.0f);
+            g.fillRoundedRectangle(right.reduced(1.5f, 2.0f), 3.0f);
         }
 
         g.setFont(inspectorFont());
         auto textCol = [&](Sel s)
         {
-            return selected == s ? juce::Colours::white : t.segmentText;
+            return selected == s ? juce::Colours::white : t.rowLabel;
         };
-        // drawText (not fitted) — never horizontally compress the labels.
         g.setColour(textCol(Sel::Half));
         g.drawText("Half", left.toNearestInt(), juce::Justification::centred, false);
         g.setColour(textCol(Sel::Double));
@@ -501,7 +509,7 @@ private:
     Sel selected = Sel::None;
 };
 
-// ── FlatSliderRow ────────────────────────────────────────────────────────────
+// ── FlatSliderRow (tall Photos Adjust: label + value inside, hover highlight) ─
 
 class FlatSliderRow : public juce::Component, public juce::SettableTooltipClient
 {
@@ -510,6 +518,7 @@ public:
         : label(l), minV(mn), maxV(mx), defV(d), value(d), bipolar(bi)
     {
         setWantsKeyboardFocus(false);
+        setRepaintsOnMouseActivity(true);
     }
 
     std::function<void(int)> onChange;
@@ -528,18 +537,6 @@ public:
     int getValue() const { return value; }
     void setDefault(int d) { defV = juce::jlimit(minV, maxV, d); }
 
-    void resized() override
-    {
-        // Label left; track + value hug the right so they share an edge with dropdowns.
-        auto r = getLocalBounds().toFloat();
-        labelBounds = r.removeFromLeft((float) kSliderLabelW);
-        valueBounds = r.removeFromRight((float) kSliderValueW);
-        r.removeFromRight((float) kSliderGap);
-        r.removeFromLeft((float) kSliderGap);
-        track = r.removeFromRight((float) kSliderTrackW)
-                    .withSizeKeepingCentre((float) kSliderTrackW, kSliderTrackH);
-    }
-
     void mouseDown(const juce::MouseEvent& e) override { setFromX(e.position.x); }
     void mouseDrag(const juce::MouseEvent& e) override { setFromX(e.position.x); }
     void mouseDoubleClick(const juce::MouseEvent&) override { setValue(defV); }
@@ -547,55 +544,49 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
+        auto r = getLocalBounds().toFloat();
+        const bool hot = isMouseOverOrDragging();
+        fillTallWell(g, r, hot);
+
+        const float norm = (float) (value - minV) / (float) juce::jmax(1, maxV - minV);
+        juce::Rectangle<float> fill;
+        if (bipolar)
+        {
+            const float mid = r.getCentreX();
+            const float x = r.getX() + norm * r.getWidth();
+            fill = juce::Rectangle<float>::leftTopRightBottom(
+                juce::jmin(mid, x), r.getY(), juce::jmax(mid, x), r.getBottom());
+        }
+        else
+        {
+            fill = r.withWidth(juce::jmax(0.0f, r.getWidth() * norm));
+        }
+        g.setColour(t.tallFill);
+        g.fillRoundedRectangle(fill, kTallRadius);
+
+        auto pad = r.reduced(kTallPadX, 0.0f);
         g.setFont(inspectorFont());
-        g.setColour(t.rowLabel);
-        g.drawText(label, labelBounds.toNearestInt(), juce::Justification::centredLeft, true);
+        g.setColour(hot ? t.headerText : t.rowLabel);
+        g.drawText(label, pad.toNearestInt(), juce::Justification::centredLeft, true);
 
         const auto text = valueText.isNotEmpty() ? valueText
                       : grooveValueText({ label.toRawUTF8(), label.toRawUTF8(), minV, maxV, defV }, value);
         g.setFont(inspectorMono());
-        g.setColour(t.valueText);
-        g.drawText(text, valueBounds.toNearestInt(), juce::Justification::centredRight, true);
-
-        const float radius = kSliderTrackH * 0.5f;
-        g.setColour(t.sliderTrack);
-        g.fillRoundedRectangle(track, radius);
-
-        const float norm = (float) (value - minV) / (float) juce::jmax(1, maxV - minV);
-        const float thumbX = track.getX() + norm * track.getWidth();
-        const float mid = track.getCentreX();
-
-        g.setColour(t.accent);
-        if (bipolar)
-        {
-            g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(
-                                       juce::jmin(mid, thumbX), track.getY(),
-                                       juce::jmax(mid, thumbX), track.getBottom()), radius);
-        }
-        else
-        {
-            g.fillRoundedRectangle(track.withWidth(juce::jmax(0.0f, thumbX - track.getX())), radius);
-        }
-
-        const float d = kSliderThumbR * 2.0f;
-        g.setColour(t.sliderKnob);
-        g.fillEllipse(thumbX - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d);
-        g.setColour(t.dark ? t.accent.withAlpha(0.55f) : t.controlHairline);
-        g.drawEllipse(thumbX - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d,
-                      t.dark ? 1.0f : 0.75f);
+        g.setColour(t.headerText);
+        g.drawText(text, pad.toNearestInt(), juce::Justification::centredRight, true);
     }
 
 private:
     void setFromX(float x)
     {
-        const float t = juce::jlimit(0.0f, 1.0f, (x - track.getX()) / juce::jmax(1.0f, track.getWidth()));
+        const float w = (float) juce::jmax(1, getWidth());
+        const float t = juce::jlimit(0.0f, 1.0f, x / w);
         setValue(minV + (int) std::lround(t * (float) (maxV - minV)));
     }
 
     juce::String label;
     int minV, maxV, defV, value;
     bool bipolar = false;
-    juce::Rectangle<float> track, labelBounds, valueBounds;
 };
 
 // ── FlatRangeSliderRow (dual-thumb velocity / similar ranges) ─────────────────
@@ -607,10 +598,13 @@ public:
         : label(l), minV(mn), maxV(mx), lo(defLo), hi(defHi), defLoV(defLo), defHiV(defHi)
     {
         setWantsKeyboardFocus(false);
+        setRepaintsOnMouseActivity(true);
     }
 
     std::function<void(int, int)> onChange;
     juce::String valueText;
+    /** When true, selected span uses accent (library search); else tallFill (effects). */
+    bool accentFill = false;
 
     void setRange(int newLo, int newHi, juce::NotificationType notify = juce::sendNotification)
     {
@@ -628,59 +622,37 @@ public:
     int getLo() const { return lo; }
     int getHi() const { return hi; }
 
-    void resized() override
-    {
-        auto r = getLocalBounds().toFloat();
-        labelBounds = r.removeFromLeft((float) kSliderLabelW);
-        valueBounds = r.removeFromRight((float) kSliderValueW);
-        r.removeFromRight((float) kSliderGap);
-        r.removeFromLeft((float) kSliderGap);
-        track = r.removeFromRight((float) kSliderTrackW)
-                    .withSizeKeepingCentre((float) kSliderTrackW, kSliderTrackH);
-    }
-
     void mouseDown(const juce::MouseEvent& e) override { dragThumb = hitThumb(e.position.x); setFromX(e.position.x); }
     void mouseDrag(const juce::MouseEvent& e) override { setFromX(e.position.x); }
-    void mouseDoubleClick(const juce::MouseEvent&) override
-    {
-        setRange(defLoV, defHiV);
-    }
+    void mouseDoubleClick(const juce::MouseEvent&) override { setRange(defLoV, defHiV); }
 
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        g.setFont(inspectorFont());
-        g.setColour(t.rowLabel);
-        g.drawText(label, labelBounds.toNearestInt(), juce::Justification::centredLeft, true);
+        auto r = getLocalBounds().toFloat();
+        const bool hot = isMouseOverOrDragging();
+        fillTallWell(g, r, hot);
 
-        g.setFont(inspectorMono());
-        g.setColour(t.valueText);
+        const float span = (float) juce::jmax(1, maxV - minV);
+        const float xLo = r.getX() + r.getWidth() * ((float) (lo - minV) / span);
+        const float xHi = r.getX() + r.getWidth() * ((float) (hi - minV) / span);
+        g.setColour(accentFill ? t.accent.withAlpha(0.85f) : t.tallFill);
+        g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(
+                                   xLo, r.getY(), xHi, r.getBottom()), kTallRadius);
+
+        auto pad = r.reduced(accentFill ? 8.0f : kTallPadX, 0.0f);
+        // Library search filters use compact 11pt (Caps B2 FILTER_PT).
+        g.setFont(accentFill ? uiFontFixed(kAnnotPt) : inspectorFont());
+        const auto labelCol = accentFill ? juce::Colours::white
+                                         : (hot ? t.headerText : t.rowLabel);
+        g.setColour(labelCol);
+        g.drawText(label, pad.toNearestInt(), juce::Justification::centredLeft, true);
+
+        g.setFont(accentFill ? monoFontFixed(kAnnotPt) : inspectorMono());
+        g.setColour(accentFill ? juce::Colours::white : t.headerText);
         const auto text = valueText.isNotEmpty() ? valueText
                       : (juce::String(lo) + "-" + juce::String(hi));
-        g.drawText(text, valueBounds.toNearestInt(), juce::Justification::centredRight, true);
-
-        const float radius = kSliderTrackH * 0.5f;
-        g.setColour(t.sliderTrack);
-        g.fillRoundedRectangle(track, radius);
-
-        const float span = juce::jmax(1, maxV - minV);
-        const float xLo = track.getX() + track.getWidth() * ((float) (lo - minV) / span);
-        const float xHi = track.getX() + track.getWidth() * ((float) (hi - minV) / span);
-        g.setColour(t.accent.withAlpha(t.dark ? 0.85f : 0.75f));
-        g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(
-                                   xLo, track.getY(), xHi, track.getBottom()), radius);
-
-        const float d = kSliderThumbR * 2.0f;
-        auto drawThumb = [&](float x)
-        {
-            g.setColour(t.sliderKnob);
-            g.fillEllipse(x - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d);
-            g.setColour(t.dark ? t.accent.withAlpha(0.55f) : t.controlHairline);
-            g.drawEllipse(x - kSliderThumbR, track.getCentreY() - kSliderThumbR, d, d,
-                          t.dark ? 1.0f : 0.75f);
-        };
-        drawThumb(xLo);
-        drawThumb(xHi);
+        g.drawText(text, pad.toNearestInt(), juce::Justification::centredRight, true);
     }
 
 private:
@@ -689,19 +661,19 @@ private:
 
     Thumb hitThumb(float x) const
     {
-        const float span = juce::jmax(1, maxV - minV);
-        const float xLo = track.getX() + track.getWidth() * ((float) (lo - minV) / span);
-        const float xHi = track.getX() + track.getWidth() * ((float) (hi - minV) / span);
+        const float span = (float) juce::jmax(1, maxV - minV);
+        const float w = (float) juce::jmax(1, getWidth());
+        const float xLo = w * ((float) (lo - minV) / span);
+        const float xHi = w * ((float) (hi - minV) / span);
         const float dLo = std::abs(x - xLo);
         const float dHi = std::abs(x - xHi);
-        if (dLo <= dHi && dLo < kSliderThumbR * 2.5f) return Thumb::Lo;
-        if (dHi < kSliderThumbR * 2.5f) return Thumb::Hi;
-        return (x < (xLo + xHi) * 0.5f) ? Thumb::Lo : Thumb::Hi;
+        if (dLo <= dHi) return Thumb::Lo;
+        return Thumb::Hi;
     }
 
     void setFromX(float x)
     {
-        const float t = juce::jlimit(0.0f, 1.0f, (x - track.getX()) / juce::jmax(1.0f, track.getWidth()));
+        const float t = juce::jlimit(0.0f, 1.0f, x / (float) juce::jmax(1, getWidth()));
         const int v = minV + (int) std::lround(t * (float) (maxV - minV));
         if (dragThumb == Thumb::Lo)
             setRange(juce::jmin(v, hi), hi);
@@ -711,10 +683,9 @@ private:
 
     juce::String label;
     int minV, maxV, lo, hi, defLoV, defHiV;
-    juce::Rectangle<float> track, labelBounds, valueBounds;
 };
 
-// ── InlineRow ────────────────────────────────────────────────────────────────
+// ── InlineRow (title left · control right-aligned at kSelectW) ───────────────
 
 class InlineRow : public juce::Component
 {
@@ -727,20 +698,16 @@ public:
     void resized() override
     {
         auto r = getLocalBounds();
-        r.removeFromLeft(kSliderLabelW);
-        r.removeFromLeft(kSliderGap);
-        const int w = controlW > 0 ? controlW
-                    : (control.getWidth() > 0 ? control.getWidth() : 72);
-        // Cap width so long labels (e.g. articulation) don't blow past the value column.
-        const int maxW = juce::jmax(40, r.getWidth());
-        const int useW = juce::jmin(w, maxW);
+        // Caps B2: always fixed select width, right-aligned.
+        const int useW = controlW > 0 ? controlW : kSelectW;
         auto ctrl = r.removeFromRight(useW);
         control.setBounds(ctrl.withSizeKeepingCentre(useW, kControlH));
+        labelBounds = r.withTrimmedRight(8);
     }
 
     void setControlWidth(int w)
     {
-        controlW = w;
+        controlW = w > 0 ? w : kSelectW;
         resized();
     }
 
@@ -748,8 +715,7 @@ public:
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText(label, getLocalBounds().withWidth(kSliderLabelW),
-                   juce::Justification::centredLeft, true);
+        g.drawText(label, labelBounds, juce::Justification::centredLeft, true);
     }
 
     juce::Component& control;
@@ -757,6 +723,7 @@ public:
 
 private:
     juce::String label;
+    juce::Rectangle<int> labelBounds;
 };
 
 // ── KeyModeRow ───────────────────────────────────────────────────────────────
@@ -773,20 +740,20 @@ public:
     void resized() override
     {
         auto r = getLocalBounds();
-        const int modeW = modePopup.idealWidth();
-        const int keyW = keyPopup.idealWidth();
-        modePopup.setBounds(r.removeFromRight(modeW).withSizeKeepingCentre(modeW, kControlH));
-        r.removeFromRight(7);
-        keyPopup.setBounds(r.removeFromRight(keyW).withSizeKeepingCentre(keyW, kControlH));
+        modePopup.setBounds(r.removeFromRight(kSelectW).withSizeKeepingCentre(kSelectW, kControlH));
+        r.removeFromRight(6);
+        keyPopup.setBounds(r.removeFromRight(kSelectW).withSizeKeepingCentre(kSelectW, kControlH));
+        labelBounds = r.withTrimmedRight(8);
     }
 
     void paint(juce::Graphics& g) override
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText("Key", getLocalBounds().withWidth(kSliderLabelW),
-                   juce::Justification::centredLeft, true);
+        g.drawText("Key", labelBounds, juce::Justification::centredLeft, true);
     }
+
+    juce::Rectangle<int> labelBounds;
 
 private:
     FlatPopup& keyPopup;
@@ -807,27 +774,29 @@ public:
     void resized() override
     {
         auto r = getLocalBounds();
-        const int maxW = maxPopup.idealWidth();
-        const int minW = minPopup.idealWidth();
-        maxPopup.setBounds(r.removeFromRight(maxW).withSizeKeepingCentre(maxW, kControlH));
-        r.removeFromRight(7);
-        minPopup.setBounds(r.removeFromRight(minW).withSizeKeepingCentre(minW, kControlH));
+        // Two popups must share the row — slightly under half of typical content width.
+        constexpr int kRangeSelectW = 72;
+        maxPopup.setBounds(r.removeFromRight(kRangeSelectW).withSizeKeepingCentre(kRangeSelectW, kControlH));
+        r.removeFromRight(6);
+        minPopup.setBounds(r.removeFromRight(kRangeSelectW).withSizeKeepingCentre(kRangeSelectW, kControlH));
+        labelBounds = r.withTrimmedRight(8);
     }
 
     void paint(juce::Graphics& g) override
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText("Range", getLocalBounds().withWidth(kSliderLabelW),
-                   juce::Justification::centredLeft, true);
+        g.drawText("Range", labelBounds, juce::Justification::centredLeft, true);
     }
+
+    juce::Rectangle<int> labelBounds;
 
 private:
     FlatPopup& minPopup;
     FlatPopup& maxPopup;
 };
 
-// ── PitchRow ─────────────────────────────────────────────────────────────────
+// ── PitchRow (plain text + note tight against bare stepper) ──────────────────
 
 class PitchRow : public juce::Component
 {
@@ -839,6 +808,7 @@ public:
     {
         stepper.minV = -12;
         stepper.maxV = 12;
+        stepper.bare = true;
         stepper.format = [](int v) { return signedIntText(v); };
         addAndMakeVisible(stepper);
     }
@@ -848,8 +818,8 @@ public:
         auto r = getLocalBounds();
         const int stepW = stepper.idealWidth();
         stepper.setBounds(r.removeFromRight(stepW).withSizeKeepingCentre(stepW, kControlH));
-        r.removeFromRight(kSliderGap);
-        r.removeFromLeft(kSliderLabelW);
+        r.removeFromRight(4);
+        r.removeFromLeft(42);
         annotBounds = r;
     }
 
@@ -857,10 +827,10 @@ public:
     {
         g.setFont(inspectorFont());
         g.setColour(inspectorTokens().rowLabel);
-        g.drawText("Pitch", getLocalBounds().withWidth(kSliderLabelW),
+        g.drawText("Pitch", getLocalBounds().withWidth(42),
                    juce::Justification::centredLeft, true);
 
-        g.setFont(uiFont(kAnnotPt, false));
+        g.setFont(uiFontFixed(kAnnotPt, false));
         g.setColour(inspectorTokens().valueText);
         g.drawFittedText(annotation, annotBounds, juce::Justification::centredRight, 1);
     }
@@ -868,7 +838,7 @@ public:
     juce::Rectangle<int> annotBounds;
 };
 
-// ── Section ──────────────────────────────────────────────────────────────────
+// ── Section (fold chevron + large title + refresh + lock) ────────────────────
 
 class Section : public juce::Component
 {
@@ -890,6 +860,15 @@ public:
         if (onToggle) onToggle();
         repaint();
     }
+
+    void setLocked(bool l)
+    {
+        if (locked == l) return;
+        locked = l;
+        repaint();
+    }
+
+    bool isLocked() const { return locked; }
 
     /** Re-evaluate dirty-row visibility (call after param changes). */
     void refreshDirtyRows()
@@ -921,8 +900,6 @@ public:
         auto r = getLocalBounds();
         r.removeFromTop(kSectionPadT + kSectionHeaderH + kSectionTitleGap);
         r.removeFromBottom(kSectionPadB);
-        // Keep the right edge; inset left so row labels line up with the title text
-        // (title sits past the chevron).
         r.removeFromLeft(kSectionPadH + kSectionRowInset);
         r.removeFromRight(kSectionPadH);
         bool first = true;
@@ -941,8 +918,24 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override
     {
-        if (e.y <= kSectionPadT + kSectionHeaderH)
-            setOpen(!open);
+        if (e.y > kSectionPadT + kSectionHeaderH) return;
+
+        auto header = getLocalBounds().withTrimmedTop(kSectionPadT).removeFromTop(kSectionHeaderH)
+                          .reduced(kSectionPadH, 0);
+        auto lockR = header.removeFromRight(kHeaderIconW);
+        auto resetR = header.removeFromRight(kHeaderIconW);
+
+        if (lockR.contains(e.getPosition()) && onLockToggle)
+        {
+            onLockToggle();
+            return;
+        }
+        if (resetR.contains(e.getPosition()) && onReset)
+        {
+            onReset();
+            return;
+        }
+        setOpen(!open);
     }
 
     void paint(juce::Graphics& g) override
@@ -951,23 +944,34 @@ public:
         auto header = getLocalBounds().withTrimmedTop(kSectionPadT).removeFromTop(kSectionHeaderH);
         header = header.reduced(kSectionPadH, 0);
 
+        auto lockR = header.removeFromRight(kHeaderIconW).toFloat()
+                         .withSizeKeepingCentre(16.0f, 16.0f);
+        auto resetR = header.removeFromRight(kHeaderIconW).toFloat()
+                          .withSizeKeepingCentre(16.0f, 16.0f);
+
         auto chev = header.removeFromLeft(14).toFloat().withSizeKeepingCentre(12.0f, 12.0f);
-        header.removeFromLeft(4);
+        header.removeFromLeft(6);
         if (open)
             drawCaretDown(g, chev, t.chevron);
         else
             drawCaretRight(g, chev, t.chevron);
 
-        g.setFont(inspectorFont(true));
+        g.setFont(sectionTitleFont());
         g.setColour(t.headerText);
-        g.drawText(title, header, juce::Justification::centredLeft);
+        g.drawText(title, header, juce::Justification::centredLeft, true);
 
-        drawInspectorDivider(g, getLocalBounds());
+        drawIcon(g, icons::undo, resetR, t.chevron, 1.4f);
+        drawIcon(g, locked ? icons::lockClosed : icons::lockOpen, lockR,
+                 locked ? t.accent : t.chevron, 1.4f);
     }
 
     juce::String title;
-    bool open = false;
+    /** Expanded by default; when folded, dirty (changed) rows stay visible. */
+    bool open = true;
+    bool locked = false;
     std::function<void()> onToggle;
+    std::function<void()> onReset;
+    std::function<void()> onLockToggle;
 
     struct Row
     {

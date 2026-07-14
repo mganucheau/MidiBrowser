@@ -129,10 +129,12 @@ TEST_CASE("Fold and pitch-lock buttons are reachable; lock persists a template",
     // Effects lock lives in the Effects inspector header.
     auto* lock = dynamic_cast<juce::Button*>(findById(ed.get(), "btnLock"));
     REQUIRE(lock != nullptr);
-    REQUIRE_FALSE(proc.effectsLock);
+    REQUIRE(proc.sectionLocks == 0);
     lock->onClick();
+    CHECK(proc.sectionLocks == toolkitLock::All);
     CHECK(proc.effectsLock);
     lock->onClick();
+    CHECK(proc.sectionLocks == 0);
     CHECK_FALSE(proc.effectsLock);
 
     ed = nullptr;

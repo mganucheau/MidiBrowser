@@ -4,7 +4,7 @@
 
 namespace pflow {
 
-/** Toolbar: Midi Browser · play/stop · bpm · editor / effects. */
+/** Toolbar: Midi Toolkit · play/stop · bpm · editor / toolkit. */
 class TransportBar : public juce::Component
 {
 public:
@@ -100,10 +100,10 @@ private:
     IconBtn btnPlay { icons::play, "Play preview" };
     IconBtn btnStop { icons::stop, "Stop preview" };
     StatusPill statusPill;
-    IconBtn btnSync { icons::infinity, "Sync to host tempo" };
+    IconBtn btnSync { icons::sync, "Sync to host tempo" };
     DragChip btnDragToDaw { "Drag Me" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
-    IconBtn btnEffects { icons::sliders, "Toggle effects" };
+    IconBtn btnEffects { icons::sidebarRight, "Toggle toolkit" };
 
     juce::Rectangle<int> titleBounds;
 

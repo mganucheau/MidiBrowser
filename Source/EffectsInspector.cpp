@@ -8,8 +8,8 @@ EffectsInspector::EffectsInspector()
     : tempoRow("Tempo", tempoToggle)
     , extendRow("Extend", extendPopup)
     , swingTimeRow("Swing Time", swingTimePopup)
-    , quantizeTimeRow("Quantize Time", quantizeTimePopup)
-    , quantizeStrengthSl("Quantize", 0, 100, 0, false)
+    , quantizeTimeRow("Quantize", quantizeTimePopup)
+    , quantizeStrengthSl("Strength", 0, 100, 0, false)
     , swing("Swing", 0, 100, 0, false)
     , pocket("Pocket", -100, 100, 0, true)
     , humanize("Humanize", 0, 100, 0, false)
@@ -17,18 +17,19 @@ EffectsInspector::EffectsInspector()
     , dynamicsSl("Dynamics", -100, 100, 0, true)
     , intensitySl("Intensity", 0, 200, 100, false)
     , articulationRow("Articulation", articulationPopup)
-    , articulationStrengthSl("", 0, 100, 0, false)
+    , articulationStrengthSl("Strength", 0, 100, 0, false)
     , velocityRangeSl("Velocity", 1, 127, 1, 127)
     , sustainRow("Sustain Pedal", sustainPopup)
     , complexitySl("Complexity", 0, 100, 50, false)
     , variationsSl("Variations", 0, 16, 0, false)
-    , delayTimeRow("Delay Time", delayTimePopup)
-    , delayAmountSl("Delay", 0, 100, 0, false)
-    , delayFeedbackSl("Feedback", 0, 100, 40, false)
+    , delayTimeRow("Delay", delayTimePopup)
+    , delayAmountSl("Delay Amount", 0, 100, 0, false)
+    , delayFeedbackSl("Delay Feedback", 0, 100, 40, false)
     , octaveRow("Octave", octaveStepper)
     , octaveRangeRow("Octave Range", octaveRangePopup)
     , pitchRangeRow(pitchMinPopup, pitchMaxPopup)
-    , keyModeRow(keyPopup, modePopup)
+    , keyRow("Key", keyPopup)
+    , modeRow("Mode", modePopup)
     , trimRow("Trim empty measures", trimSwitch)
     , fitRow("Fit to Scale", fitSwitch)
     , mapRow("Map to Root", mapSwitch)
@@ -41,29 +42,21 @@ EffectsInspector::EffectsInspector()
 
     btnReset.setComponentID("btnEffectsReset");
     btnReset.setWantsKeyboardFocus(false);
-    btnReset.setTooltip("Reset effects and pitch shaping to defaults");
-    btnReset.onClick = [this]
-    {
-        groove = GrooveParams();
-        setGroove(groove, juce::dontSendNotification);
-        setBpmMultiplier(1.0, juce::dontSendNotification);
-        resetPitchEditFields();
-        setEdit(edit, juce::dontSendNotification);
-        if (onResetGroove) onResetGroove();
-        notifyGroove();
-        notifyEdit();
-        if (onBpmMultiplierChanged) onBpmMultiplierChanged(bpmMultiplier);
-    };
+    btnReset.ghost = true;
+    btnReset.iconScale = 1.0f;
+    btnReset.setTooltip("Reset unlocked Toolkit sections");
+    btnReset.onClick = [this] { resetUnlockedSections(); };
     addAndMakeVisible(btnReset);
 
     btnEffectsLock.setComponentID("btnLock");
     btnEffectsLock.setWantsKeyboardFocus(false);
-    btnEffectsLock.setTooltip("Lock effects while browsing clips");
+    btnEffectsLock.ghost = true;
+    btnEffectsLock.iconScale = 1.0f;
+    btnEffectsLock.setTooltip("Lock all Toolkit parameters while browsing");
     btnEffectsLock.onClick = [this]
     {
-        effectsLocked = !effectsLocked;
-        setEffectsLocked(effectsLocked);
-        if (onEffectsLockToggled) onEffectsLockToggled(effectsLocked);
+        const bool allOn = (sectionLocks & toolkitLock::All) == toolkitLock::All;
+        setAllSectionsLocked(!allOn);
     };
     addAndMakeVisible(btnEffectsLock);
 
@@ -350,7 +343,10 @@ EffectsInspector::EffectsInspector()
     pitchSec.addRow(&octaveRangeRow, kRowMinH, [this] { return edit.octaveRange != 0; });
     pitchSec.addRow(&pitchRow, kRowMinH, [this] { return edit.pitchShift != 0; });
     pitchSec.addRow(&pitchRangeRow, kRowMinH, [this] { return edit.hasPitchRange(); });
-    pitchSec.addRow(&keyModeRow, kRowMinH, [this] {
+    pitchSec.addRow(&keyRow, kRowMinH, [this] {
+        return edit.root >= 0 && (edit.fitScale || edit.mapToRoot);
+    });
+    pitchSec.addRow(&modeRow, kRowMinH, [this] {
         return edit.root >= 0 && (edit.fitScale || edit.mapToRoot);
     });
     pitchSec.addRow(&fitRow, kRowMinH, [this] { return edit.fitScale; });
@@ -366,11 +362,31 @@ EffectsInspector::EffectsInspector()
         return groove.delayAmount > 0 && groove.delayFeedback != 40;
     });
 
-    for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
+    playback.onToggle = timing.onToggle = performance.onToggle = pitchSec.onToggle
+        = effectsSec.onToggle = [this] { layoutSections(); };
+
+    playback.onReset = [this] { resetPlaybackSection(); };
+    playback.onLockToggle = [this] { toggleSectionLock(toolkitLock::Playback); };
+
+    timing.onReset = [this] { resetTimingSection(); };
+    timing.onLockToggle = [this] { toggleSectionLock(toolkitLock::Timing); };
+
+    performance.onReset = [this] { resetPerformanceSection(); };
+    performance.onLockToggle = [this] { toggleSectionLock(toolkitLock::Performance); };
+
+    pitchSec.onReset = [this]
     {
-        sec->onToggle = [this] { layoutSections(); };
+        resetPitchEditFields();
+        setEdit(edit, juce::dontSendNotification);
+        notifyEdit();
+    };
+    pitchSec.onLockToggle = [this] { toggleSectionLock(toolkitLock::Pitch); };
+
+    effectsSec.onReset = [this] { resetEffectsSection(); };
+    effectsSec.onLockToggle = [this] { toggleSectionLock(toolkitLock::Effects); };
+
+    for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
         body.addAndMakeVisible(*sec);
-    }
 
     setGroove(GrooveParams{}, juce::dontSendNotification);
     setEdit(ClipEdit{}, juce::dontSendNotification);
@@ -389,6 +405,115 @@ void EffectsInspector::resetPitchEditFields()
     edit.mapToRoot = false;
     edit.root = -1;
     edit.mode = Mode::Ionian;
+}
+
+void EffectsInspector::resetPlaybackSection()
+{
+    setBpmMultiplier(1.0, juce::dontSendNotification);
+    edit.extendMult = 1;
+    setEdit(edit, juce::dontSendNotification);
+    if (onBpmMultiplierChanged) onBpmMultiplierChanged(bpmMultiplier);
+    notifyEdit();
+}
+
+void EffectsInspector::resetTimingSection()
+{
+    groove.swing = 0;
+    groove.pocket = 0;
+    groove.humanize = 0;
+    groove.length = 100;
+    groove.swingGridIndex = 1;
+    groove.quantizeStrength = 0;
+    groove.quantizeGridIndex = (int) QuantizeGrid::Eighth;
+    setGroove(groove, juce::dontSendNotification);
+    notifyGroove();
+}
+
+void EffectsInspector::resetPerformanceSection()
+{
+    groove.dynamics = 0;
+    groove.intensity = 100;
+    groove.articulationIndex = (int) Articulation::Off;
+    groove.articulationStrength = 0;
+    groove.velocityRangeLo = 1;
+    groove.velocityRangeHi = 127;
+    groove.sustainPedalMode = (int) SustainPedalMode::Off;
+    groove.applyArticulationToKnobs();
+    setGroove(groove, juce::dontSendNotification);
+    syncArticulationKnobsToUi();
+    notifyGroove();
+}
+
+void EffectsInspector::resetEffectsSection()
+{
+    groove.complexityTarget = -1;
+    groove.variationIndex = 0;
+    groove.delayAmount = 0;
+    groove.delayFeedback = 40;
+    groove.delayTimeIndex = (int) DelayTime::Eighth;
+    setGroove(groove, juce::dontSendNotification);
+    refreshComplexitySlider();
+    notifyGroove();
+}
+
+void EffectsInspector::refreshHeaderLockButton()
+{
+    const bool allOn = (sectionLocks & toolkitLock::All) == toolkitLock::All;
+    btnEffectsLock.icon = allOn ? icons::lockClosed : icons::lockOpen;
+    btnEffectsLock.active = allOn;
+    btnEffectsLock.setTooltip(allOn ? "Unlock all Toolkit parameters"
+                                    : "Lock all Toolkit parameters while browsing");
+    btnEffectsLock.repaint();
+}
+
+void EffectsInspector::setSectionLocks(uint32_t locks)
+{
+    sectionLocks = locks & toolkitLock::All;
+    playback.setLocked((sectionLocks & toolkitLock::Playback) != 0);
+    timing.setLocked((sectionLocks & toolkitLock::Timing) != 0);
+    performance.setLocked((sectionLocks & toolkitLock::Performance) != 0);
+    pitchSec.setLocked((sectionLocks & toolkitLock::Pitch) != 0);
+    effectsSec.setLocked((sectionLocks & toolkitLock::Effects) != 0);
+    refreshHeaderLockButton();
+    repaint();
+}
+
+void EffectsInspector::toggleSectionLock(uint32_t bit)
+{
+    bit &= toolkitLock::All;
+    if (bit == 0) return;
+    if ((sectionLocks & bit) != 0)
+        sectionLocks &= ~bit;
+    else
+        sectionLocks |= bit;
+    setSectionLocks(sectionLocks);
+    if (onSectionLocksChanged) onSectionLocksChanged(sectionLocks);
+}
+
+void EffectsInspector::setAllSectionsLocked(bool locked)
+{
+    sectionLocks = locked ? toolkitLock::All : 0;
+    setSectionLocks(sectionLocks);
+    if (onSectionLocksChanged) onSectionLocksChanged(sectionLocks);
+}
+
+void EffectsInspector::resetUnlockedSections()
+{
+    if ((sectionLocks & toolkitLock::Playback) == 0)
+        resetPlaybackSection();
+    if ((sectionLocks & toolkitLock::Timing) == 0)
+        resetTimingSection();
+    if ((sectionLocks & toolkitLock::Performance) == 0)
+        resetPerformanceSection();
+    if ((sectionLocks & toolkitLock::Pitch) == 0)
+    {
+        resetPitchEditFields();
+        setEdit(edit, juce::dontSendNotification);
+        notifyEdit();
+    }
+    if ((sectionLocks & toolkitLock::Effects) == 0)
+        resetEffectsSection();
+    if (onResetUnlocked) onResetUnlocked();
 }
 
 void EffectsInspector::syncArticulationKnobsToUi()
@@ -435,23 +560,6 @@ void EffectsInspector::refreshDirtySections()
     layoutSections();
 }
 
-void EffectsInspector::setEffectsLocked(bool locked)
-{
-    effectsLocked = locked;
-    btnEffectsLock.icon = locked ? icons::lockClosed : icons::lockOpen;
-    btnEffectsLock.active = locked;
-    btnEffectsLock.setTooltip(locked ? "Unlock effects while browsing"
-                                     : "Lock effects while browsing clips");
-    btnEffectsLock.repaint();
-    repaint();
-}
-
-void EffectsInspector::setPitchLocked(bool locked)
-{
-    pitchLocked = locked;
-    juce::ignoreUnused(pitchLocked);
-}
-
 void EffectsInspector::setHasClip(bool has)
 {
     hasClip = has;
@@ -483,6 +591,7 @@ void EffectsInspector::setBpmMultiplier(double mult, juce::NotificationType)
 {
     bpmMultiplier = juce::jlimit(0.25, 4.0, mult);
     tempoToggle.setMultiplier(bpmMultiplier, juce::dontSendNotification);
+    refreshDirtySections();
 }
 
 void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
@@ -594,47 +703,46 @@ void EffectsInspector::layoutSections()
 void EffectsInspector::resized()
 {
     auto r = getLocalBounds();
-    const int headerH = metrics::listHeaderH();
+    const int headerH = metrics::paneHeaderH();
     auto header = r.removeFromTop(headerH).reduced(10, 4);
     const int iconBtn = metrics::chromeIconButton();
-    btnEffectsLock.ghost = true;
-    btnEffectsLock.iconScale = 1.0f;
-    btnReset.ghost = true;
-    btnReset.iconScale = 1.0f;
+    btnEffectsLock.iconScale = 0.9f;
+    btnReset.iconScale = 0.9f;
     btnEffectsLock.setBounds(header.removeFromRight(iconBtn).withSizeKeepingCentre(iconBtn, iconBtn));
-    header.removeFromRight(4);
+    header.removeFromRight(2);
     btnReset.setBounds(header.removeFromRight(iconBtn).withSizeKeepingCentre(iconBtn, iconBtn));
 
     viewport.setBounds(r);
     body.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()), body.getHeight());
 
-    tempoToggle.setSize(tempoToggle.idealWidth(), kControlH);
-    tempoRow.setControlWidth(tempoToggle.idealWidth());
+    auto fitSelect = [](fx::FlatPopup& p, fx::InlineRow& row)
+    {
+        p.setSize(kSelectW, kControlH);
+        row.setControlWidth(kSelectW);
+    };
+    {
+        const int tempoW = juce::jmax(kSelectW, tempoToggle.idealWidth());
+        tempoToggle.setSize(tempoW, kControlH);
+        tempoRow.setControlWidth(tempoW);
+    }
     trimRow.setControlWidth(trimSwitch.idealWidth());
-    extendPopup.setSize(extendPopup.idealWidth(), kControlH);
-    extendRow.setControlWidth(extendPopup.idealWidth());
+    fitSelect(extendPopup, extendRow);
+    fitSelect(swingTimePopup, swingTimeRow);
+    fitSelect(quantizeTimePopup, quantizeTimeRow);
+    fitSelect(articulationPopup, articulationRow);
+    fitSelect(sustainPopup, sustainRow);
+    fitSelect(delayTimePopup, delayTimeRow);
+    fitSelect(octaveRangePopup, octaveRangeRow);
+    fitSelect(keyPopup, keyRow);
+    fitSelect(modePopup, modeRow);
 
-    swingTimePopup.setSize(swingTimePopup.idealWidth(), kControlH);
-    swingTimeRow.setControlWidth(swingTimePopup.idealWidth());
-    quantizeTimePopup.setSize(quantizeTimePopup.idealWidth(), kControlH);
-    quantizeTimeRow.setControlWidth(quantizeTimePopup.idealWidth());
-    articulationPopup.setSize(articulationPopup.idealWidth(), kControlH);
-    articulationRow.setControlWidth(articulationPopup.idealWidth());
-    sustainPopup.setSize(sustainPopup.idealWidth(), kControlH);
-    sustainRow.setControlWidth(sustainPopup.idealWidth());
-
-    delayTimePopup.setSize(delayTimePopup.idealWidth(), kControlH);
-    delayTimeRow.setControlWidth(delayTimePopup.idealWidth());
-
-    octaveStepper.setSize(octaveStepper.idealWidth(), kControlH);
-    octaveRow.setControlWidth(octaveStepper.idealWidth());
-    octaveRangePopup.setSize(octaveRangePopup.idealWidth(), kControlH);
-    octaveRangeRow.setControlWidth(octaveRangePopup.idealWidth());
+    octaveStepper.setSize(kSelectW, kControlH);
+    octaveRow.setControlWidth(kSelectW);
     pitchRow.stepper.setSize(pitchRow.stepper.idealWidth(), kControlH);
     fitRow.setControlWidth(fitSwitch.idealWidth());
     mapRow.setControlWidth(mapSwitch.idealWidth());
-    keyModeRow.setSize(keyPopup.idealWidth() + modePopup.idealWidth() + 7, kRowMinH);
-    pitchRangeRow.setSize(pitchMinPopup.idealWidth() + pitchMaxPopup.idealWidth() + 7, kRowMinH);
+    pitchMinPopup.setSize(72, kControlH);
+    pitchMaxPopup.setSize(72, kControlH);
 
     layoutSections();
 }
@@ -646,13 +754,16 @@ void EffectsInspector::paint(juce::Graphics& g)
     g.setColour(t.divider);
     g.fillRect(getLocalBounds().removeFromLeft(1));
 
-    auto header = getLocalBounds().removeFromTop(metrics::listHeaderH());
+    auto header = getLocalBounds().removeFromTop(metrics::paneHeaderH());
     g.setColour(t.divider);
     g.fillRect(header.getX(), header.getBottom() - 1, header.getWidth(), 1);
 
-    g.setColour(t.headerText);
-    g.setFont(inspectorFont(true));
-    g.drawText("Effects", 14, 0, 120, header.getHeight(), juce::Justification::centredLeft);
+    // Caps B2 cap bar — 11pt tracked, same language as LIBRARY.
+    auto cap = uiFontFixed(11.0f, true);
+    cap.setExtraKerningFactor(0.06f);
+    g.setColour(t.valueText);
+    g.setFont(cap);
+    g.drawText("TOOLKIT", 14, 0, 120, header.getHeight(), juce::Justification::centredLeft);
 }
 
 void EffectsInspector::mouseDown(const juce::MouseEvent&)

@@ -291,7 +291,8 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     original.trimEmptyMeasuresPreview = true;
     original.syncSessionBars.store(8);
     original.effectsOpen = true;
-    original.effectsLock = true;
+    original.sectionLocks = toolkitLock::All;
+    original.syncLockFlagsFromSections();
     original.lockedGroove.swing = 42;
     original.lockedGroove.pocket = -20;
     tweaks().density.store((int) Density::Comfortable);
@@ -311,6 +312,7 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     REQUIRE(restored.trimEmptyMeasuresPreview == original.trimEmptyMeasuresPreview);
     REQUIRE(restored.syncSessionBars.load() == 8);
     REQUIRE(restored.effectsOpen);
+    REQUIRE(restored.sectionLocks == toolkitLock::All);
     REQUIRE(restored.effectsLock);
     REQUIRE(restored.lockedGroove.swing == 42);
     REQUIRE(restored.lockedGroove.pocket == -20);

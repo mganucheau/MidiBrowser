@@ -3,7 +3,6 @@
 namespace pflow {
 
 namespace {
-constexpr int kTitlePad = 14;
 constexpr float kHeaderIconScale = 1.0f;
 }
 
@@ -18,16 +17,16 @@ void TransportBar::StatusPill::setText(const juce::String& t)
 
 void TransportBar::StatusPill::paint(juce::Graphics& g)
 {
+    // Caps B2 header A: square BPM well (not a capsule).
+    constexpr float kRadius = 4.0f;
     auto r = getLocalBounds().toFloat();
-    g.setColour(colours::panel());
-    g.fillRoundedRectangle(r, r.getHeight() * 0.5f);
-    g.setColour(colours::line());
-    g.drawRoundedRectangle(r.reduced(0.5f), r.getHeight() * 0.5f, 0.5f);
+    g.setColour(colours::elev());
+    g.fillRoundedRectangle(r, kRadius);
 
     g.setColour(colours::text());
     g.setFont(monoFont(12.0f, true));
     g.drawFittedText(editing ? editBuffer + "|" : text,
-                     getLocalBounds().reduced(12, 0),
+                     getLocalBounds().reduced(8, 0),
                      juce::Justification::centred, 1);
 }
 
@@ -135,6 +134,7 @@ TransportBar::TransportBar()
     addAndMakeVisible(btnSync);
 
     btnDragToDaw.accentText = false;
+    btnDragToDaw.cornerRadius = 4.0f;
     btnDragToDaw.setTooltip("Drag edited clip onto a DAW track (or right-click to copy)");
     btnDragToDaw.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
@@ -147,7 +147,7 @@ TransportBar::TransportBar()
     addAndMakeVisible(btnEditor);
 
     prep(btnEffects);
-    btnEffects.setTooltip("Toggle effects\nShortcut: F");
+    btnEffects.setTooltip("Toggle toolkit\nShortcut: F");
     btnEffects.onClick = [this] { if (onToggleEffects) onToggleEffects(); };
     addAndMakeVisible(btnEffects);
 
@@ -234,24 +234,27 @@ void TransportBar::refreshBpm()
 
 void TransportBar::resized()
 {
-    auto r = getLocalBounds().reduced(0, 8);
+    // Brand left · play/stop/bpm/sync centred · drag/editor/toolkit right
+    auto r = getLocalBounds().reduced(0, 10);
     const int btn = metrics::chromeIconButton();
-    const int gap = 6;
-    const int brandPad = 10;
+    const int gap = 8;
+    const int brandPad = 12;
+    const int pillW = 88;
+    const int pillH = 26;
+    const int dragH = 22;
 
     auto mid = [&](juce::Rectangle<int> a, int h)
     {
         return a.withSizeKeepingCentre(a.getWidth(), h);
     };
 
-    // Brand: Midi Browser
-    auto brand = r.removeFromLeft(130);
+    auto brand = r.removeFromLeft(120);
     brand.removeFromLeft(brandPad);
     titleBounds = brand;
 
-    r.removeFromRight(kTitlePad);
+    r.removeFromRight(brandPad);
 
-    // Right cluster: editor · effects
+    // Right: Drag Me · editor · toolkit
     btnEffects.setBounds(mid(r.removeFromRight(btn), btn));
     r.removeFromRight(gap);
     btnEditor.setBounds(mid(r.removeFromRight(btn), btn));
@@ -259,19 +262,19 @@ void TransportBar::resized()
     btnDragToDaw.setVisible((editorOpen || effectsOpen) && hasClip);
     if (btnDragToDaw.isVisible())
     {
-        r.removeFromRight(10);
-        btnDragToDaw.setBounds(mid(r.removeFromRight(btnDragToDaw.idealWidth()), 26));
+        r.removeFromRight(gap);
+        const int dragW = juce::jmax(64, btnDragToDaw.idealWidth() - 8);
+        btnDragToDaw.setBounds(mid(r.removeFromRight(dragW), dragH));
     }
 
-    // Center transport: play · stop · bpm pill · sync
-    const int pillW = 88;
+    // Centre transport in remaining space
     const int transportW = btn + gap + btn + gap + pillW + gap + btn;
-    auto transport = r.withSizeKeepingCentre(transportW, getHeight());
+    auto transport = r.withSizeKeepingCentre(transportW, r.getHeight());
     btnPlay.setBounds(mid(transport.removeFromLeft(btn), btn));
     transport.removeFromLeft(gap);
     btnStop.setBounds(mid(transport.removeFromLeft(btn), btn));
     transport.removeFromLeft(gap);
-    statusPill.setBounds(mid(transport.removeFromLeft(pillW), 26));
+    statusPill.setBounds(mid(transport.removeFromLeft(pillW), pillH));
     transport.removeFromLeft(gap);
     btnSync.setBounds(mid(transport.removeFromLeft(btn), btn));
 }
@@ -286,7 +289,7 @@ void TransportBar::paint(juce::Graphics& g)
 
     g.setColour(colours::text());
     g.setFont(uiFont(13.0f, true));
-    g.drawText("Midi Browser", titleBounds, juce::Justification::centredLeft, false);
+    g.drawText("Midi Toolkit", titleBounds, juce::Justification::centredLeft, false);
 }
 
 } // namespace pflow

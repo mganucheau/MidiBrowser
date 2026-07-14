@@ -186,6 +186,8 @@ private:
     void refreshControls();
     void updateRollSize();
     void scrollToContent();
+    /** Fit horizontal width to the clip and vertical zoom to the note range (centered if sparse). */
+    void zoomToClip();
     void layoutScaleControls(juce::Rectangle<int> area);
     void nudgeSelection(int dPitch, int dStep);
 
@@ -266,7 +268,7 @@ private:
     IconBtn btnLock { icons::lockOpen, "Lock pitch edits while browsing" };
     IconBtn btnRevert { icons::undo, "Revert all edits" };
     ChipBtn btnTrim { "Trim", icons::scissors };
-    ChipBtn btnFold { "Notes in Key", icons::foldRows };
+    ChipBtn btnFold { "Fold", icons::foldRows };
     IconBtn btnZoomOut { icons::zoomOut, "Zoom out" };
     IconBtn btnZoomIn { icons::zoomIn, "Zoom in" };
     ChipBtn selBadge { "0 sel" };
@@ -281,7 +283,7 @@ private:
     ScalePanel scalePanel { *this };
 
     static constexpr int stripH = 0;
-    static constexpr int toolbarH = 32;
+    static constexpr int toolbarH = 40; // match Toolkit / browser headers
     static constexpr int gutterW = 56;
 
     juce::Rectangle<int> zoomLabelBounds, gridLabelBounds;

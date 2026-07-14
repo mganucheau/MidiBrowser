@@ -6,7 +6,7 @@ namespace pflow {
 juce::File LibraryStore::libraryFile()
 {
     auto dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                   .getChildFile("Midi Browser");
+                   .getChildFile("Midi Toolkit");
     dir.createDirectory();
     return dir.getChildFile("library.xml");
 }
@@ -19,6 +19,8 @@ bool LibraryStore::searchesEqual(const BrowserSearch& a, const BrowserSearch& b)
         && a.keyRoot == b.keyRoot
         && a.barsMin == b.barsMin
         && a.barsMax == b.barsMax
+        && a.complexityMin == b.complexityMin
+        && a.complexityMax == b.complexityMax
         && a.subdirs == b.subdirs
         && a.removeDuplicates == b.removeDuplicates;
 }
@@ -30,8 +32,10 @@ BrowserSearch readBrowserSearch(const juce::XmlElement& el)
     BrowserSearch s;
     s.query = el.getStringAttribute("query");
     s.keyRoot = el.getIntAttribute("key", -1);
-    s.subdirs = el.getIntAttribute("subdirs", 0) != 0;
-    s.removeDuplicates = el.getIntAttribute("removeDuplicates", 0) != 0;
+    s.subdirs = el.getIntAttribute("subdirs", 1) != 0;
+    s.removeDuplicates = el.getIntAttribute("removeDuplicates", 1) != 0;
+    s.complexityMin = juce::jmax(0, el.getIntAttribute("complexityMin", 0));
+    s.complexityMax = juce::jmax(0, el.getIntAttribute("complexityMax", 0));
 
     if (el.hasAttribute("bpmMin") || el.hasAttribute("bpmMax"))
     {
@@ -70,6 +74,8 @@ void writeBrowserSearch(juce::XmlElement& el, const BrowserSearch& s)
     el.setAttribute("key", s.keyRoot);
     el.setAttribute("barsMin", s.barsMin);
     el.setAttribute("barsMax", s.barsMax);
+    el.setAttribute("complexityMin", s.complexityMin);
+    el.setAttribute("complexityMax", s.complexityMax);
     el.setAttribute("subdirs", s.subdirs ? 1 : 0);
     el.setAttribute("removeDuplicates", s.removeDuplicates ? 1 : 0);
 }

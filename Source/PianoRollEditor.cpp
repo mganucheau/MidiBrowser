@@ -4,7 +4,8 @@
 namespace pflow {
 
 namespace {
-constexpr int kBarsZoomChoices[] = { 0, 2, 4, 8, 16 }; // 0 = File (fit clip)
+// -1 = Clip (fit width + note range); 0 = File (fit width); else N bars across view.
+constexpr int kBarsZoomChoices[] = { -1, 0, 2, 4, 8, 16 };
 constexpr int kDivisionChoices[] = { 16, 8, 4, 2, 1 };  // steps per grid unit
 } // namespace
 
@@ -135,15 +136,16 @@ void PianoRollMini::paint(juce::Graphics& g)
         }
         if (pitchInScale(p, rootPc, mode))
         {
-            g.setColour(colours::accent().withAlpha(usesDarkAppearance() ? 0.07f : 0.09f));
+            g.setColour(colours::accent().withAlpha(usesDarkAppearance() ? 0.05f : 0.06f));
             g.fillRect(b.getX(), y, b.getWidth(), h);
         }
-        g.setColour(colours::rollRowline().withAlpha(0.55f));
+        // Soft pitch lanes — keep notes readable over the grid.
+        g.setColour(colours::rollRowline().withAlpha(usesDarkAppearance() ? 0.10f : 0.14f));
         g.fillRect(b.getX(), y + h - 0.5f, b.getWidth(), 0.5f);
         g.fillRect(gutter.getX(), y + h - 0.5f, gutter.getWidth(), 0.5f);
     }
 
-    // Beat + bar grid.
+    // Beat + bar grid (very muted so note blocks stay primary).
     const int displayBars = juce::jmax(1, (int) std::lround((double) bars * timeStretch));
     const int stepsPerBar = kStepsPerBar;
     for (int bar = 0; bar < displayBars; ++bar)
@@ -151,8 +153,10 @@ void PianoRollMini::paint(juce::Graphics& g)
         for (int s = 0; s < stepsPerBar; s += divisionSteps)
         {
             const float x = b.getX() + (float) (bar * stepsPerBar + s) * pps;
-            g.setColour(s == 0 ? colours::lineStrong() : colours::rollRowline());
-            g.fillRect(x, b.getY(), s == 0 ? 1.2f : 0.6f, b.getHeight());
+            const bool isBar = (s == 0);
+            g.setColour(isBar ? colours::lineStrong().withAlpha(usesDarkAppearance() ? 0.14f : 0.12f)
+                              : colours::rollRowline().withAlpha(usesDarkAppearance() ? 0.08f : 0.10f));
+            g.fillRect(x, b.getY(), isBar ? 0.8f : 0.4f, b.getHeight());
         }
     }
 
@@ -258,7 +262,7 @@ PianoRollEditor::PianoRollEditor()
 
     btnFold.setComponentID("btnFold");
     btnFold.accentText = true;
-    btnFold.setTooltip("Show only notes in the current key");
+    btnFold.setTooltip("Show only notes that appear in the clip (fold empty pitches)");
     btnFold.onClick = [this]
     {
         folded = !folded;
@@ -271,7 +275,7 @@ PianoRollEditor::PianoRollEditor()
     };
     addAndMakeVisible(btnFold);
 
-    barsZoomPopup.setItems({ "File", "2 bars", "4 bars", "8 bars", "16 bars" }, 0);
+    barsZoomPopup.setItems({ "Clip", "File", "2 bars", "4 bars", "8 bars", "16 bars" }, 0);
     barsZoomPopup.setWantsKeyboardFocus(false);
     barsZoomPopup.onChange = [this](int) { applyBarsZoomFromPopup(); };
     addAndMakeVisible(barsZoomPopup);
@@ -327,13 +331,11 @@ void PianoRollEditor::setClip(const StepClip& c, const ClipEdit& e, const Groove
             resetLoopToClip();
         else
             setLoopSteps(loopStartStep, loopEndStep, false);
-        visibleBarsZoom = 0; // File — fit the whole clip
+        visibleBarsZoom = -1; // Clip — fit width + note range
         zoomX = 1.0f;
         barsZoomPopup.setIndex(barsZoomPopupIndex(), juce::dontSendNotification);
-        computePxPerStepBase();
-        updateRollSize();
         pendingScrollToContent = true;
-        scrollToContent();
+        zoomToClip();
     }
     else
     {
@@ -824,8 +826,8 @@ void PianoRollEditor::computePxPerStepBase()
     visW = juce::jmax(60, visW);
 
     const int clipBars = juce::jmax(1, resolved.bars);
-    // 0 = File: fit the whole clip. Otherwise fit exactly N bars across the
-    // piano-roll viewport so "8 bars" fills the window with 8 bars of content.
+    // Clip/File (≤0): fit the whole clip. Otherwise fit exactly N bars across
+    // the piano-roll viewport so "8 bars" fills the window with 8 bars of content.
     const int bars = (visibleBarsZoom <= 0) ? clipBars : juce::jmax(1, visibleBarsZoom);
     const double stretch = juce::jmax(0.25, timeStretch);
     // Visual span of one musical bar at zoomX=1.
@@ -875,6 +877,11 @@ void PianoRollEditor::applyBarsZoomFromPopup()
                                  barsZoomPopup.getIndex());
     visibleBarsZoom = kBarsZoomChoices[idx];
     zoomX = 1.0f; // dropdown defines the fit; discard pinch/scroll zoom
+    if (visibleBarsZoom < 0)
+    {
+        zoomToClip();
+        return;
+    }
     computePxPerStepBase();
     updateRollSize();
     rollContent.repaint();
@@ -932,22 +939,43 @@ void PianoRollEditor::setVelocityFromLaneY(int noteId, float laneY)
 
 void PianoRollEditor::scrollToContent()
 {
-    if (folded)
-    {
-        rollViewport.setViewPosition(0, 0);
-        pendingScrollToContent = false;
+    zoomToClip();
+}
+
+void PianoRollEditor::zoomToClip()
+{
+    if (!hasClip)
         return;
-    }
+
+    // Horizontal: fit the full clip width (Zoom → File).
+    visibleBarsZoom = 0;
+    zoomX = 1.0f;
+    barsZoomPopup.setIndex(0, juce::dontSendNotification);
+    computePxPerStepBase();
 
     const int visH = rollViewport.getMaximumVisibleHeight();
-    // Viewport often has no height yet on first setClip — retry from resized().
     if (visH < 32)
     {
         pendingScrollToContent = true;
+        updateRollSize();
         return;
     }
 
-    const int rootPc = edit.root >= 0 ? edit.root : (clip.root >= 0 ? clip.root : 0);
+    if (folded)
+    {
+        const int span = juce::jmax(1, (int) foldPitches.size());
+        rowH = juce::jlimit(kMinRowH, kMaxRowH, (float) visH / (float) juce::jmax(1, span));
+        // Folded rows are 2× via effRowH — compensate so the stack fills the view.
+        rowH = juce::jlimit(kMinRowH, kMaxRowH, rowH * 0.5f);
+        updateRollSize();
+        rollViewport.setViewPosition(0, 0);
+        pendingScrollToContent = false;
+        rollContent.repaint();
+        gutter.repaint();
+        timeRuler.repaint();
+        velocityLane.repaint();
+        return;
+    }
 
     int loN = 127, hiN = 0;
     for (const auto& n : resolved.notes)
@@ -957,43 +985,35 @@ void PianoRollEditor::scrollToContent()
     }
     if (resolved.notes.empty())
     {
-        loN = 60 + rootPc;
-        hiN = loN;
+        const int rootPc = edit.root >= 0 ? edit.root : (clip.root >= 0 ? clip.root : 0);
+        loN = hiN = 60 + rootPc;
     }
 
-    // Key-root-aligned pitch window.
-    // ≤1 octave of content → exactly one key octave fills the viewport.
-    // >1 octave → expand to cover all notes (highest note's octave stays in view).
-    int lo, hi;
-    if (hiN - loN <= 12)
-    {
-        // Octave of the highest note, aligned to key root, covering the cluster.
-        lo = hiN - ((hiN - rootPc + 1200) % 12);
-        if (lo > loN)
-            lo -= 12;
-        lo = juce::jlimit(0, 115, lo);
-        hi = juce::jlimit(lo + 12, 127, lo + 12);
-    }
-    else
-    {
-        lo = loN - ((loN - rootPc + 1200) % 12);
-        hi = hiN + ((rootPc - (hiN % 12) + 12) % 12);
-        if (hi < lo + 12)
-            hi = lo + 12;
-        lo = juce::jlimit(0, 127, lo);
-        hi = juce::jlimit(lo + 12, 127, hi);
-    }
+    const int noteSpan = hiN - loN + 1;
+    // Sparse / single notes get more vertical padding so they sit centered, not huge.
+    const int pad = noteSpan <= 1 ? 8
+                  : noteSpan <= 4 ? 6
+                  : noteSpan <= 12 ? 3
+                  : 1;
+    int viewLo = juce::jmax(0, loN - pad);
+    int viewHi = juce::jmin(127, hiN + pad);
+    int span = viewHi - viewLo + 1;
+    // Keep a sensible minimum window so one note doesn't become a giant bar.
+    span = juce::jmax(span, noteSpan <= 4 ? 13 : 8);
 
-    const int span = juce::jmax(13, hi - lo + 1);
-    // Autofit fills the viewport with exactly `span` rows (one octave minimum).
-    rowH = juce::jmax(kMinRowH, (float) visH / (float) span);
+    rowH = juce::jlimit(kMinRowH, kMaxRowH, (float) visH / (float) span);
     updateRollSize();
 
-    // Align so the top of the window is `hi` (highest root / note octave).
-    const int y = (int) std::lround((float) rowForPitch(hi) * effRowH());
+    const float clusterTop = (float) rowForPitch(viewHi) * effRowH();
+    const float clusterH = (float) (viewHi - viewLo + 1) * effRowH();
+    const float yCentre = clusterTop - ((float) visH - clusterH) * 0.5f;
     const int maxY = juce::jmax(0, rollContent.getHeight() - visH);
-    rollViewport.setViewPosition(0, juce::jlimit(0, maxY, y));
+    rollViewport.setViewPosition(0, juce::jlimit(0, maxY, (int) std::lround(yCentre)));
     pendingScrollToContent = false;
+    rollContent.repaint();
+    gutter.repaint();
+    timeRuler.repaint();
+    velocityLane.repaint();
 }
 
 void PianoRollEditor::zoomXAround(float factor, float contentX)
@@ -1081,8 +1101,8 @@ void PianoRollEditor::resized()
     btnZoomOut.setVisible(false);
     selBadge.setVisible(false);
 
-    // Toolbar: Notes in Key | ………… | Zoom [File/n bars] · Grid Size [div]
-    auto bar = r.removeFromTop(toolbarH).reduced(8, 4);
+    // Toolbar: Fold | ………… | Zoom [Clip/File/n bars] · Grid Size [div]
+    auto bar = r.removeFromTop(toolbarH).reduced(8, 6);
     const int ctrlH = fx::kControlH;
     const int foldW = juce::jmin(btnFold.idealWidth(), bar.getWidth() / 2);
     btnFold.setBounds(bar.removeFromLeft(foldW).withSizeKeepingCentre(foldW, ctrlH));
@@ -1202,25 +1222,26 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
         }
         if (pitch % 12 == 0)
         {
-            g.setColour(colours::lineStrong().withAlpha(0.55f));
-            g.fillRect(clipB.getX(), y + ed.effRowH() - 0.6f, clipB.getWidth(), 0.6f);
+            g.setColour(colours::lineStrong().withAlpha(usesDarkAppearance() ? 0.18f : 0.22f));
+            g.fillRect(clipB.getX(), y + ed.effRowH() - 0.5f, clipB.getWidth(), 0.5f);
         }
         else
         {
-            g.setColour(colours::rollRowline());
+            g.setColour(colours::rollRowline().withAlpha(usesDarkAppearance() ? 0.10f : 0.14f));
             g.fillRect(clipB.getX(), y + ed.effRowH() - 0.5f, clipB.getWidth(), 0.5f);
         }
     }
 
-    // Vertical grid from the division picker; bar lines heavier.
+    // Vertical grid from the division picker; bar lines heavier (kept quiet).
     const int total = ed.totalSteps();
     for (int s = 0; s <= total; s += ed.divisionSteps)
     {
         const float x = (float) s * pps;
         if (x < clipB.getX() - 2.0f || x > clipB.getRight() + 2.0f) continue;
         const bool isBar = (s % kStepsPerBar) == 0;
-        g.setColour(isBar ? colours::lineStrong() : colours::rollRowline());
-        g.fillRect(x, clipB.getY(), isBar ? 1.0f : 0.5f, clipB.getHeight());
+        g.setColour(isBar ? colours::lineStrong().withAlpha(usesDarkAppearance() ? 0.16f : 0.14f)
+                          : colours::rollRowline().withAlpha(usesDarkAppearance() ? 0.08f : 0.10f));
+        g.fillRect(x, clipB.getY(), isBar ? 0.8f : 0.4f, clipB.getHeight());
     }
 
     // Notes at grooved positions; opacity tracks velocity.

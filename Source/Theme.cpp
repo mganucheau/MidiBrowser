@@ -48,8 +48,8 @@ const ThemeTokens& themeTokens()
         rgba(0, 0, 0, 0.15f),       // lineStrong
         rgba(0, 0, 0, 0.06f),       // lineSoft
         juce::Colour(0xff1d1d1f),   // text
-        juce::Colour(0xff6e6e73),   // text2
-        juce::Colour(0xffaeaeb2),   // text3
+        juce::Colour(0xff3a3a3c),   // text2 — stronger secondary for table meta
+        juce::Colour(0xff6e6e73),   // text3
         juce::Colour(0xffeef0f4),   // rollBg — cool gray so blue notes read clearly
         juce::Colour(0xffe2e5eb),   // rollShade — black-key lanes
         juce::Colour(0xffd0d4dc),   // rollRowline
@@ -75,9 +75,9 @@ const ThemeTokens& themeTokens()
         rgba(255, 255, 255, 0.08f),
         rgba(255, 255, 255, 0.14f),
         rgba(255, 255, 255, 0.05f),
-        juce::Colour(0xfff5f5f7),   // text
-        juce::Colour(0xff98989d),   // text2
-        juce::Colour(0xff636366),   // text3
+        juce::Colour(0xfff5f5f7),   // text — primary
+        juce::Colour(0xffc7c7cc),   // text2 — brighter for browser columns
+        juce::Colour(0xffa1a1a6),   // text3 — readable meta / headers
         juce::Colour(0xff2c2c2e),   // rollBg
         juce::Colour(0xff333335),   // rollShade
         rgba(255, 255, 255, 0.06f), // rollRowline
@@ -89,7 +89,7 @@ const ThemeTokens& themeTokens()
         juce::Colour(0xff2a2a2c),   // toolbarBot
         rgba(44, 44, 46, 0.96f),    // sidebarTop
         rgba(36, 36, 38, 0.96f),    // sidebarBot
-        juce::Colour(0xff333335),   // tableAlt
+        juce::Colour(0xff2a2a2c),   // tableAlt — slightly clearer zebra
         juce::Colour(0xff1c1c1e),   // desktopTop
         juce::Colour(0xff0d0d0f),   // desktopBot
         rgba(255, 255, 255, 0.12f),
@@ -99,19 +99,20 @@ const ThemeTokens& themeTokens()
 
 const AccentTokens& accentTokens()
 {
+    // Active accent #599CE7 (light + dark).
     static const AccentTokens lightBlue {
-        juce::Colour(0xff0a66e0),           // accent — slightly deeper for roll contrast
+        juce::Colour(0xff599ce7),
         juce::Colour(0xffffffff),           // ink
-        rgba(10, 102, 224, 0.16f),          // soft
-        rgba(10, 102, 224, 0.48f),          // line
-        juce::Colour(0xff2f86f5),           // bright
+        rgba(89, 156, 231, 0.16f),          // soft
+        rgba(89, 156, 231, 0.42f),          // line
+        juce::Colour(0xff7ab0ed),           // bright
     };
     static const AccentTokens darkBlue {
-        juce::Colour(0xff0a84ff),           // accent (system blue dark)
+        juce::Colour(0xff599ce7),
         juce::Colour(0xffffffff),
-        rgba(10, 132, 255, 0.18f),
-        rgba(10, 132, 255, 0.45f),
-        juce::Colour(0xff64b5ff),
+        rgba(89, 156, 231, 0.20f),
+        rgba(89, 156, 231, 0.45f),
+        juce::Colour(0xff7ab0ed),
     };
     return usesDarkAppearance() ? darkBlue : lightBlue;
 }
@@ -119,13 +120,13 @@ const AccentTokens& accentTokens()
 const InspectorTokens& inspectorTokens()
 {
     static const InspectorTokens light {
-        juce::Colour(0xfff6f5f3),   // panelBg — secondary grouped background
-        juce::Colour(0xff007aff),   // accent
+        juce::Colour(0xfff5f5f7),   // panelBg — match library sidebar + header
+        juce::Colour(0xff599ce7),   // accent
         juce::Colour(0xff1d1d1f),   // headerText
-        juce::Colour(0xff3c3c3e),   // rowLabel
+        juce::Colour(0xff6e6e73),   // rowLabel — muted (Photos param names)
         juce::Colour(0xff8e8e93),   // valueText
         juce::Colour(0xffe5e2dd),   // divider
-        juce::Colour(0xffd8d5cf),   // sliderTrack
+        juce::Colour(0xffd8d5cf),   // sliderTrack (legacy thin track)
         juce::Colours::white,       // sliderKnob
         juce::Colours::white,       // controlSurface (raised)
         juce::Colour(0xfffbfbfa),   // controlSurfaceHi
@@ -133,25 +134,31 @@ const InspectorTokens& inspectorTokens()
         juce::Colour(0xffd1cdc7),   // switchOffTrack
         juce::Colour(0xffa3a29e),   // chevron
         juce::Colour(0xff58585c),   // segmentText
-        rgba(0, 0, 0, 0.14f),       // controlHairline
+        rgba(0, 0, 0, 0.12f),       // controlHairline
+        juce::Colour(0xffe5e3df),   // tallWell
+        juce::Colour(0xffcfcbc4),   // tallFill
+        juce::Colour(0xffddd9d3),   // tallWellHot
         false,
     };
     static const InspectorTokens dark {
-        juce::Colour(0xff2c2c2e),   // panelBg — matches SwiftUI Form sidebar
-        juce::Colour(0xff0a84ff),
-        juce::Colour(0xfff2f2f4),
-        rgba(255, 255, 255, 0.78f),
-        rgba(255, 255, 255, 0.45f),
+        juce::Colour(0xff1e1e1e),   // panelBg — Photos Adjust charcoal
+        juce::Colour(0xff599ce7),
+        juce::Colour(0xfff5f5f7),   // headerText — near-white titles / values
+        rgba(255, 255, 255, 0.55f), // rowLabel — muted param names
+        rgba(255, 255, 255, 0.40f), // valueText — tertiary annotations
         rgba(255, 255, 255, 0.08f),
         rgba(255, 255, 255, 0.14f),
         juce::Colour(0xffd4d4d8),
-        rgba(255, 255, 255, 0.11f), // controlSurface (inset translucent)
+        rgba(255, 255, 255, 0.11f),
         rgba(255, 255, 255, 0.15f),
         rgba(255, 255, 255, 0.10f),
         rgba(255, 255, 255, 0.18f),
-        rgba(255, 255, 255, 0.35f),
+        rgba(255, 255, 255, 0.40f), // chevron
         rgba(255, 255, 255, 0.60f),
-        rgba(255, 255, 255, 0.10f),
+        rgba(255, 255, 255, 0.12f),
+        juce::Colour(0xff3a3a3c),   // tallWell — Photos control block
+        juce::Colour(0xff525254),   // tallFill — value progress
+        juce::Colour(0xff48484a),   // tallWellHot
         true,
     };
     return usesDarkAppearance() ? dark : light;
@@ -219,20 +226,37 @@ static bool systemFontIsSF()
     return systemFontFamily(false).startsWith("SF ");
 }
 
-juce::Font uiFont(float pt, bool semibold)
+static juce::Font makeUiFont(float pt, bool semibold)
 {
     // SF Pro Display for large text, SF Pro Text for body (HIG threshold 20pt).
-    const float scaledPt = pt * contentScale();
-    const auto& family = systemFontFamily(scaledPt >= 20.0f);
+    const auto& family = systemFontFamily(pt >= 20.0f);
     const char* style = semibold ? (systemFontIsSF() ? "Semibold" : "Medium")
                                  : "Regular";
-    return juce::Font(juce::FontOptions(scaledPt).withName(family).withStyle(style));
+    return juce::Font(juce::FontOptions(pt).withName(family).withStyle(style));
+}
+
+juce::Font uiFont(float pt, bool semibold)
+{
+    // UI size scales layout + type; Text size % further scales type only.
+    return makeUiFont(pt * contentScale() * textIconScale(), semibold);
 }
 
 juce::Font monoFont(float pt, bool semibold)
 {
-    // Tabular numerals via system font (no JetBrains Mono).
     auto f = uiFont(pt, semibold);
+    f.setExtraKerningFactor(0.0f);
+    return f;
+}
+
+juce::Font uiFontFixed(float pt, bool semibold)
+{
+    // Caps B2 base sizes: respect Text size %, not UI size (layout stays put).
+    return makeUiFont(pt * textIconScale(), semibold);
+}
+
+juce::Font monoFontFixed(float pt, bool semibold)
+{
+    auto f = uiFontFixed(pt, semibold);
     f.setExtraKerningFactor(0.0f);
     return f;
 }
@@ -640,20 +664,21 @@ void PatternFlowLookAndFeel::drawFileBrowserRow(juce::Graphics& g, int width, in
     g.drawText(filename, x, 0, width - x - 4, height, juce::Justification::centredLeft, true);
 }
 
+void PatternFlowLookAndFeel::fillTextEditorBackground(juce::Graphics& g, int width, int height,
+                                                      juce::TextEditor& ed)
+{
+    // Transparent editors (search query) — no fill; parent owns the chrome.
+    if (ed.findColour(juce::TextEditor::backgroundColourId).getAlpha() < 8)
+        return;
+    LookAndFeel_V4::fillTextEditorBackground(g, width, height, ed);
+}
+
 void PatternFlowLookAndFeel::drawTextEditorOutline(juce::Graphics& g, int width, int height, juce::TextEditor& ed)
 {
-    // Transparent-background editors (search form) only need a soft focus ring;
-    // the parent paints the control surface.
+    // Transparent-background editors (search query): parent paints the container
+    // focus ring — never outline the bare text field.
     if (ed.findColour(juce::TextEditor::backgroundColourId).getAlpha() < 8)
-    {
-        if (ed.hasKeyboardFocus(true))
-        {
-            auto bounds = juce::Rectangle<float>(0, 0, (float) width, (float) height).reduced(0.5f);
-            g.setColour(colours::accent());
-            g.drawRoundedRectangle(bounds, metrics::controlRadius, 1.2f);
-        }
         return;
-    }
 
     auto bounds = juce::Rectangle<float>(0, 0, (float) width, (float) height).reduced(0.5f);
     const bool focused = ed.hasKeyboardFocus(true);

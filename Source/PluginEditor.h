@@ -49,6 +49,7 @@ private:
     void copyStarredToFolder();
     void copyRenderedClipToFolder();
     void applyLayoutState();
+    void updateWindowLimits();
     void layoutContent();
     void toggleEditorFold();
     void toggleEffectsFold();

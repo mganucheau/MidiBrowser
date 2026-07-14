@@ -56,6 +56,10 @@ struct InspectorTokens
     juce::Colour chevron;
     juce::Colour segmentText;
     juce::Colour controlHairline;
+    /** Photos Adjust tall wells (sliders / selects) — solid, flat, not raised buttons. */
+    juce::Colour tallWell;
+    juce::Colour tallFill;
+    juce::Colour tallWellHot;
     bool dark = false;
 };
 
@@ -76,9 +80,11 @@ void drawInspectorDivider(juce::Graphics& g, juce::Rectangle<int> bounds);
 /** App-level runtime Tweaks (density / content size / appearance). */
 struct Tweaks
 {
-    std::atomic<int> density { (int) Density::Compact };
-    std::atomic<int> size    { (int) ContentSize::Large };
-    std::atomic<int> appearance { (int) Appearance::Light };
+    std::atomic<int> density { (int) Density::Comfortable };
+    std::atomic<int> size    { (int) ContentSize::Medium };
+    /** Type + icon glyph scale as percent; 100% = former 115% size. Independent of UI size. */
+    std::atomic<int> textScalePct { 100 };
+    std::atomic<int> appearance { (int) Appearance::System };
     std::atomic<int> showTooltips { 1 }; // 1 = on
 };
 
@@ -94,7 +100,7 @@ inline Appearance currentAppearance()
     return (Appearance) juce::jlimit(0, kNumAppearances - 1, tweaks().appearance.load());
 }
 
-/** UI scale for the Small / Medium / Large content-size tweak. */
+/** UI scale for the Small / Medium / Large content-size tweak (layout / chrome). */
 inline float contentScale()
 {
     switch ((ContentSize) juce::jlimit(0, kNumContentSizes - 1, tweaks().size.load()))
@@ -106,10 +112,21 @@ inline float contentScale()
     return 1.0f;
 }
 
+/** Text & icon glyph scale from Settings → Text size (%).
+    100% matches the former 115% size; choices are relative to that baseline. */
+inline float textIconScale()
+{
+    const int pct = juce::jlimit(60, 150, tweaks().textScalePct.load());
+    return ((float) pct / 100.0f) * 1.15f;
+}
+
 // ── Fonts (system stack) ─────────────────────────────────────────────────────
 
 juce::Font uiFont(float pt, bool semibold = false);
 juce::Font monoFont(float pt, bool semibold = false);   // tabular-nums system font
+/** Same stack as uiFont/monoFont but ignores content-size scaling (Caps B2 inspector). */
+juce::Font uiFontFixed(float pt, bool semibold = false);
+juce::Font monoFontFixed(float pt, bool semibold = false);
 
 enum class TextStyle
 {
@@ -239,12 +256,13 @@ namespace metrics {
     constexpr int browserWidth      = 300;
     constexpr int browserMinWidth   = 260;
     constexpr int browserMaxWidth   = 420;
-    constexpr int sidebarW          = 176;
-    constexpr int sidebarRailW      = 48;
-    constexpr int sidebarExpandedW  = 176;
+    constexpr int sidebarW          = 192;
+    constexpr int sidebarRailW      = 44;
+    constexpr int sidebarExpandedW  = 192; // Photos Caps B2 library rail
     constexpr int fileTableW        = 300;
     constexpr int editorPaneW       = 470;
-    constexpr int effectsPaneW      = 216;
+    /** Caps B2 canvas width — not content-scaled so density matches the mock. */
+    constexpr int effectsPaneW      = 248;
     constexpr int openRollW         = editorPaneW;
     constexpr int openRollMinW      = 360;
     constexpr int foldedWindowW     = sidebarW + fileTableW;
@@ -256,13 +274,19 @@ namespace metrics {
 
     inline int transportH()       { return scaled(toolbarH); }
     inline int listRowH()         { return scaled(currentDensity() == Density::Comfortable ? 28 : 24); }
-    inline int listHeaderH()      { return scaled(28); }
+    /** Match Toolkit / piano-roll toolbars (~40px at Medium). */
+    inline int listHeaderH()      { return scaled(40); }
+    inline int paneHeaderH()      { return scaled(40); }
     inline int padS()             { return scaled(currentDensity() == Density::Comfortable ? 12 : 8); }
     inline int miniRollH()        { return scaled(112); }
+    /** Scale with Text & icons setting so chrome stays proportional. */
     inline int sidebarRailWidth() { return scaled(sidebarRailW); }
     inline int sidebarExpandedWidth() { return scaled(sidebarExpandedW); }
     inline int chromeIconButton() { return scaled(chromeIconBtn); }
-    inline int chromeIconGlyphSize() { return scaled(chromeIconGlyph); }
+    inline int chromeIconGlyphSize()
+    {
+        return juce::roundToInt((float) chromeIconGlyph * contentScale() * textIconScale());
+    }
     inline int fileTableWidth()   { return scaled(fileTableW); }
     inline int editorPaneWidth()  { return scaled(editorPaneW); }
     inline int effectsPaneWidth() { return scaled(effectsPaneW); }
@@ -323,6 +347,8 @@ public:
                             int itemIndex,
                             juce::DirectoryContentsDisplayComponent& dcc) override;
 
+    void fillTextEditorBackground(juce::Graphics&, int width, int height,
+                                  juce::TextEditor&) override;
     void drawTextEditorOutline(juce::Graphics&, int width, int height,
                                juce::TextEditor&) override;
 

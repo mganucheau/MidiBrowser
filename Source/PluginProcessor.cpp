@@ -392,6 +392,8 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("version", 4);
     xml.setAttribute("tweakDensity", tweaks().density.load());
     xml.setAttribute("tweakSize", tweaks().size.load());
+    xml.setAttribute("tweakTextScalePct", tweaks().textScalePct.load());
+    xml.setAttribute("tweakTextScaleV2", 1);
     xml.setAttribute("tweakAppearance", tweaks().appearance.load());
     xml.setAttribute("tweakShowTooltips", tweaks().showTooltips.load());
     xml.setAttribute("syncSessionBars", syncSessionBars.load());
@@ -412,6 +414,10 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("colDifNotes", columnVisibility.difNotes ? 1 : 0);
     xml.setAttribute("colTimeSig", columnVisibility.timeSig ? 1 : 0);
     xml.setAttribute("colNotes", columnVisibility.notes ? 1 : 0);
+            syncLockFlagsFromSections();
+            xml.setAttribute("sectionLocks", (int) sectionLocks);
+    syncLockFlagsFromSections();
+    xml.setAttribute("sectionLocks", (int) sectionLocks);
     xml.setAttribute("editLock", editLock ? 1 : 0);
     xml.setAttribute("effectsLock", effectsLock ? 1 : 0);
     xml.setAttribute("lockAutoTrim", lockAutoTrim ? 1 : 0);
@@ -479,6 +485,8 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         child->setAttribute("key", ss.search.keyRoot);
         child->setAttribute("barsMin", ss.search.barsMin);
         child->setAttribute("barsMax", ss.search.barsMax);
+        child->setAttribute("complexityMin", ss.search.complexityMin);
+        child->setAttribute("complexityMax", ss.search.complexityMax);
         child->setAttribute("subdirs", ss.search.subdirs ? 1 : 0);
         child->setAttribute("removeDuplicates", ss.search.removeDuplicates ? 1 : 0);
     }
@@ -586,11 +594,19 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
         if (xml->hasTagName("MidiBrowserState") || xml->hasTagName("PatternFlowState"))
         {
             tweaks().density.store(juce::jlimit(0, 1,
-                xml->getIntAttribute("tweakDensity", (int) Density::Compact)));
+                xml->getIntAttribute("tweakDensity", (int) Density::Comfortable)));
             tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1,
-                xml->getIntAttribute("tweakSize", (int) ContentSize::Large)));
+                xml->getIntAttribute("tweakSize", (int) ContentSize::Medium)));
+            {
+                // v2: 100% == former 115% size. Remap legacy absolute percents once.
+                const int raw = xml->getIntAttribute("tweakTextScalePct", 100);
+                const int pct = xml->getIntAttribute("tweakTextScaleV2", 0) != 0
+                    ? raw
+                    : juce::roundToInt((double) raw * 100.0 / 115.0);
+                tweaks().textScalePct.store(juce::jlimit(60, 150, pct));
+            }
             tweaks().appearance.store(juce::jlimit(0, kNumAppearances - 1,
-                xml->getIntAttribute("tweakAppearance", (int) Appearance::Light)));
+                xml->getIntAttribute("tweakAppearance", (int) Appearance::System)));
             tweaks().showTooltips.store(xml->getIntAttribute("tweakShowTooltips", 1) != 0 ? 1 : 0);
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
@@ -613,6 +629,18 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             columnVisibility.notes = xml->getIntAttribute("colNotes", 0) != 0;
             editLock = xml->getIntAttribute("editLock", 0) != 0;
             effectsLock = xml->getIntAttribute("effectsLock", 0) != 0;
+            if (xml->hasAttribute("sectionLocks"))
+                sectionLocks = (uint32_t) xml->getIntAttribute("sectionLocks", 0) & toolkitLock::All;
+            else
+            {
+                // Migrate pre-sectionLocks presets.
+                sectionLocks = 0;
+                if (effectsLock)
+                    sectionLocks |= toolkitLock::AnyGroove | toolkitLock::Playback;
+                if (editLock)
+                    sectionLocks |= toolkitLock::Pitch;
+            }
+            syncLockFlagsFromSections();
             lockAutoTrim = xml->getIntAttribute("lockAutoTrim", 0) != 0;
             lockedEdit = ClipEdit();
             lockedEdit.octave = juce::jlimit(-3, 3, xml->getIntAttribute("lockOctave", 0));
@@ -721,8 +749,10 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                         entry.search.barsMin = bars;
                         entry.search.barsMax = bars;
                     }
-                    entry.search.subdirs = child->getIntAttribute("subdirs", 0) != 0;
-                    entry.search.removeDuplicates = child->getIntAttribute("removeDuplicates", 0) != 0;
+                    entry.search.complexityMin = juce::jmax(0, child->getIntAttribute("complexityMin", 0));
+                    entry.search.complexityMax = juce::jmax(0, child->getIntAttribute("complexityMax", 0));
+                    entry.search.subdirs = child->getIntAttribute("subdirs", 1) != 0;
+                    entry.search.removeDuplicates = child->getIntAttribute("removeDuplicates", 1) != 0;
                     if (entry.name.isNotEmpty())
                         savedSearches.push_back(entry);
                 }

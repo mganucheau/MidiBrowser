@@ -77,6 +77,51 @@ int GrooveParams::activeCount() const
     return n;
 }
 
+void applyGrooveSectionLock(const GrooveParams& locked, GrooveParams& target, uint32_t locks)
+{
+    if ((locks & toolkitLock::Timing) != 0)
+    {
+        target.swing = locked.swing;
+        target.pocket = locked.pocket;
+        target.humanize = locked.humanize;
+        target.length = locked.length;
+        target.swingBase = locked.swingBase;
+        target.swingGridIndex = locked.swingGridIndex;
+        target.quantizeGridIndex = locked.quantizeGridIndex;
+        target.quantizeStrength = locked.quantizeStrength;
+    }
+    if ((locks & toolkitLock::Performance) != 0)
+    {
+        target.dynamics = locked.dynamics;
+        target.intensity = locked.intensity;
+        target.articulationIndex = locked.articulationIndex;
+        target.articulationStrength = locked.articulationStrength;
+        target.velocityRangeLo = locked.velocityRangeLo;
+        target.velocityRangeHi = locked.velocityRangeHi;
+        target.sustainPedalMode = locked.sustainPedalMode;
+    }
+    if ((locks & toolkitLock::Effects) != 0)
+    {
+        target.complexityTarget = locked.complexityTarget;
+        target.variationIndex = locked.variationIndex;
+        target.delayTimeIndex = locked.delayTimeIndex;
+        target.delayAmount = locked.delayAmount;
+        target.delayFeedback = locked.delayFeedback;
+        target.arpModeIndex = locked.arpModeIndex;
+        target.arpRateIndex = locked.arpRateIndex;
+        target.arpGate = locked.arpGate;
+        target.arpOctaves = locked.arpOctaves;
+        target.strumDirectionIndex = locked.strumDirectionIndex;
+        target.strumSpeed = locked.strumSpeed;
+        target.strumAmount = locked.strumAmount;
+    }
+}
+
+void captureGrooveSectionLock(const GrooveParams& src, GrooveParams& locked, uint32_t locks)
+{
+    applyGrooveSectionLock(src, locked, locks);
+}
+
 void GrooveParams::applyArticulationToKnobs()
 {
     const auto art = articulation();
