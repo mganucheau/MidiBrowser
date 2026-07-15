@@ -134,7 +134,9 @@ public:
     /** Persist library to disk now (e.g. after search cache update). */
     void saveLibrary();
 
-    void setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed);
+    /** softUpdate: replace the sounding clip without flushing held notes (live slider tweaks). */
+    void setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed,
+                         bool softUpdate = false);
 
     /** Ask the audio thread to release every held note on the next block. */
     void requestNoteFlush()

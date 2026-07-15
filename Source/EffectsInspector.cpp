@@ -27,9 +27,10 @@ EffectsInspector::EffectsInspector()
     , delayFeedbackSl("Delay Feedback", 0, 100, 40, false)
     , octaveRow("Octave", octaveStepper)
     , octaveRangeRow("Octave Range", octaveRangePopup)
-    , pitchRangeSl("Range", 0, 127, 0, 127)
     , keyRow("Key", keyPopup)
     , modeRow("Mode", modePopup)
+    , pitchRangeSl("Range", 0, 127, 0, 127)
+    , filterTypeRow("Filter Type", filterTypePopup)
     , trimRow("Trim empty measures", trimSwitch)
     , fitRow("Fit to Scale", fitSwitch)
     , mapRow("Map to Root", mapSwitch)
@@ -265,7 +266,14 @@ EffectsInspector::EffectsInspector()
     noteFilter.onChange = [this]
     {
         edit.noteFilterMask = noteFilter.getMask();
-        edit.noteFilterType = noteFilter.getType();
+        notifyEdit();
+    };
+
+    filterTypePopup.setItems({ "Mute", "Fold" }, 0);
+    filterTypePopup.setTooltip("Mute removes filtered pitches; Fold maps them into enabled ones");
+    filterTypePopup.onChange = [this](int idx)
+    {
+        edit.noteFilterType = idx == 1 ? NoteFilterType::Fold : NoteFilterType::Mute;
         notifyEdit();
     };
 
@@ -336,9 +344,6 @@ EffectsInspector::EffectsInspector()
     pitchSec.addRow(&octaveRow, kRowMinH, [this] { return edit.octave != 0; });
     pitchSec.addRow(&octaveRangeRow, kRowMinH, [this] { return edit.octaveRange != 0; });
     pitchSec.addRow(&pitchRow, kRowMinH, [this] { return edit.pitchShift != 0; });
-    pitchSec.addRow(&noteFilter, [this] { return noteFilter.idealHeight(); },
-                    [this] { return edit.hasNoteFilter(); });
-    pitchSec.addRow(&pitchRangeSl, kSliderRowH, [this] { return edit.hasPitchRange(); });
     pitchSec.addRow(&keyRow, kRowMinH, [this] {
         return edit.root >= 0 && (edit.fitScale || edit.mapToRoot);
     });
@@ -347,6 +352,11 @@ EffectsInspector::EffectsInspector()
     });
     pitchSec.addRow(&fitRow, kRowMinH, [this] { return edit.fitScale; });
     pitchSec.addRow(&mapRow, kRowMinH, [this] { return edit.mapToRoot; });
+    // Filter / Range / Filter Type sit at the bottom of Pitch & Scale.
+    pitchSec.addRow(&noteFilter, [this] { return noteFilter.idealHeight(); },
+                    [this] { return edit.hasNoteFilter(); });
+    pitchSec.addRow(&pitchRangeSl, kSliderRowH, [this] { return edit.hasPitchRange(); });
+    pitchSec.addRow(&filterTypeRow, kRowMinH, [this] { return edit.hasNoteFilter(); });
 
     effectsSec.addRow(&complexitySl, kSliderRowH, [this] { return groove.complexityTarget >= 0; });
     effectsSec.addRow(&variationsSl, kSliderRowH, [this] { return groove.variationIndex > 0; });
@@ -654,7 +664,9 @@ void EffectsInspector::setEdit(const ClipEdit& e, juce::NotificationType)
     modePopup.setIndex((int) e.mode, juce::dontSendNotification);
     fitSwitch.setToggleState(e.fitScale, juce::dontSendNotification);
     mapSwitch.setToggleState(e.mapToRoot, juce::dontSendNotification);
-    noteFilter.setState(e.noteFilterMask, e.noteFilterType, juce::dontSendNotification);
+    noteFilter.setState(e.noteFilterMask, juce::dontSendNotification);
+    filterTypePopup.setIndex(e.noteFilterType == NoteFilterType::Fold ? 1 : 0,
+                             juce::dontSendNotification);
     refreshPitchAnnotation();
     refreshDirtySections();
 }
@@ -736,6 +748,7 @@ void EffectsInspector::resized()
     fitSelect(octaveRangePopup, octaveRangeRow);
     fitSelect(keyPopup, keyRow);
     fitSelect(modePopup, modeRow);
+    fitSelect(filterTypePopup, filterTypeRow);
 
     octaveStepper.setSize(kSelectW, kControlH);
     octaveRow.setControlWidth(kSelectW);

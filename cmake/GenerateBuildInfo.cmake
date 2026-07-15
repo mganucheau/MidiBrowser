@@ -30,7 +30,8 @@ if(GIT_EXECUTABLE AND EXISTS "${SRC_DIR}/.git")
 endif()
 
 string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M")
-set(STAMP "${PF_VERSION} · ${BUILD_TIME} · ${GIT_HASH}${GIT_DIRTY}")
+# ASCII separators only — middle-dot · often missing in host UI fonts.
+set(STAMP "${PF_VERSION} | ${BUILD_TIME} | ${GIT_HASH}${GIT_DIRTY}")
 
 file(MAKE_DIRECTORY "${OUT_DIR}")
 
@@ -45,7 +46,7 @@ const char* version();
 const char* gitHash();
 /** Local build timestamp "YYYY-MM-DD HH:MM". */
 const char* buildTime();
-/** Single line for testers: "1.0.0 · 2026-07-14 14:05 · a1b2c3d+". */
+/** Single line for testers: "1.0.0 | 2026-07-14 14:05 | a1b2c3d+". */
 const char* stamp();
 
 } // namespace pflow::build_info

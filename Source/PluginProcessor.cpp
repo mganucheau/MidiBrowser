@@ -274,11 +274,16 @@ juce::uint64 previewFingerprint(const MidiClip& clip)
 
 } // namespace
 
-void MidiBrowserProcessor::setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed)
+void MidiBrowserProcessor::setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed,
+                                           bool softUpdate)
 {
     const auto fp = previewFingerprint(clip);
     juce::ScopedLock sl(previewLock_);
-    if (fp != previewFingerprint_ && previewHasClip_)
+    // Hard updates (new file / clear) release held notes. Soft updates keep
+    // sounding notes alive so slider drags don't click on every tick.
+    if (!softUpdate && previewHasClip_ && (fp != previewFingerprint_ || !hasClip))
+        previewFlushPending_ = true;
+    else if (!hasClip && previewHasClip_)
         previewFlushPending_ = true;
     previewFingerprint_ = fp;
     previewClip_ = clip;
@@ -481,6 +486,8 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         if (ss.name.isEmpty()) continue;
         auto* child = xml.createNewChildElement("SavedSearch");
         child->setAttribute("name", ss.name);
+        if (ss.rootPath.isNotEmpty())
+            child->setAttribute("root", ss.rootPath);
         child->setAttribute("query", ss.search.query);
         child->setAttribute("bpmMin", ss.search.bpmMin);
         child->setAttribute("bpmMax", ss.search.bpmMax);
@@ -737,6 +744,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 {
                     SavedSearchEntry entry;
                     entry.name = child->getStringAttribute("name");
+                    entry.rootPath = child->getStringAttribute("root");
                     entry.search.query = child->getStringAttribute("query");
                     if (child->hasAttribute("bpmMin") || child->hasAttribute("bpmMax"))
                     {

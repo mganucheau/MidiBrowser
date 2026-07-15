@@ -110,6 +110,7 @@ void LibraryStore::load()
                 SavedSearchEntry entry;
                 entry.name = child->getStringAttribute("name");
                 entry.search = readBrowserSearch(*child);
+                entry.rootPath = child->getStringAttribute("root");
                 if (entry.name.isNotEmpty())
                     savedSearches.push_back(entry);
             }
@@ -150,6 +151,8 @@ void LibraryStore::save() const
         if (ss.name.isEmpty()) continue;
         auto* child = xml.createNewChildElement("SavedSearch");
         child->setAttribute("name", ss.name);
+        if (ss.rootPath.isNotEmpty())
+            child->setAttribute("root", ss.rootPath);
         writeBrowserSearch(*child, ss.search);
     }
 

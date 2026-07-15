@@ -853,44 +853,34 @@ public:
     juce::Rectangle<int> annotBounds;
 };
 
-// ── NoteFilterBlock (Filter label + 1-oct keyboard + Filter Type) ────────────
+// ── NoteFilterBlock (Filter label + 1-oct keyboard; type is a separate row) ──
 
 class NoteFilterBlock : public juce::Component
 {
 public:
     NoteFilterBlock()
     {
-        typePopup.setItems({ "Mute", "Fold" }, 0);
-        typePopup.onChange = [this](int idx)
-        {
-            filterType = idx == 1 ? NoteFilterType::Fold : NoteFilterType::Mute;
-            if (onChange) onChange();
-        };
-        addAndMakeVisible(typePopup);
         setWantsKeyboardFocus(false);
     }
 
     std::function<void()> onChange;
 
-    void setState(uint16_t mask, NoteFilterType type, juce::NotificationType notify)
+    void setState(uint16_t mask, juce::NotificationType notify)
     {
         mask = (uint16_t) (mask & 0x0FFF);
         if (mask == 0) mask = 0x0FFF;
-        const bool changed = mask != noteFilterMask || type != filterType;
+        const bool changed = mask != noteFilterMask;
         noteFilterMask = mask;
-        filterType = type;
-        typePopup.setIndex(type == NoteFilterType::Fold ? 1 : 0, juce::dontSendNotification);
         if (changed) repaint();
         if (notify != juce::dontSendNotification && onChange)
             onChange();
     }
 
     uint16_t getMask() const { return noteFilterMask; }
-    NoteFilterType getType() const { return filterType; }
 
     int idealHeight() const
     {
-        return kLabelH + toolkitRowGap() + kKeysH + toolkitRowGap() + kRowMinH;
+        return kLabelH + toolkitRowGap() + kKeysH;
     }
 
     void resized() override
@@ -898,10 +888,6 @@ public:
         auto r = getLocalBounds();
         r.removeFromTop(kLabelH + toolkitRowGap());
         keysBounds = r.removeFromTop(kKeysH);
-        r.removeFromTop(toolkitRowGap());
-        auto typeRow = r.removeFromTop(kRowMinH);
-        typePopup.setBounds(typeRow.removeFromRight(kSelectW).withSizeKeepingCentre(kSelectW, kControlH));
-        typeLabelBounds = typeRow.withTrimmedRight(8);
     }
 
     void mouseDown(const juce::MouseEvent& e) override
@@ -936,15 +922,13 @@ public:
         g.drawText("Filter", label, juce::Justification::centredLeft, true);
 
         paintKeyboard(g, keysBounds.toFloat());
-
-        g.setFont(inspectorFont());
-        g.setColour(t.rowLabel);
-        g.drawText("Filter Type", typeLabelBounds, juce::Justification::centredLeft, true);
     }
 
 private:
     static constexpr int kLabelH = 18;
     static constexpr int kKeysH = 40;
+    /** Solid dark gray for filtered-off keys (deactivated look). */
+    static juce::Colour offKeyFill() { return juce::Colour(0xff3a3a3a); }
 
     void paintKeyboard(juce::Graphics& g, juce::Rectangle<float> area) const
     {
@@ -973,9 +957,9 @@ private:
             auto key = juce::Rectangle<float>(area.getX() + whiteW * (float) i,
                                               area.getY(), whiteW - 1.0f, whiteH);
             const bool on = enabled(pc);
-            g.setColour(on ? colours::kbWhite() : colours::kbWhite().withMultipliedAlpha(0.35f));
+            g.setColour(on ? colours::kbWhite() : offKeyFill());
             g.fillRoundedRectangle(key, 2.0f);
-            g.setColour(colours::line().withAlpha(on ? 0.55f : 0.25f));
+            g.setColour(colours::line().withAlpha(on ? 0.55f : 0.35f));
             g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
         }
 
@@ -985,13 +969,11 @@ private:
             const float cx = area.getX() + whiteW * ((float) kBlackAfterWhite[i] + 1.0f);
             auto key = juce::Rectangle<float>(cx - blackW * 0.5f, area.getY(), blackW, blackH);
             const bool on = enabled(pc);
-            g.setColour(on ? colours::kbBlack() : colours::kbBlack().withMultipliedAlpha(0.40f));
+            g.setColour(on ? colours::kbBlack() : offKeyFill().darker(0.15f));
             g.fillRoundedRectangle(key, 2.0f);
+            g.setColour(colours::line().withAlpha(on ? 0.0f : 0.30f));
             if (!on)
-            {
-                g.setColour(juce::Colours::white.withAlpha(0.12f));
                 g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
-            }
         }
     }
 
@@ -1018,9 +1000,7 @@ private:
     }
 
     uint16_t noteFilterMask = 0x0FFF;
-    NoteFilterType filterType = NoteFilterType::Mute;
-    FlatPopup typePopup;
-    juce::Rectangle<int> keysBounds, typeLabelBounds;
+    juce::Rectangle<int> keysBounds;
 };
 
 // ── Section (fold chevron + large title + refresh + lock) ────────────────────

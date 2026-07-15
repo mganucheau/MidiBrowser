@@ -255,17 +255,17 @@ namespace metrics {
     constexpr int browserWidth      = 300;
     constexpr int browserMinWidth   = 260;
     constexpr int browserMaxWidth   = 420;
-    constexpr int sidebarW          = 192;
+    constexpr int sidebarW          = 248; // match search-filter-tall-sliders canvas
     constexpr int sidebarRailW      = 44;
-    constexpr int sidebarExpandedW  = 192; // Photos Caps B2 library rail
+    constexpr int sidebarExpandedW  = 248;
     constexpr int fileTableW        = 300;
     constexpr int editorPaneW       = 470;
     /** Caps B2 canvas width — not content-scaled so density matches the mock. */
     constexpr int effectsPaneW      = 248;
     constexpr int openRollW         = editorPaneW;
     constexpr int openRollMinW      = 360;
-    constexpr int foldedWindowW     = sidebarW + fileTableW;
-    constexpr int openWindowW       = sidebarW + fileTableW + editorPaneW;
+    constexpr int foldedWindowW     = sidebarRailW + fileTableW;
+    constexpr int openWindowW       = sidebarExpandedW + fileTableW + editorPaneW;
     /** Header chrome icon button (play / effects / etc.). */
     constexpr int chromeIconBtn     = 28;
     /** Drawn glyph size inside a chromeIconBtn with iconScale 1. */

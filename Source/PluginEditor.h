@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <memory>
 #include <map>
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -59,10 +60,16 @@ private:
     void setBrowseMode(int mode);
     void loadStarredClips();
     void runSearch(const BrowserSearch& criteria);
-    void runSearchAsync(const BrowserSearch& criteria);
+    /** savedIdx >= 0 keeps that saved-search selection and stores/restores its result snapshot. */
+    void runSearchAsync(const BrowserSearch& criteria, int savedIdx = -1,
+                        juce::File searchRoot = {});
     void saveCurrentSearch();
     bool clipMatchesSearch(const StepClip& clip, const juce::File& file,
                            const BrowserSearch& criteria) const;
+    void applySearchSnapshot(std::vector<StepClip> found,
+                             std::map<juce::String, juce::StringArray> locMap,
+                             const BrowserSearch& criteria, int savedIdx,
+                             const juce::String& rootPath, bool showSearching);
 
     enum class KeyNavTarget { Browser, Editor, Effects };
     void claimKeyNav(KeyNavTarget target);
@@ -126,8 +133,23 @@ private:
     bool starredFilter = false;
     BrowserSearch activeSearch;
     int activeSavedSearchIdx = -1;
+    /** Bumps on each search so stale async completions are ignored. */
+    std::atomic<int> searchGeneration { 0 };
     /** Primary clip path -> all Finder locations (including primary) after dedupe. */
     std::map<juce::String, juce::StringArray> searchDuplicateLocations;
+
+    /** In-session full results so re-picking a saved search is instant (no rescan). */
+    struct SearchSnapshot
+    {
+        BrowserSearch criteria;
+        juce::String rootPath;
+        std::vector<StepClip> clips;
+        std::map<juce::String, juce::StringArray> locations;
+    };
+    SearchSnapshot lastSearchSnapshot;
+    std::map<int, SearchSnapshot> savedSearchSnapshots;
+    void rememberSearchSnapshot(int savedIdx, SearchSnapshot snap);
+    void forgetSavedSearchSnapshot(int index);
     int selectedIdx = -1;
     KeyNavTarget keyNavTarget = KeyNavTarget::Browser;
     int lastWindowH = 560;

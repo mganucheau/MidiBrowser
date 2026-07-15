@@ -143,10 +143,11 @@ void PianoRollMini::paint(juce::Graphics& g)
         }
         if ((noteFilterMask & (uint16_t) (1u << (p % 12))) == 0)
         {
-            // Note Filter off — dim the pitch lane (preview + editor).
-            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.16f : 0.12f));
+            // Note Filter off — solid dark-gray fill so the lane looks deactivated.
+            const auto off = juce::Colour(0xff3a3a3a);
+            g.setColour(off.withAlpha(usesDarkAppearance() ? 0.72f : 0.55f));
             g.fillRect(b.getX(), y, b.getWidth(), h);
-            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.22f : 0.16f));
+            g.setColour(off.withAlpha(usesDarkAppearance() ? 0.85f : 0.70f));
             g.fillRect(gutter.getX(), y, gutter.getWidth(), h);
         }
         // Soft pitch lanes — keep notes readable over the grid.
@@ -1232,8 +1233,8 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
         }
         if (!ed.edit.isNoteFilterEnabled(pitch))
         {
-            // Note Filter: dim filtered-off pitch-class rows across the roll.
-            g.setColour(colours::text().withAlpha(usesDarkAppearance() ? 0.14f : 0.10f));
+            // Note Filter: solid dark-gray fill so filtered rows look deactivated.
+            g.setColour(juce::Colour(0xff3a3a3a).withAlpha(usesDarkAppearance() ? 0.72f : 0.55f));
             g.fillRect(clipB.getX(), y, clipB.getWidth(), ed.effRowH());
         }
         if (pitch % 12 == 0)

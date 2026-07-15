@@ -25,11 +25,14 @@ struct SavedSearchEntry
 {
     juce::String name;
     BrowserSearch search;
+    /** Folder the search was run against — used to restore the path cache. */
+    juce::String rootPath;
 };
 
-// Photos Caps B2 library rail: Open · Saved (Favorites + folders) · Search.
+// Library rail: Open → current folder → Scan → FILTER → SEARCH → SAVED → Settings.
 
-class FavoritesSidebar : public juce::Component
+class FavoritesSidebar : public juce::Component,
+                         private juce::Timer
 {
 public:
     FavoritesSidebar();
@@ -45,18 +48,19 @@ public:
 
     void setSavedDirs(const juce::StringArray& paths, const juce::String& activePath);
     void setSavedSearches(const std::vector<SavedSearchEntry>& searches, int activeSearchIdx);
-    void setBrowseMode(int mode); // 0 folder, 2 search
+    void setBrowseMode(int mode); // 0 folder, 1 starred, 2 search
     void setStarredFilter(bool on);
     bool isStarredFilter() const { return starredFilter; }
     bool isCollapsed() const { return collapsed; }
     void setCollapsed(bool shouldCollapse);
-    /** Current layout width (rail when folded, otherwise the resizable expanded width). */
     int idealWidth() const;
-    /** Expanded width while open — never wider than the default sidebar. */
     int getExpandedWidth() const { return expandedWidth; }
     void setExpandedWidth(int w);
-    /** Full column height: header + rows + search form + settings footer. */
     int idealMinHeight() const;
+
+    /** Combined criteria from query + filter + scan toggle. */
+    BrowserSearch getCriteria() const;
+    void setCriteria(const BrowserSearch&);
 
     std::function<void()> onOpenFolder;
     std::function<void(const juce::String&)> onPickDir;
@@ -71,18 +75,19 @@ public:
     std::function<void()> onCopyStarredToFolder;
     std::function<void()> onCollapsedChanged;
     std::function<void()> onOpenSettings;
-    /** Fired while the user drags the sidebar width (before fold). */
     std::function<void()> onWidthChanged;
-    /** Fired when search expand/collapse changes the column’s natural height. */
     std::function<void()> onContentHeightChanged;
+    /** Fired when × clears search — leave search results. */
+    std::function<void()> onExitSearch;
 
+    /** Open/focus the SEARCH section (legacy name kept for editor wiring). */
     void setSearchFormOpen(bool open);
-    bool isSearchFormOpen() const { return searchFormOpen; }
-    /** Collapse filters + unfocus; keep query text unless clearCriteria. */
+    bool isSearchFormOpen() const { return searchOpen; }
     void deactivateSearch(bool clearCriteria = false);
 
 private:
-    enum class RowKind { Open, SavedDir, Starred, Search, SavedSearch };
+    enum class RowKind { Open, CurrentFolder, Starred, SavedDir, SavedSearch };
+    enum class SectionId { Filter, Search, Saved };
 
     struct RowHit
     {
@@ -90,70 +95,121 @@ private:
         RowKind kind = RowKind::Open;
         int index = -1;
         bool removeZone = false;
+        bool addZone = false; // current-folder +
     };
-    enum class ChromeHit { None, SavedPlus, SearchPlus, SearchTitle, Settings };
+    enum class ChromeHit
+    {
+        None, Settings, ScanRow, HideDupesRow,
+        FilterHeader, SearchHeader, SavedHeader,
+        CurrentFolderPlus
+    };
+
+    struct Row { RowKind kind; int index = -1; };
+
     void rebuildRows();
+    void layoutChildren();
+    void notifyHeightChanged();
+    bool sectionOpen(SectionId id) const;
+    void setSectionOpen(SectionId id, bool open);
     RowHit rowHitAt(juce::Point<int> pos) const;
     ChromeHit chromeHitAt(juce::Point<int> pos) const;
     juce::Rectangle<int> rowBounds(int rowIdx) const;
-    void paintRow(juce::Graphics&, int rowIdx, const juce::Rectangle<int>& r, bool hovered, bool removeZone);
-    int searchFormOccupiedHeight() const;
-    void layoutSearchForm();
+    void paintRow(juce::Graphics&, int rowIdx, const juce::Rectangle<int>& r,
+                  bool hovered, bool removeZone, bool addZone);
+    void paintSectionHeader(juce::Graphics&, const juce::String& title, bool open,
+                            juce::Rectangle<int> headerBounds);
     int contentTopY() const;
     int contentBottomY() const;
     int footerPad() const;
     int footerHeight() const;
 
+    enum class LayoutKind { Row, Section, Scan, HideDupes, FilterBody, Query, End };
+    struct LayoutItem
+    {
+        LayoutKind kind = LayoutKind::End;
+        int id = -1; // row index or SectionId
+        juce::Rectangle<int> bounds;
+    };
+    std::vector<LayoutItem> collectLayout() const;
+    void scheduleLiveSearch();
+    void timerCallback() override;
+
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
     IconBtn btnSettings { icons::gear, "Settings" };
     juce::StringArray dirs;
-    juce::String active;
+    juce::String active; // current folder path when a root is loaded
     std::vector<SavedSearchEntry> savedSearches;
     int activeSearchIdx = -1;
     int browseMode = 0;
     bool starredFilter = false;
     bool collapsed = true;
-    int expandedWidth = 0; // pixels; 0 → default expanded width
+    int expandedWidth = 0;
     int hoverRow = -1;
     bool hoverRemove = false;
+    bool hoverAdd = false;
     bool hoverSettings = false;
     bool resizing = false;
     int resizeStartWidth = 0;
     int resizeStartX = 0;
-    juce::Rectangle<int> savedPlusBounds, searchPlusBounds, searchTitleBounds, settingsRowBounds;
 
-    struct Row { RowKind kind; int index = -1; };
+    bool filterOpen = true;
+    bool searchOpen = true;
+    bool savedOpen = true;
+
+    juce::Rectangle<int> settingsRowBounds;
+    juce::Rectangle<int> filterHeaderBounds, searchHeaderBounds, savedHeaderBounds;
+    juce::Rectangle<int> scanRowBounds, hideDupesRowBounds, currentFolderPlusBounds;
+
     std::vector<Row> rows;
-    bool searchFormOpen = false;
-    int searchRowIndex() const;
 
-    class SearchInlinePanel : public juce::Component
+    // ── Filter panel (Key dropdown + BPM / Bars / Complexity tall sliders)
+    class FilterPanel : public juce::Component
     {
     public:
-        SearchInlinePanel();
+        FilterPanel();
+        void resized() override;
+        void paint(juce::Graphics&) override;
+        void lookAndFeelChanged() override;
+        void applyTo(BrowserSearch&) const;
+        void loadFrom(const BrowserSearch&);
+        int idealHeight() const;
+        std::function<void()> onCriteriaChanged;
+        static constexpr int kRowH = 26;
+        static constexpr int kKeySelectW = 72;
+    private:
+        void syncRangeLabels();
+        fx::FlatPopup keyPicker;
+        fx::FlatRangeSliderRow bpmRange { "BPM", 40, 240, 40, 240 };
+        fx::FlatRangeSliderRow barsRange { "Bars", 1, 64, 1, 64 };
+        fx::FlatRangeSliderRow complexityRange { "Complexity", 0, 100, 0, 100 };
+        juce::Rectangle<int> keyRow;
+    };
+
+    // ── Search query (field + clear × + save +)
+    class SearchQueryPanel : public juce::Component
+    {
+    public:
+        SearchQueryPanel();
         void resized() override;
         void paint(juce::Graphics&) override;
         void mouseDown(const juce::MouseEvent&) override;
-        BrowserSearch getCriteria() const;
-        void setCriteria(const BrowserSearch&);
         void lookAndFeelChanged() override;
-        void setFiltersExpanded(bool on);
-        bool areFiltersExpanded() const { return filtersExpanded; }
-        int idealHeight() const;
-        static constexpr int kQueryH = 26;
-        static constexpr int kKeySelectW = 72; // Caps B2 SELECT_W
-        std::function<void(const BrowserSearch&)> onSearch;
-        std::function<void()> onActivate; // click / focus query → expand filters
-        std::function<void()> onClear;    // clear × → collapse + reset
-        std::function<void()> onDeactivate; // ESC from the query field
-        std::function<void()> onHeightChanged;
+        juce::String getQuery() const;
+        void setQuery(const juce::String&);
+        void clearQuery();
         void focusQuery();
         void blurQuery();
         bool isQueryFocused() const;
+        int idealHeight() const { return kQueryH; }
+        static constexpr int kQueryH = 26;
+        std::function<void()> onActivate;
+        std::function<void()> onClear;
+        std::function<void()> onDeactivate;
+        std::function<void()> onSave;
+        std::function<void()> onReturn; // Enter → run search
     private:
         void styleEditors();
-        void syncRangeLabels();
-        void updateClearVisible();
+        void updateTrailingVisible();
 
         struct QueryEditor : juce::TextEditor
         {
@@ -184,17 +240,14 @@ private:
 
         QueryEditor queryField;
         IconBtn clearBtn { icons::x, "Clear search" };
-        fx::FlatPopup keyPicker;
-        fx::FlatRangeSliderRow bpmRange { "BPM", 40, 240, 40, 240 };
-        fx::FlatRangeSliderRow barsRange { "Bars", 1, 64, 1, 64 };
-        fx::FlatRangeSliderRow complexityRange { "Complexity", 0, 100, 0, 100 };
-        fx::FlatSwitch subdirsSwitch;
-        fx::FlatSwitch dedupeSwitch;
-        fx::FlatTextButton btnSearch { "Search" };
-        juce::Rectangle<int> keyRow, subdirsRow, dedupeRow, queryWell;
-        bool filtersExpanded = false;
+        IconBtn saveBtn { icons::plus, "Save current search" };
+        juce::Rectangle<int> queryWell;
     };
-    SearchInlinePanel searchForm;
+
+    FilterPanel filterPanel;
+    SearchQueryPanel searchQuery;
+    fx::FlatSwitch scanSwitch;
+    fx::FlatSwitch hideDupesSwitch;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FavoritesSidebar)
 };

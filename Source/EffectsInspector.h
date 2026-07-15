@@ -117,14 +117,16 @@ private:
     fx::FlatPopup octaveRangePopup;
     fx::InlineRow octaveRangeRow;
     fx::PitchRow pitchRow;
-    fx::NoteFilterBlock noteFilter;
-    fx::FlatRangeSliderRow pitchRangeSl;
     fx::FlatPopup keyPopup;
     fx::FlatPopup modePopup;
     fx::InlineRow keyRow;
     fx::InlineRow modeRow;
     fx::FlatSwitch fitSwitch;
     fx::FlatSwitch mapSwitch;
+    fx::NoteFilterBlock noteFilter;
+    fx::FlatRangeSliderRow pitchRangeSl;
+    fx::FlatPopup filterTypePopup;
+    fx::InlineRow filterTypeRow;
 
     fx::InlineRow trimRow;
     fx::InlineRow fitRow;
