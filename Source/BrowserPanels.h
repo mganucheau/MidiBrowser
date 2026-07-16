@@ -29,7 +29,7 @@ struct SavedSearchEntry
     juce::String rootPath;
 };
 
-// Library rail: Open → current folder → Scan → FILTER → SEARCH → SAVED → Settings.
+// Library rail: Open → current folder → FILTER → SEARCH → SAVED → Settings.
 
 class FavoritesSidebar : public juce::Component,
                          private juce::Timer
@@ -58,17 +58,25 @@ public:
     void setExpandedWidth(int w);
     int idealMinHeight() const;
 
-    /** Combined criteria from query + filter + scan toggle. */
+    /** Combined criteria (query + filter) for saved searches / Enter. */
     BrowserSearch getCriteria() const;
+    /** Filter fields only (key/bpm/bars/complexity/dedupe) — no query. */
+    BrowserSearch getFilter() const;
     void setCriteria(const BrowserSearch&);
 
     std::function<void()> onOpenFolder;
     std::function<void(const juce::String&)> onPickDir;
     std::function<void(const juce::String&)> onRemoveDir;
+    /** Heart on current folder — add/remove from Saved favorites. */
     std::function<void()> onAddCurrent;
+    /** Recursive load of the current folder tree into the browser. */
+    std::function<void()> onScanAllFolders;
     std::function<void()> onShowStarred;
     std::function<void()> onShowSearch;
+    /** Text search (Enter / saved search) — scans disk by query. */
     std::function<void(const BrowserSearch&)> onRunSearch;
+    /** Filter controls changed — refilter already-loaded clips (no rescan). */
+    std::function<void()> onFilterChanged;
     std::function<void(int)> onPickSavedSearch;
     std::function<void(int)> onRemoveSavedSearch;
     std::function<void()> onSaveCurrentSearch;
@@ -95,13 +103,14 @@ private:
         RowKind kind = RowKind::Open;
         int index = -1;
         bool removeZone = false;
-        bool addZone = false; // current-folder +
+        bool heartZone = false;   // current-folder heart → favorite
+        bool scanZone = false;    // "Scan all folders" trailing control
     };
     enum class ChromeHit
     {
-        None, Settings, ScanRow, HideDupesRow,
+        None, Settings,
         FilterHeader, SearchHeader, SavedHeader,
-        CurrentFolderPlus
+        CurrentFolderHeart, CurrentFolderScan
     };
 
     struct Row { RowKind kind; int index = -1; };
@@ -115,15 +124,16 @@ private:
     ChromeHit chromeHitAt(juce::Point<int> pos) const;
     juce::Rectangle<int> rowBounds(int rowIdx) const;
     void paintRow(juce::Graphics&, int rowIdx, const juce::Rectangle<int>& r,
-                  bool hovered, bool removeZone, bool addZone);
+                  bool hovered, bool removeZone, bool heartZone, bool scanZone);
     void paintSectionHeader(juce::Graphics&, const juce::String& title, bool open,
                             juce::Rectangle<int> headerBounds);
     int contentTopY() const;
     int contentBottomY() const;
     int footerPad() const;
     int footerHeight() const;
+    bool isCurrentFolderFavorited() const;
 
-    enum class LayoutKind { Row, Section, Scan, HideDupes, FilterBody, Query, End };
+    enum class LayoutKind { Row, Section, FilterBody, Query, End };
     struct LayoutItem
     {
         LayoutKind kind = LayoutKind::End;
@@ -131,7 +141,7 @@ private:
         juce::Rectangle<int> bounds;
     };
     std::vector<LayoutItem> collectLayout() const;
-    void scheduleLiveSearch();
+    void scheduleFilterApply();
     void timerCallback() override;
 
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
@@ -146,7 +156,8 @@ private:
     int expandedWidth = 0;
     int hoverRow = -1;
     bool hoverRemove = false;
-    bool hoverAdd = false;
+    bool hoverHeart = false;
+    bool hoverScan = false;
     bool hoverSettings = false;
     bool resizing = false;
     int resizeStartWidth = 0;
@@ -158,11 +169,11 @@ private:
 
     juce::Rectangle<int> settingsRowBounds;
     juce::Rectangle<int> filterHeaderBounds, searchHeaderBounds, savedHeaderBounds;
-    juce::Rectangle<int> scanRowBounds, hideDupesRowBounds, currentFolderPlusBounds;
+    juce::Rectangle<int> currentFolderHeartBounds, currentFolderScanBounds;
 
     std::vector<Row> rows;
 
-    // ── Filter panel (Key dropdown + BPM / Bars / Complexity tall sliders)
+    // ── Filter panel (Key + ranges + Hide Duplicates)
     class FilterPanel : public juce::Component
     {
     public:
@@ -182,7 +193,8 @@ private:
         fx::FlatRangeSliderRow bpmRange { "BPM", 40, 240, 40, 240 };
         fx::FlatRangeSliderRow barsRange { "Bars", 1, 64, 1, 64 };
         fx::FlatRangeSliderRow complexityRange { "Complexity", 0, 100, 0, 100 };
-        juce::Rectangle<int> keyRow;
+        fx::FlatSwitch hideDupesSwitch;
+        juce::Rectangle<int> keyRow, hideDupesRow;
     };
 
     // ── Search query (field + clear × + save +)
@@ -246,8 +258,6 @@ private:
 
     FilterPanel filterPanel;
     SearchQueryPanel searchQuery;
-    fx::FlatSwitch scanSwitch;
-    fx::FlatSwitch hideDupesSwitch;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FavoritesSidebar)
 };

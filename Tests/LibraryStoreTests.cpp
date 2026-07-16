@@ -27,6 +27,7 @@ TEST_CASE("LibraryStore persists stars and search cache to disk", "[Library][qa]
         SavedSearchEntry entry;
         entry.name = "groove 120";
         entry.search = s;
+        entry.rootPath = "/tmp/midi";
         store.addSavedSearch(entry);
     }
 
@@ -37,15 +38,18 @@ TEST_CASE("LibraryStore persists stars and search cache to disk", "[Library][qa]
         REQUIRE(loaded.isStarred("/tmp/b.mid"));
         REQUIRE(loaded.savedSearches.size() == 1);
         REQUIRE(loaded.savedSearches[0].name == "groove 120");
+        REQUIRE(loaded.savedSearches[0].rootPath == "/tmp/midi");
 
         BrowserSearch s;
         s.query = "groove";
         s.bpmMin = 120.0;
         s.bpmMax = 120.0;
         s.subdirs = true;
+        REQUIRE(LibraryStore::searchesEqual(loaded.savedSearches[0].search, s));
         const auto* cached = loaded.findSearchCache(juce::File("/tmp/midi"), s);
         REQUIRE(cached != nullptr);
         REQUIRE(cached->resultPaths.size() == 2);
+        REQUIRE(cached->rootPath == "/tmp/midi");
     }
 
     file.deleteFile();

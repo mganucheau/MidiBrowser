@@ -33,8 +33,12 @@ public:
 private:
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);
     void rescanFolder(bool keepSelection);
+    /** Load every MIDI file under the current folder tree (flat list). */
+    void scanAllFolders();
     void chooseFolder();
     void rebuildEntries();
+    /** Refilter the already-loaded clip list (no disk rescan). */
+    void applyBrowserFilter();
     int displayForClip(int clipIdx) const;
     void selectIndex(int index);
     void enterFolderAtDisplay(int displayIdx);
@@ -122,6 +126,8 @@ private:
 
     juce::File rootDir;
     std::vector<StepClip> clips;
+    /** True after "Scan all folders" — flat recursive MIDI list, no subfolder rows. */
+    bool recursiveBrowse = false;
     struct DisplayRow
     {
         bool isDirectory = false;

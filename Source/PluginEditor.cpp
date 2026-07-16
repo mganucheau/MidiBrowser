@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "BuildInfo.h"
+#include <set>
 
 namespace pflow {
 
@@ -25,12 +26,8 @@ FileListEntry entryForClip(const StepClip& clip, const juce::File& f,
     return e;
 }
 
-bool clipMatches(const StepClip& clip, const juce::File& file, const BrowserSearch& s)
+bool clipMatchesFilter(const StepClip& clip, const BrowserSearch& s)
 {
-    if (s.query.isNotEmpty()
-        && !file.getFileNameWithoutExtension().containsIgnoreCase(s.query))
-        return false;
-
     if (s.bpmMin > 0.0 && clip.bpm < s.bpmMin - 0.5)
         return false;
     if (s.bpmMax > 0.0 && clip.bpm > s.bpmMax + 0.5)
@@ -60,6 +57,85 @@ bool clipMatches(const StepClip& clip, const juce::File& file, const BrowserSear
         return false;
 
     return true;
+}
+
+bool clipMatchesQuery(const juce::File& file, const BrowserSearch& s)
+{
+    if (s.query.isEmpty())
+        return true;
+    return file.getFileNameWithoutExtension().containsIgnoreCase(s.query);
+}
+
+bool clipMatches(const StepClip& clip, const juce::File& file, const BrowserSearch& s)
+{
+    return clipMatchesQuery(file, s) && clipMatchesFilter(clip, s);
+}
+
+/** Query + recurse identity for disk cache (filters are applied after load). */
+BrowserSearch searchScanKey(const BrowserSearch& s)
+{
+    BrowserSearch k;
+    k.query = s.query;
+    k.subdirs = true;
+    return k;
+}
+
+/** Non-mutating dedupe: returns primary path -> all locations; hiddenPaths are non-primaries. */
+std::map<juce::String, juce::StringArray>
+computeDedupeLocations(const std::vector<StepClip>& clips,
+                       std::set<juce::String>& hiddenPaths)
+{
+    hiddenPaths.clear();
+    std::map<juce::String, juce::StringArray> locationsByPrimary;
+    if (clips.empty())
+        return locationsByPrimary;
+
+    auto contentKey = [](const juce::File& f) -> juce::String
+    {
+        juce::uint32 h = 2166136261u;
+        if (juce::FileInputStream in (f); in.openedOk())
+        {
+            char buf[4096];
+            while (! in.isExhausted())
+            {
+                const auto n = in.read(buf, (int) sizeof(buf));
+                for (int i = 0; i < n; ++i)
+                {
+                    h ^= (juce::uint8) buf[i];
+                    h *= 16777619u;
+                }
+            }
+        }
+        return f.getFileName().toLowerCase()
+             + "|" + juce::String(f.getSize())
+             + "|" + juce::String::toHexString((int) h);
+    };
+
+    std::map<juce::String, juce::String> keyToPrimary;
+    for (const auto& clip : clips)
+    {
+        const juce::File f(clip.filePath);
+        const juce::String key = contentKey(f);
+        if (key.isEmpty())
+            continue;
+
+        if (auto it = keyToPrimary.find(key); it != keyToPrimary.end())
+        {
+            const auto& primary = it->second;
+            auto& locs = locationsByPrimary[primary];
+            if (locs.isEmpty())
+                locs.add(primary);
+            if (!locs.contains(clip.filePath))
+                locs.add(clip.filePath);
+            if (clip.filePath != primary)
+                hiddenPaths.insert(clip.filePath);
+            continue;
+        }
+
+        keyToPrimary[key] = clip.filePath;
+        locationsByPrimary[clip.filePath] = juce::StringArray { clip.filePath };
+    }
+    return locationsByPrimary;
 }
 
 juce::String searchBpmTitle(const BrowserSearch& criteria)
@@ -122,71 +198,6 @@ void scanMidiFiles(const juce::File& dir, bool subdirs,
         if (d.getFileName().startsWithChar('.')) continue;
         scanMidiFiles(d, true, out, matches);
     }
-}
-
-/** Collapse content-identical MIDI hits; returns primary path -> all locations. */
-std::map<juce::String, juce::StringArray>
-dedupeSearchResults(std::vector<StepClip>& clips)
-{
-    std::map<juce::String, juce::StringArray> locationsByPrimary;
-    if (clips.empty())
-        return locationsByPrimary;
-
-    auto contentKey = [](const juce::File& f) -> juce::String
-    {
-        // Name + size + FNV-1a of bytes — identical copies collapse without
-        // pulling in juce_cryptography (MIDI files are typically tiny).
-        juce::uint32 h = 2166136261u;
-        if (juce::FileInputStream in (f); in.openedOk())
-        {
-            char buf[4096];
-            while (! in.isExhausted())
-            {
-                const auto n = in.read(buf, (int) sizeof(buf));
-                for (int i = 0; i < n; ++i)
-                {
-                    h ^= (juce::uint8) buf[i];
-                    h *= 16777619u;
-                }
-            }
-        }
-        return f.getFileName().toLowerCase()
-             + "|" + juce::String(f.getSize())
-             + "|" + juce::String::toHexString((int) h);
-    };
-
-    std::map<juce::String, size_t> keyToIndex;
-    std::vector<StepClip> unique;
-    unique.reserve(clips.size());
-
-    for (auto& clip : clips)
-    {
-        const juce::File f(clip.filePath);
-        const juce::String key = contentKey(f);
-        if (key.isEmpty())
-        {
-            unique.push_back(std::move(clip));
-            continue;
-        }
-
-        if (auto it = keyToIndex.find(key); it != keyToIndex.end())
-        {
-            const auto& primary = unique[it->second].filePath;
-            auto& locs = locationsByPrimary[primary];
-            if (locs.isEmpty())
-                locs.add(primary);
-            if (!locs.contains(clip.filePath))
-                locs.add(clip.filePath);
-            continue;
-        }
-
-        keyToIndex[key] = unique.size();
-        locationsByPrimary[clip.filePath] = juce::StringArray { clip.filePath };
-        unique.push_back(std::move(clip));
-    }
-
-    clips = std::move(unique);
-    return locationsByPrimary;
 }
 
 } // namespace
@@ -254,12 +265,16 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             dir = juce::File(processorRef.lastBrowserDir);
         if (!dir.isDirectory())
             return;
-        processorRef.addSavedBrowserDir(dir.getFullPathName());
+        const auto path = dir.getFullPathName();
+        if (processorRef.savedBrowserDirs.contains(path))
+            processorRef.removeSavedBrowserDir(path);
+        else
+            processorRef.addSavedBrowserDir(path);
         refreshSidebar();
-        // Keep the saved list visible.
         if (sidebar.isCollapsed())
             sidebar.setCollapsed(false);
     };
+    sidebar.onScanAllFolders = [this] { scanAllFolders(); };
     sidebar.onRemoveDir = [this](const juce::String& path)
     {
         processorRef.removeSavedBrowserDir(path);
@@ -295,6 +310,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         sidebar.setSearchFormOpen(!sidebar.isSearchFormOpen());
     };
     sidebar.onRunSearch = [this](const BrowserSearch& s) { runSearchAsync(s); };
+    sidebar.onFilterChanged = [this] { applyBrowserFilter(); };
     sidebar.onExitSearch = [this]
     {
         // × clears criteria, collapses the form, and leaves search results.
@@ -633,6 +649,7 @@ void MidiBrowserEditor::setRootDirectory(const juce::File& dir, bool keepSelecti
 {
     browseMode = 0;
     starredFilter = false;
+    recursiveBrowse = false;
     searchDuplicateLocations.clear();
     sidebar.setStarredFilter(false);
     rootDir = dir;
@@ -648,6 +665,7 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
         (keepSelection && selectedIdx >= 0 && selectedIdx < (int) clips.size())
             ? clips[(size_t) selectedIdx].filePath : juce::String();
 
+    recursiveBrowse = false;
     auto files = rootDir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi");
     files.sort();
 
@@ -678,6 +696,98 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
         selectIndex(nextSel);
     else
     {
+        rollEditor.clearClip();
+        syncEffectsInspector();
+        processorRef.setPreviewState({}, false, false, false);
+    }
+}
+
+void MidiBrowserEditor::scanAllFolders()
+{
+    juce::File dir = rootDir;
+    if (!dir.isDirectory() && processorRef.lastBrowserDir.isNotEmpty())
+        dir = juce::File(processorRef.lastBrowserDir);
+    if (!dir.isDirectory())
+        return;
+
+    const juce::String previousPath =
+        (selectedIdx >= 0 && selectedIdx < (int) clips.size())
+            ? clips[(size_t) selectedIdx].filePath : juce::String();
+
+    rootDir = dir;
+    processorRef.lastBrowserDir = dir.getFullPathName();
+    setBrowseMode(0);
+    starredFilter = false;
+    sidebar.setStarredFilter(false);
+    recursiveBrowse = true;
+    activeSavedSearchIdx = -1;
+    ++searchGeneration;
+
+    clips.clear();
+    scanMidiFiles(dir, true, clips, [](const StepClip&, const juce::File&) { return true; });
+
+    fileList.setFolderName(dir.getFileName().isNotEmpty() ? dir.getFileName() : "All folders");
+    rebuildEntries();
+    refreshSidebar();
+
+    int nextSel = clips.empty() ? -1 : 0;
+    if (previousPath.isNotEmpty())
+        for (int i = 0; i < (int) clips.size(); ++i)
+            if (clips[(size_t) i].filePath == previousPath)
+                nextSel = i;
+    if (nextSel >= 0 && displayForClip(nextSel) < 0)
+    {
+        nextSel = -1;
+        for (const auto& row : displayRows)
+            if (!row.isDirectory) { nextSel = row.clipIndex; break; }
+    }
+
+    selectedIdx = -1;
+    if (nextSel >= 0)
+        selectIndex(nextSel);
+    else
+    {
+        rollEditor.clearClip();
+        syncEffectsInspector();
+        processorRef.setPreviewState({}, false, false, false);
+    }
+    fileList.grabBrowseFocus();
+}
+
+void MidiBrowserEditor::applyBrowserFilter()
+{
+    const juce::String previousPath =
+        (selectedIdx >= 0 && selectedIdx < (int) clips.size())
+            ? clips[(size_t) selectedIdx].filePath : juce::String();
+
+    rebuildEntries();
+
+    int nextSel = selectedIdx;
+    if (nextSel >= 0 && displayForClip(nextSel) < 0)
+        nextSel = -1;
+    if (nextSel < 0 && previousPath.isNotEmpty())
+        for (int i = 0; i < (int) clips.size(); ++i)
+            if (clips[(size_t) i].filePath == previousPath && displayForClip(i) >= 0)
+            {
+                nextSel = i;
+                break;
+            }
+    if (nextSel < 0)
+    {
+        for (const auto& row : displayRows)
+            if (!row.isDirectory) { nextSel = row.clipIndex; break; }
+    }
+
+    if (nextSel >= 0)
+    {
+        if (nextSel != selectedIdx)
+            selectIndex(nextSel);
+        else if (const int d = displayForClip(selectedIdx); d >= 0)
+            fileList.setSelectedIndex(d, juce::dontSendNotification);
+    }
+    else if (selectedIdx >= 0)
+    {
+        selectedIdx = -1;
         rollEditor.clearClip();
         syncEffectsInspector();
         processorRef.setPreviewState({}, false, false, false);
@@ -738,22 +848,21 @@ void MidiBrowserEditor::runSearch(const BrowserSearch& criteria)
             ? clips[(size_t) selectedIdx].filePath : juce::String();
 
     activeSearch = criteria;
+    recursiveBrowse = false;
     clips.clear();
+    searchDuplicateLocations.clear();
 
     const juce::File searchRoot = rootDir.isDirectory() ? rootDir
         : juce::File(processorRef.lastBrowserDir);
     if (searchRoot.isDirectory())
     {
-        const auto matcher = [this, criteria](const StepClip& clip, const juce::File& f)
+        // Disk scan matches query only; FILTER is applied in rebuildEntries.
+        const auto matcher = [criteria](const StepClip&, const juce::File& f)
         {
-            return clipMatchesSearch(clip, f, criteria);
+            return clipMatchesQuery(f, criteria);
         };
-        scanMidiFiles(searchRoot, criteria.subdirs, clips, matcher);
+        scanMidiFiles(searchRoot, true, clips, matcher);
     }
-
-    searchDuplicateLocations.clear();
-    if (criteria.removeDuplicates)
-        searchDuplicateLocations = dedupeSearchResults(clips);
 
     juce::String title = "Search";
     if (criteria.query.isNotEmpty())
@@ -763,11 +872,14 @@ void MidiBrowserEditor::runSearch(const BrowserSearch& criteria)
     fileList.setFolderName(title);
     rebuildEntries();
 
-    int nextSel = clips.empty() ? -1 : 0;
+    int nextSel = -1;
     if (previousPath.isNotEmpty())
         for (int i = 0; i < (int) clips.size(); ++i)
-            if (clips[(size_t) i].filePath == previousPath)
+            if (clips[(size_t) i].filePath == previousPath && displayForClip(i) >= 0)
                 nextSel = i;
+    if (nextSel < 0)
+        for (const auto& row : displayRows)
+            if (!row.isDirectory) { nextSel = row.clipIndex; break; }
 
     selectedIdx = -1;
     if (nextSel >= 0)
@@ -812,17 +924,17 @@ void MidiBrowserEditor::applySearchSnapshot(std::vector<StepClip> found,
 
     activeSearch = criteria;
     activeSavedSearchIdx = savedIdx;
+    recursiveBrowse = false;
     setBrowseMode(2);
 
     SearchSnapshot snap;
     snap.criteria = criteria;
     snap.rootPath = rootPath;
-    snap.clips = found;          // keep a copy for instant re-open
-    snap.locations = locMap;
+    snap.clips = found;          // full query hits; filter applied on display
+    snap.locations = std::move(locMap);
     rememberSearchSnapshot(savedIdx, std::move(snap));
 
     clips = std::move(found);
-    searchDuplicateLocations = std::move(locMap);
     juce::String title = "Search";
     if (criteria.query.isNotEmpty())
         title = criteria.query;
@@ -834,8 +946,11 @@ void MidiBrowserEditor::applySearchSnapshot(std::vector<StepClip> found,
     refreshSidebar();
 
     selectedIdx = -1;
-    if (!clips.empty())
-        selectIndex(0);
+    int nextSel = -1;
+    for (const auto& row : displayRows)
+        if (!row.isDirectory) { nextSel = row.clipIndex; break; }
+    if (nextSel >= 0)
+        selectIndex(nextSel);
     else
     {
         rollEditor.clearClip();
@@ -870,11 +985,14 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria, int savedI
     else
         activeSavedSearchIdx = savedIdx;
     starredFilter = false;
+    recursiveBrowse = false;
     sidebar.setStarredFilter(false);
     setBrowseMode(2);
 
-    // Disk path-cache hit: rebuild clips without walking the tree.
-    if (const auto* cached = processorRef.library().findSearchCache(searchRoot, criteria))
+    // Cache key is query-only; filters apply afterward in rebuildEntries.
+    const auto cacheKey = searchScanKey(criteria);
+
+    if (const auto* cached = processorRef.library().findSearchCache(searchRoot, cacheKey))
     {
         std::vector<StepClip> found;
         found.reserve((size_t) cached->resultPaths.size());
@@ -892,10 +1010,7 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria, int savedI
 
         if (!missing)
         {
-            std::map<juce::String, juce::StringArray> locMap;
-            if (criteria.removeDuplicates)
-                locMap = dedupeSearchResults(found);
-            applySearchSnapshot(std::move(found), std::move(locMap), criteria, savedIdx,
+            applySearchSnapshot(std::move(found), {}, criteria, savedIdx,
                                 searchRoot.getFullPathName(), false);
             return;
         }
@@ -904,41 +1019,36 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria, int savedI
     fileList.setSearching(true);
 
     juce::Component::SafePointer<MidiBrowserEditor> safe(this);
-    juce::Thread::launch([safe, criteria, searchRoot, gen, savedIdx]
+    juce::Thread::launch([safe, criteria, cacheKey, searchRoot, gen, savedIdx]
     {
         std::vector<StepClip> found;
         juce::StringArray resultPaths;
-        std::map<juce::String, juce::StringArray> locMap;
         try
         {
-            const auto matcher = [criteria](const StepClip& clip, const juce::File& f)
+            const auto matcher = [criteria](const StepClip&, const juce::File& f)
             {
-                return clipMatches(clip, f, criteria);
+                return clipMatchesQuery(f, criteria);
             };
-            scanMidiFiles(searchRoot, criteria.subdirs, found, matcher);
+            scanMidiFiles(searchRoot, true, found, matcher);
 
             for (const auto& c : found)
                 resultPaths.add(c.filePath);
-
-            if (criteria.removeDuplicates)
-                locMap = dedupeSearchResults(found);
         }
         catch (...)
         {
             found.clear();
             resultPaths.clear();
-            locMap.clear();
         }
 
-        juce::MessageManager::callAsync([safe, results = std::move(found), criteria, searchRoot,
-                                         paths = std::move(resultPaths),
-                                         locations = std::move(locMap), gen, savedIdx]() mutable
+        juce::MessageManager::callAsync([safe, results = std::move(found), criteria, cacheKey,
+                                         searchRoot, paths = std::move(resultPaths),
+                                         gen, savedIdx]() mutable
         {
             if (safe == nullptr || gen != safe->searchGeneration.load())
                 return;
 
-            safe->processorRef.library().putSearchCache(searchRoot, criteria, paths);
-            safe->applySearchSnapshot(std::move(results), std::move(locations), criteria, savedIdx,
+            safe->processorRef.library().putSearchCache(searchRoot, cacheKey, paths);
+            safe->applySearchSnapshot(std::move(results), {}, criteria, savedIdx,
                                       searchRoot.getFullPathName(), false);
         });
     });
@@ -994,7 +1104,35 @@ void MidiBrowserEditor::rebuildEntries()
     displayRows.clear();
     std::vector<FileListEntry> entries;
 
-    if (browseMode == 0 && rootDir.isDirectory())
+    const auto filter = sidebar.getFilter();
+
+    // Build the clip pool that passes the FILTER (search already narrowed by query).
+    std::vector<int> passing;
+    passing.reserve(clips.size());
+    for (int i = 0; i < (int) clips.size(); ++i)
+    {
+        const auto& clip = clips[(size_t) i];
+        const bool starred = processorRef.isStarred(clip.filePath);
+        // Starred library mode already lists only favourites — don't re-filter stars.
+        if (starredFilter && browseMode != 1 && !starred)
+            continue;
+        if (!clipMatchesFilter(clip, filter))
+            continue;
+        passing.push_back(i);
+    }
+
+    std::set<juce::String> hiddenDupes;
+    searchDuplicateLocations.clear();
+    if (filter.removeDuplicates && !passing.empty())
+    {
+        std::vector<StepClip> pool;
+        pool.reserve(passing.size());
+        for (int i : passing)
+            pool.push_back(clips[(size_t) i]);
+        searchDuplicateLocations = computeDedupeLocations(pool, hiddenDupes);
+    }
+
+    if (browseMode == 0 && rootDir.isDirectory() && !recursiveBrowse)
     {
         auto dirs = rootDir.findChildFiles(juce::File::findDirectories, false, "*");
         dirs.sort();
@@ -1010,13 +1148,13 @@ void MidiBrowserEditor::rebuildEntries()
         }
     }
 
-    for (int i = 0; i < (int) clips.size(); ++i)
+    for (int i : passing)
     {
         const auto& clip = clips[(size_t) i];
-        const bool starred = processorRef.isStarred(clip.filePath);
-        // Starred library mode already lists only favourites — don't re-filter.
-        if (starredFilter && browseMode != 1 && !starred)
+        if (hiddenDupes.count(clip.filePath) != 0)
             continue;
+
+        const bool starred = processorRef.isStarred(clip.filePath);
         const bool edited = (processorRef.sectionLocks & toolkitLock::Pitch) != 0
                                 && !editIsClean(processorRef.editFor(clip.filePath));
         auto entry = entryForClip(clip, juce::File(clip.filePath), edited, starred);

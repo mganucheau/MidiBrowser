@@ -47,7 +47,7 @@ TEST_CASE("Processor advertises MIDI capability", "[Processor][qa]")
     MidiBrowserProcessor processor;
     REQUIRE(processor.acceptsMidi());
     REQUIRE(processor.producesMidi());
-    REQUIRE(processor.getName() == "Midi Browser");
+    REQUIRE(processor.getName() == "Midi Toolkit");
     REQUIRE(processor.getTailLengthSeconds() == Approx(0.0));
 }
 
@@ -218,6 +218,22 @@ TEST_CASE("Changing the preview clip releases held notes", "[Processor][qa]")
     REQUIRE_FALSE(test::hasAllNotesOff(next));
 }
 
+TEST_CASE("Soft preview updates do not release held notes", "[Processor][qa]")
+{
+    ProcessorTestHarness harness;
+    const double blockBeats = 512.0 / 44100.0 * 2.0;
+
+    auto clipA = previewClipWithNoteAt(0.0);
+    harness.processor.setPreviewState(clipA, true, false, false);
+    harness.runBlock(0.0);
+
+    // Live Toolkit slider tweaks use softUpdate — no all-notes-off click.
+    auto clipB = test::makeClipWithNotes({ { 60, 110, 0.0, 0.5, 1 } }, 4.0);
+    harness.processor.setPreviewState(clipB, true, false, false, true);
+    const auto midi = harness.runBlock(blockBeats);
+    REQUIRE_FALSE(test::hasAllNotesOff(midi));
+}
+
 TEST_CASE("Per-clip edits and grooves round-trip through plugin state", "[Processor][qa]")
 {
     MidiBrowserProcessor original;
@@ -299,6 +315,14 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     tweaks().size.store((int) ContentSize::Large);
     original.addSavedBrowserDir(juce::File::getSpecialLocation(juce::File::tempDirectory).getFullPathName());
 
+    SavedSearchEntry saved;
+    saved.name = "house 128";
+    saved.search.query = "house";
+    saved.search.bpmMin = 128.0;
+    saved.search.bpmMax = 128.0;
+    saved.rootPath = "/tmp/midi-lib";
+    original.addSavedSearch(saved);
+
     juce::MemoryBlock state;
     original.getStateInformation(state);
 
@@ -319,6 +343,12 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     REQUIRE(tweaks().density.load() == (int) Density::Comfortable);
     REQUIRE(tweaks().size.load() == (int) ContentSize::Large);
     REQUIRE(restored.savedBrowserDirs.size() == original.savedBrowserDirs.size());
+    REQUIRE(restored.savedSearches.size() >= 1);
+    REQUIRE(std::any_of(restored.savedSearches.begin(), restored.savedSearches.end(),
+                        [](const SavedSearchEntry& e)
+                        {
+                            return e.name == "house 128" && e.rootPath == "/tmp/midi-lib";
+                        }));
 
     tweaks().density.store((int) Density::Compact);
     tweaks().size.store((int) ContentSize::Medium);

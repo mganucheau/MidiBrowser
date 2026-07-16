@@ -23,6 +23,8 @@ namespace icons {
     inline constexpr const char* star          = "star";
     /** Stroke star for Photos-style nav (Favorites). */
     inline constexpr const char* starOutline   = "star-outline";
+    inline constexpr const char* heart         = "heart";
+    inline constexpr const char* heartOutline  = "heart-outline";
     inline constexpr const char* plus          = "plus";
     inline constexpr const char* minus         = "minus";
     inline constexpr const char* x             = "x";

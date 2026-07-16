@@ -109,6 +109,22 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
         else
             g.fillPath(p);
     }
+    else if (name == icons::heart || name == icons::heartOutline)
+    {
+        // Classic heart from two lobes + pointed tip.
+        p.startNewSubPath(cx, cy + s * 0.85f);
+        p.cubicTo(cx + s * 1.15f, cy + s * 0.1f,
+                  cx + s * 1.05f, cy - s * 0.75f,
+                  cx, cy - s * 0.25f);
+        p.cubicTo(cx - s * 1.05f, cy - s * 0.75f,
+                  cx - s * 1.15f, cy + s * 0.1f,
+                  cx, cy + s * 0.85f);
+        p.closeSubPath();
+        if (name == icons::heartOutline)
+            g.strokePath(p, st);
+        else
+            g.fillPath(p);
+    }
     else if (name == icons::plus)
     {
         g.drawLine(cx - s * 0.85f, cy, cx + s * 0.85f, cy, px);
