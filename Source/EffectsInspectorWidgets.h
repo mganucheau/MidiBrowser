@@ -58,14 +58,12 @@ inline juce::Font sectionTitleFont() { return uiFontFixed(kSectionTitlePt, true)
 
 inline void fillTallWell(juce::Graphics& g, juce::Rectangle<float> r, bool hot)
 {
-    const auto& t = inspectorTokens();
-    g.setColour(hot ? t.tallWellHot : t.tallWell);
+    g.setColour(hot ? (usesDarkAppearance() ? ds::ctl().brighter(0.08f) : ds::ctl().darker(0.03f))
+                    : ds::ctl());
     g.fillRoundedRectangle(r, kTallRadius);
-    if (hot)
-    {
-        g.setColour(t.controlHairline);
-        g.drawRoundedRectangle(r.reduced(0.5f), kTallRadius, 1.0f);
-    }
+    g.setColour(ds::ctlb());
+    g.drawRoundedRectangle(r.reduced(0.5f), kTallRadius, 1.0f);
+    ds::shadow::control(g, r, kTallRadius);
 }
 
 inline void drawCaretDown(juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour)
@@ -251,19 +249,22 @@ public:
 
     void paint(juce::Graphics& g) override
     {
-        const auto& t = inspectorTokens();
         auto r = getLocalBounds().toFloat();
         fillTallWell(g, r, isMouseOver() || hasKeyboardFocus(true));
 
-        auto textArea = r.reduced(8.0f, 0.0f);
-        textArea.removeFromRight(14.0f);
+        // §6 popup: accent chevron capsule 11×15, r3, white ▲▼.
+        auto capsule = r.removeFromRight(15.0f)
+                           .withSizeKeepingCentre(11.0f, juce::jmin(15.0f, r.getHeight() - 4.0f));
+        g.setColour(ds::acc());
+        g.fillRoundedRectangle(capsule, 3.0f);
+        drawCaretUpDown(g, capsule, juce::Colours::white);
 
-        g.setColour(t.headerText);
+        auto textArea = r.reduced(8.0f, 0.0f);
+        g.setColour(ds::tx());
         g.setFont(popupFont());
         const juce::String val = labels.size() > index ? labels[index] : juce::String();
         g.drawText(val, textArea.toNearestInt(), juce::Justification::centredLeft, false);
 
-        drawCaretUpDown(g, r.removeFromRight(14.0f), t.chevron);
         if (hasKeyboardFocus(true))
             drawFocusRing(g, getLocalBounds().toFloat(), kTallRadius);
     }

@@ -324,39 +324,42 @@ IconBtn::IconBtn(const juce::String& iconName, const juce::String& tip)
 void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
 {
     auto b = getLocalBounds().toFloat();
+    const float radius = 6.0f;
     if (ghost)
     {
         // Toolbar toggles: colour only — no pad, border, or wash.
     }
-    else if (active)
+    else
     {
-        g.setColour(colours::accent().withAlpha(down ? 0.85f : 1.0f));
-        g.fillRoundedRectangle(b, metrics::chipRadius);
+        // §6 icon button: control face + border + shadow.
+        g.setColour(down ? (usesDarkAppearance() ? ds::ctl().brighter(0.06f) : ds::ctl().darker(0.06f))
+                  : over ? (usesDarkAppearance() ? ds::ctl().brighter(0.03f) : ds::ctl().darker(0.03f))
+                         : ds::ctl());
+        g.fillRoundedRectangle(b, radius);
+        g.setColour(ds::ctlb());
+        g.drawRoundedRectangle(b.reduced(0.5f), radius, 1.0f);
+        ds::shadow::control(g, b, radius);
+        if (active)
+        {
+            g.setColour(ds::selsoft());
+            g.fillRoundedRectangle(b, radius);
+        }
     }
-    else if (down || over)
-    {
-        g.setColour(down ? colours::elev().brighter(0.08f) : colours::elev());
-        g.fillRoundedRectangle(b, metrics::chipRadius);
-    }
-    const juce::Colour col = (active && ghost) ? colours::accent()
-                           : active ? colours::accentInk()
-                           : isEnabled() ? (over ? colours::text() : colours::text2())
-                                         : colours::text2();
+    const juce::Colour col = active ? ds::acc()
+                           : isEnabled() ? (over ? ds::tx() : ds::tx2())
+                                         : ds::tx3().withAlpha(0.40f);
     const float inset = juce::jmin(b.getWidth(), b.getHeight()) * (0.5f - 0.32f * iconScale);
-    // Glyph area follows Text size %; button hit target follows UI size.
     const float glyphScale = juce::jlimit(0.7f, 1.4f, textIconScale());
     auto glyph = b.reduced(inset).withSizeKeepingCentre(
         b.reduced(inset).getWidth() * glyphScale,
         b.reduced(inset).getHeight() * glyphScale);
-    const float stroke = 1.6f * juce::jlimit(0.85f, 1.35f, contentScale() * textIconScale());
+    // §7: stroke 1.2–1.5
+    const float stroke = juce::jlimit(1.2f, 1.5f, 1.35f * contentScale() * textIconScale());
     drawIcon(g, icon, glyph, col, stroke);
     if (!isEnabled())
-    {
-        g.setColour(colours::elev().withAlpha(0.35f));
-        g.fillRoundedRectangle(b, metrics::chipRadius);
-    }
+        g.setOpacity(0.40f);
     if (hasKeyboardFocus(true))
-        drawFocusRing(g, b, metrics::chipRadius);
+        drawFocusRing(g, b, radius);
 }
 
 // ── ChipBtn ──────────────────────────────────────────────────────────────────

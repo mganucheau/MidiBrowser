@@ -2172,8 +2172,8 @@ void FileListPanel::paintColumnHeader(juce::Graphics& g)
         // Bounds in panel space already account for viewX; undo that for content paint.
         auto r = headerColumnBounds(col).translated(viewX, 0);
         const bool active = sortColumn == col;
-        g.setColour(active ? colours::text() : colours::text2());
-        g.setFont(uiFont(10.5f, true));
+        g.setColour(ds::colour(ds::Type::TableHeader));
+        g.setFont(ds::font(ds::Type::TableHeader));
         const auto font = g.getCurrentFont();
         const int labelW = (int) std::ceil(juce::GlyphArrangement::getStringWidth(font, label));
         auto labelR = r.removeFromLeft(labelW);
@@ -2189,6 +2189,7 @@ void FileListPanel::paintColumnHeader(juce::Graphics& g)
                 p.addTriangle(cx - 3.5f, cy + 2.0f, cx + 3.5f, cy + 2.0f, cx, cy - 2.5f);
             else
                 p.addTriangle(cx - 3.5f, cy - 2.0f, cx + 3.5f, cy - 2.0f, cx, cy + 2.5f);
+            g.setColour(ds::acc());
             g.fillPath(p);
         }
     };
@@ -2212,56 +2213,58 @@ void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<
     if (entryIdx < 0) return;
     const auto& e = entries[(size_t) entryIdx];
     const bool isSelected = entryIdx == selected;
+    auto rowR = r.toFloat().reduced(2.0f, 1.0f);
 
     if (isSelected)
     {
-        g.setColour(colours::accent());
-        g.fillRect(r);
+        g.setColour(ds::acc());
+        g.fillRoundedRectangle(rowR, 5.0f);
     }
     else if (hovered)
     {
-        g.setColour(colours::elev().withAlpha(0.55f));
-        g.fillRect(r);
+        g.setColour(ds::hoverWash());
+        g.fillRoundedRectangle(rowR, 5.0f);
     }
     else if ((displayIdx % 2) == 1)
     {
-        g.setColour(colours::tableAlt());
-        g.fillRect(r);
+        g.setColour(ds::rowalt());
+        g.fillRoundedRectangle(rowR, 5.0f);
     }
 
-    // Black text on accent selection (matches Toolkit contrast).
-    const auto textCol = isSelected ? juce::Colours::black : colours::text();
-    const auto metaCol = isSelected ? juce::Colours::black.withAlpha(0.78f) : colours::text2();
+    // §6: selection = white text; secondary cells at 80% white.
+    const auto textCol = isSelected ? juce::Colours::white : ds::tx();
+    const auto metaCol = isSelected ? juce::Colours::white.withAlpha(0.80f) : ds::tx2();
 
     auto cols = splitRowColumns(r);
     auto row = cols.name;
 
-    // Leading star (files) or folder icon — match header chrome glyph size.
-    const float iconS = (float) metrics::chromeIconGlyphSize();
-    auto iconArea = row.removeFromLeft((int) iconS + 3).toFloat().withSizeKeepingCentre(iconS, iconS);
+    const float iconS = 13.0f;
+    auto iconArea = row.removeFromLeft(18).toFloat().withSizeKeepingCentre(iconS, iconS);
     if (e.isDirectory)
     {
         drawIcon(g, icons::folder, iconArea,
-                 isSelected ? juce::Colours::black : colours::accent(), 1.5f);
+                 isSelected ? juce::Colours::white : ds::acc(), 1.35f);
     }
     else
     {
+        // Outline star (--trk tint) → --stron when favorited; white when selected.
         const auto starCol = e.starred
-            ? (isSelected ? juce::Colours::black : colours::accent())
-            : (hoverStar ? textCol : metaCol.withAlpha(isSelected ? 0.55f : 0.45f));
-        drawIcon(g, icons::star, iconArea, starCol, 1.5f);
+            ? (isSelected ? juce::Colours::white : ds::stron())
+            : (hoverStar ? textCol : (isSelected ? juce::Colours::white.withAlpha(0.55f)
+                                                 : ds::trk()));
+        drawIcon(g, e.starred ? icons::star : icons::starOutline, iconArea, starCol, 1.35f);
     }
     row.removeFromLeft(6);
 
     if (e.isDirectory)
     {
         g.setColour(textCol);
-        g.setFont(uiFont(12.0f, true));
+        g.setFont(ds::font(ds::Type::Body));
         g.drawText(e.name, row, juce::Justification::centredLeft, true);
         return;
     }
 
-    g.setFont(monoFont(11.0f, false));
+    g.setFont(ds::font(ds::Type::Metadata));
     g.setColour(metaCol);
     if (columnsVisible.key && e.rootName.isNotEmpty())
         g.drawText(e.rootName, cols.key, juce::Justification::centredLeft);
@@ -2270,7 +2273,25 @@ void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<
     if (columnsVisible.bars && e.bars > 0)
         g.drawText(juce::String(e.bars), cols.bars, juce::Justification::centredLeft);
     if (columnsVisible.kind)
-        g.drawText(clipKindName(e.kind), cols.kind, juce::Justification::centredLeft);
+    {
+        // §2 kind chip: 7×7 r2 at 75% opacity + 11px label.
+        juce::Colour chip = ds::kindKeys();
+        switch (e.kind)
+        {
+            case ClipKind::Drums:  chip = ds::kindDrums(); break;
+            case ClipKind::Bass:   chip = ds::kindBass(); break;
+            case ClipKind::Piano:  chip = ds::kindKeys(); break;
+            case ClipKind::Lead:   chip = ds::kindKeys(); break;
+            case ClipKind::Single: chip = ds::kindPerc(); break;
+        }
+        auto kindR = cols.kind;
+        auto dot = kindR.removeFromLeft(10).toFloat().withSizeKeepingCentre(7.0f, 7.0f);
+        g.setColour(isSelected ? juce::Colours::white.withAlpha(0.75f) : chip.withAlpha(0.75f));
+        g.fillRoundedRectangle(dot, 2.0f);
+        g.setColour(metaCol);
+        g.setFont(ds::font(ds::Type::Metadata));
+        g.drawText(clipKindName(e.kind), kindR, juce::Justification::centredLeft, true);
+    }
     if (columnsVisible.complexity && e.complexity > 0)
         g.drawText(juce::String(e.complexity), cols.complexity, juce::Justification::centredLeft);
     if (columnsVisible.difNotes && e.difNotes > 0)
@@ -2282,8 +2303,8 @@ void FileListPanel::paintRow(juce::Graphics& g, int displayIdx, juce::Rectangle<
         g.drawText(juce::String(e.noteCount), cols.notes, juce::Justification::centredLeft);
 
     g.setColour(textCol);
-    g.setFont(uiFont(12.0f, false));
-    g.drawText(e.name, row, juce::Justification::centredLeft, true); // truncate
+    g.setFont(ds::font(ds::Type::Body));
+    g.drawText(e.name, row, juce::Justification::centredLeft, true);
 }
 
 void FileListPanel::ListContent::paint(juce::Graphics& g)

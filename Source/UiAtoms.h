@@ -57,11 +57,11 @@ namespace icons {
 void drawIcon(juce::Graphics& g, const juce::String& name,
               juce::Rectangle<float> bounds, juce::Colour colour, float px = 1.6f);
 
-/** 2px accent focus ring for keyboard-reachable controls (WCAG 2.4.7). */
+/** §9 focused: 2px accent ring at 40% opacity, 2px offset. */
 inline void drawFocusRing(juce::Graphics& g, juce::Rectangle<float> bounds, float radius)
 {
-    g.setColour(colours::accent());
-    g.drawRoundedRectangle(bounds.reduced(1.0f), radius, 2.0f);
+    g.setColour(ds::acc().withAlpha(0.40f));
+    g.drawRoundedRectangle(bounds.expanded(2.0f), radius + 2.0f, 2.0f);
 }
 
 // ── Small controls ───────────────────────────────────────────────────────────
