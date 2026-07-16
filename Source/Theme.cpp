@@ -59,8 +59,8 @@ const ThemeTokens& themeTokens()
         juce::Colour(0xff111827),   // kbBlack
         juce::Colour(0xffece9e5),   // toolbarTop
         juce::Colour(0xffe3e0db),   // toolbarBot
-        rgba(245, 245, 247, 0.94f), // sidebarTop
-        rgba(232, 232, 237, 0.94f), // sidebarBot
+        juce::Colour(0xffe2e1e6),   // sidebarTop — 3c source-list tint
+        juce::Colour(0xffe2e1e6),   // sidebarBot
         juce::Colour(0xfff7f6f4),   // tableAlt
         juce::Colour(0xffc9cfd8),   // desktopTop
         juce::Colour(0xffaeb6c2),   // desktopBot
@@ -87,8 +87,8 @@ const ThemeTokens& themeTokens()
         juce::Colour(0xff111827),   // kbBlack
         juce::Colour(0xff323234),   // toolbarTop
         juce::Colour(0xff2a2a2c),   // toolbarBot
-        rgba(44, 44, 46, 0.96f),    // sidebarTop
-        rgba(36, 36, 38, 0.96f),    // sidebarBot
+        juce::Colour(0xff2b2b2f),   // sidebarTop — 3c source-list tint
+        juce::Colour(0xff2b2b2f),   // sidebarBot
         juce::Colour(0xff2a2a2c),   // tableAlt — slightly clearer zebra
         juce::Colour(0xff1c1c1e),   // desktopTop
         juce::Colour(0xff0d0d0f),   // desktopBot

@@ -281,6 +281,88 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (sidebar.isCollapsed())
             sidebar.setCollapsed(false);
     };
+    sidebar.onRefreshFolder = [this]
+    {
+        if (!rootDir.isDirectory() && processorRef.lastBrowserDir.isNotEmpty())
+            rootDir = juce::File(processorRef.lastBrowserDir);
+        if (!rootDir.isDirectory() || sidebarScanning)
+            return;
+
+        sidebarScanning = true;
+        sidebar.setScanning(true);
+        const int gen = ++folderScanGeneration;
+        const juce::File dir = rootDir;
+        const bool recursive = sidebar.getIncludeSubdirs();
+        const juce::String previousPath =
+            (selectedIdx >= 0 && selectedIdx < (int) clips.size())
+                ? clips[(size_t) selectedIdx].filePath : juce::String();
+
+        juce::Component::SafePointer<MidiBrowserEditor> safe(this);
+        juce::Thread::launch([safe, dir, recursive, gen, previousPath]
+        {
+            std::vector<StepClip> found;
+            try
+            {
+                if (recursive)
+                {
+                    scanMidiFiles(dir, true, found,
+                                  [](const StepClip&, const juce::File&) { return true; });
+                }
+                else
+                {
+                    auto files = dir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi");
+                    files.sort();
+                    for (const auto& f : files)
+                        found.push_back(makeStepClip(parseMidiFile(f)));
+                }
+            }
+            catch (...)
+            {
+                found.clear();
+            }
+
+            juce::MessageManager::callAsync([safe, results = std::move(found), gen, previousPath,
+                                             dir]() mutable
+            {
+                if (safe == nullptr || gen != safe->folderScanGeneration.load())
+                    return;
+                safe->sidebarScanning = false;
+                safe->sidebar.setScanning(false);
+                if (!safe->rootDir.isDirectory()
+                    || safe->rootDir.getFullPathName() != dir.getFullPathName())
+                    return;
+
+                safe->clips = std::move(results);
+                auto name = dir.getFileName();
+                if (name.isEmpty()) name = dir.getFullPathName();
+                if (safe->sidebar.getIncludeSubdirs()) name += " (all)";
+                safe->fileList.setFolderName(name);
+                safe->rebuildEntries();
+
+                int nextSel = safe->clips.empty() ? -1 : 0;
+                if (previousPath.isNotEmpty())
+                    for (int i = 0; i < (int) safe->clips.size(); ++i)
+                        if (safe->clips[(size_t) i].filePath == previousPath)
+                            nextSel = i;
+                if (nextSel >= 0 && safe->displayForClip(nextSel) < 0)
+                {
+                    nextSel = -1;
+                    for (const auto& row : safe->displayRows)
+                        if (!row.isDirectory) { nextSel = row.clipIndex; break; }
+                }
+                safe->selectedIdx = -1;
+                if (nextSel >= 0)
+                    safe->selectIndex(nextSel);
+                else
+                {
+                    safe->rollEditor.clearClip();
+                    safe->syncEffectsInspector();
+                    safe->processorRef.setPreviewState({}, false, false, false);
+                }
+                safe->refreshSidebar();
+            });
+        });
+    };
     sidebar.onIncludeSubdirsChanged = [this](bool on)
     {
         // `on` is the new toggle state (sidebar already applied it).
@@ -2006,6 +2088,8 @@ void MidiBrowserEditor::refreshSidebar()
     sidebar.setSavedSearches(processorRef.savedSearches, activeSavedSearchIdx);
     sidebar.setBrowseMode(browseMode);
     sidebar.setStarredFilter(starredFilter);
+    sidebar.setCurrentClipCount(browseMode == 0 ? (int) clips.size() : 0);
+    sidebar.setStarredCount(processorRef.starredFiles.size());
 }
 
 // ── ticking ──────────────────────────────────────────────────────────────────

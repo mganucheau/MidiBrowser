@@ -25,6 +25,9 @@ namespace icons {
     inline constexpr const char* starOutline   = "star-outline";
     inline constexpr const char* heart         = "heart";
     inline constexpr const char* heartOutline  = "heart-outline";
+    /** Bookmark / Keep in Library. */
+    inline constexpr const char* bookmark      = "bookmark";
+    inline constexpr const char* bookmarkFill  = "bookmark-fill";
     inline constexpr const char* plus          = "plus";
     inline constexpr const char* minus         = "minus";
     inline constexpr const char* x             = "x";

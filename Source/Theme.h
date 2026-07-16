@@ -255,9 +255,9 @@ namespace metrics {
     constexpr int browserWidth      = 300;
     constexpr int browserMinWidth   = 260;
     constexpr int browserMaxWidth   = 420;
-    constexpr int sidebarW          = 248; // match search-filter-tall-sliders canvas
+    constexpr int sidebarW          = 212; // 3c source-list sidebar
     constexpr int sidebarRailW      = 44;
-    constexpr int sidebarExpandedW  = 248;
+    constexpr int sidebarExpandedW  = 212;
     constexpr int fileTableW        = 300;
     constexpr int editorPaneW       = 470;
     /** Caps B2 canvas width — not content-scaled so density matches the mock. */

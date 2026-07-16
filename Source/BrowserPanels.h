@@ -32,7 +32,7 @@ struct SavedSearchEntry
     juce::String rootPath;
 };
 
-// Library rail: Open → current folder → FILTER → SEARCH → SAVED → Settings.
+// 3c source-list: Open Folder → folder card → LIBRARY → SEARCH → SAVED SEARCHES.
 
 class FavoritesSidebar : public juce::Component,
                          public juce::SettableTooltipClient,
@@ -73,12 +73,17 @@ public:
     std::function<void()> onOpenFolder;
     std::function<void(const juce::String&)> onPickDir;
     std::function<void(const juce::String&)> onRemoveDir;
-    /** Heart on current folder — add/remove from Saved favorites. */
+    /** Keep / un-keep current folder in Library. */
     std::function<void()> onAddCurrent;
-    /** Include Subdirectories toggle on the current-folder row. */
+    /** Rescan current folder (must not block UI). */
+    std::function<void()> onRefreshFolder;
+    /** Include Subfolders toggle — rescans scope immediately. */
     std::function<void(bool)> onIncludeSubdirsChanged;
     void setIncludeSubdirs(bool on);
     bool getIncludeSubdirs() const { return includeSubdirs; }
+    void setCurrentClipCount(int n);
+    void setStarredCount(int n);
+    void setScanning(bool on);
 
     /** Refresh Filter histogram bars from loaded browser clips. */
     void setFilterHistograms(const std::vector<StepClip>& clips);
@@ -99,14 +104,14 @@ public:
     /** Fired when × clears search — leave search results. */
     std::function<void()> onExitSearch;
 
-    /** Open/focus the SEARCH section (legacy name kept for editor wiring). */
+    /** Open/focus the SEARCH field (legacy name kept for editor wiring). */
     void setSearchFormOpen(bool open);
     bool isSearchFormOpen() const { return searchOpen; }
     void deactivateSearch(bool clearCriteria = false);
 
 private:
-    enum class RowKind { Open, CurrentFolder, Starred, SavedDir, SavedSearch };
-    enum class SectionId { Filter, Search, Saved };
+    enum class RowKind { Open, Starred, SavedDir, SavedSearch };
+    enum class SectionId { Library, Search, Saved };
 
     struct RowHit
     {
@@ -114,14 +119,10 @@ private:
         RowKind kind = RowKind::Open;
         int index = -1;
         bool removeZone = false;
-        bool heartZone = false;   // current-folder heart → favorite
-        bool scanZone = false;    // "Include Subdirectories" trailing control
     };
     enum class ChromeHit
     {
-        None, Settings,
-        FilterHeader, SearchHeader, SavedHeader,
-        CurrentFolderHeart, CurrentFolderScan
+        None, Settings, OpenFolder, Keep, Update, Filters
     };
 
     struct Row { RowKind kind; int index = -1; };
@@ -129,26 +130,31 @@ private:
     void rebuildRows();
     void layoutChildren();
     void notifyHeightChanged();
-    bool sectionOpen(SectionId id) const;
-    void setSectionOpen(SectionId id, bool open);
     RowHit rowHitAt(juce::Point<int> pos) const;
     ChromeHit chromeHitAt(juce::Point<int> pos) const;
     juce::Rectangle<int> rowBounds(int rowIdx) const;
     void paintRow(juce::Graphics&, int rowIdx, const juce::Rectangle<int>& r,
-                  bool hovered, bool removeZone, bool heartZone, bool scanZone,
-                  bool keyboardFocus);
-    void paintSectionHeader(juce::Graphics&, const juce::String& title, bool open,
-                            juce::Rectangle<int> headerBounds, bool keyboardFocus);
+                  bool hovered, bool removeZone, bool keyboardFocus);
+    void paintSectionLabel(juce::Graphics&, const juce::String& title,
+                           juce::Rectangle<int> bounds);
+    void paintOpenFolderButton(juce::Graphics&, juce::Rectangle<int> r, bool hover, bool focus);
+    void paintFolderCard(juce::Graphics&);
+    void paintActionButton(juce::Graphics&, juce::Rectangle<int> r, bool hover, bool active,
+                           bool disabled);
     int contentTopY() const;
     int contentBottomY() const;
     int footerPad() const;
     int footerHeight() const;
     bool isCurrentFolderFavorited() const;
+    int activeFilterGroupCount() const;
+    void showFilterPopover();
+    int folderCardHeight() const;
+    static int countMidiFilesQuick(const juce::File& dir);
 
     /** Keyboard / tooltip navigation targets in visual order. */
     enum class NavKind
     {
-        Row, Heart, Scan, FilterHeader, SearchHeader, SavedHeader, Settings
+        Row, OpenFolder, Keep, Update, Filters, Settings
     };
     struct NavItem
     {
@@ -161,7 +167,7 @@ private:
     void updateTooltipForPos(juce::Point<int> pos);
     juce::Rectangle<int> navItemBounds(const NavItem&) const;
 
-    enum class LayoutKind { Row, Section, FilterBody, Query, End };
+    enum class LayoutKind { OpenBtn, FolderCard, Section, Row, Query, End };
     struct LayoutItem
     {
         LayoutKind kind = LayoutKind::End;
@@ -174,6 +180,7 @@ private:
 
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
     IconBtn btnSettings { icons::gear, "Settings" };
+    fx::FlatSwitch includeSwitch;
     juce::StringArray dirs;
     juce::String active; // current folder path when a root is loaded
     std::vector<SavedSearchEntry> savedSearches;
@@ -184,23 +191,26 @@ private:
     int expandedWidth = 0;
     int hoverRow = -1;
     bool hoverRemove = false;
-    bool hoverHeart = false;
-    bool hoverScan = false;
     bool hoverSettings = false;
+    ChromeHit hoverChrome = ChromeHit::None;
     std::vector<NavItem> navItems;
     int navIndex = -1;
     bool resizing = false;
     int resizeStartWidth = 0;
     int resizeStartX = 0;
 
-    bool filterOpen = false;
     bool searchOpen = true;
-    bool savedOpen = true;
     bool includeSubdirs = false;
+    bool scanning = false;
+    bool filterApplyPending = false;
+    float scanAngle = 0.0f;
+    int currentClipCount = 0;
+    int starredCount = 0;
 
     juce::Rectangle<int> settingsRowBounds;
-    juce::Rectangle<int> filterHeaderBounds, searchHeaderBounds, savedHeaderBounds;
-    juce::Rectangle<int> currentFolderHeartBounds, currentFolderScanBounds;
+    juce::Rectangle<int> openFolderBounds, folderCardBounds;
+    juce::Rectangle<int> keepBtnBounds, updateBtnBounds, filtersBtnBounds;
+    juce::Rectangle<int> libraryHeaderBounds, searchHeaderBounds, savedHeaderBounds;
 
     std::vector<Row> rows;
 
@@ -216,6 +226,7 @@ private:
         void loadFrom(const BrowserSearch&);
         void setHistograms(const std::vector<StepClip>& clips);
         int idealHeight() const;
+        int activeGroupCount() const;
         std::function<void()> onCriteriaChanged;
     private:
         int rowH() const;
@@ -227,7 +238,7 @@ private:
         juce::Rectangle<int> hideDupesRow;
     };
 
-    // ── Search query (field + clear × + save +)
+    // ── Search query (field + Save chip when typed)
     class SearchQueryPanel : public juce::Component
     {
     public:
@@ -242,7 +253,7 @@ private:
         void focusQuery();
         void blurQuery();
         bool isQueryFocused() const;
-        int idealHeight() const { return metrics::scaled(26); }
+        int idealHeight() const { return metrics::scaled(27); }
         std::function<void()> onActivate;
         std::function<void()> onClear;
         std::function<void()> onDeactivate;
@@ -281,12 +292,14 @@ private:
 
         QueryEditor queryField;
         IconBtn clearBtn { icons::x, "Clear search" };
-        IconBtn saveBtn { icons::plus, "Save current search" };
-        juce::Rectangle<int> queryWell;
+        juce::Rectangle<int> queryWell, saveChipBounds;
+        bool saveVisible = false;
     };
 
     FilterPanel filterPanel;
     SearchQueryPanel searchQuery;
+    std::vector<StepClip> histogramClips;
+    juce::Component::SafePointer<juce::CallOutBox> filterCallout;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FavoritesSidebar)
 };

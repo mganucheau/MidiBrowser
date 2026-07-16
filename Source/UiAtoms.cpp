@@ -125,6 +125,20 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
         else
             g.fillPath(p);
     }
+    else if (name == icons::bookmark || name == icons::bookmarkFill)
+    {
+        // Vertical bookmark ribbon with a V notch at the bottom.
+        p.startNewSubPath(cx - s * 0.55f, cy - s * 0.95f);
+        p.lineTo(cx + s * 0.55f, cy - s * 0.95f);
+        p.lineTo(cx + s * 0.55f, cy + s * 0.95f);
+        p.lineTo(cx, cy + s * 0.45f);
+        p.lineTo(cx - s * 0.55f, cy + s * 0.95f);
+        p.closeSubPath();
+        if (name == icons::bookmarkFill)
+            g.fillPath(p);
+        else
+            g.strokePath(p, st);
+    }
     else if (name == icons::plus)
     {
         g.drawLine(cx - s * 0.85f, cy, cx + s * 0.85f, cy, px);

@@ -164,23 +164,23 @@ public:
     {
         const auto& t = inspectorTokens();
         const bool on = getToggleState();
-        // Caps B2 library / Photos: 28×15 track.
-        auto track = getLocalBounds().toFloat().withSizeKeepingCentre(28.0f, 15.0f);
+        // Source-list / Photos: 26×16 track.
+        auto track = getLocalBounds().toFloat().withSizeKeepingCentre(26.0f, 16.0f);
         g.setColour(on ? t.accent : t.switchOffTrack);
-        g.fillRoundedRectangle(track, 7.5f);
-        const float kx = on ? track.getX() + 14.0f : track.getX() + 1.5f;
+        g.fillRoundedRectangle(track, 8.0f);
+        const float kx = on ? track.getX() + 11.0f : track.getX() + 1.5f;
         g.setColour(on ? juce::Colours::white : (t.dark ? juce::Colour(0xffd4d4d8) : juce::Colours::white));
-        g.fillEllipse(kx, track.getCentreY() - 6.0f, 12.0f, 12.0f);
+        g.fillEllipse(kx, track.getCentreY() - 6.5f, 13.0f, 13.0f);
         if (!t.dark && !on)
         {
             g.setColour(t.controlHairline);
-            g.drawEllipse(kx, track.getCentreY() - 6.0f, 12.0f, 12.0f, 0.5f);
+            g.drawEllipse(kx, track.getCentreY() - 6.5f, 13.0f, 13.0f, 0.5f);
         }
         if (hasKeyboardFocus(true))
             drawFocusRing(g, getLocalBounds().toFloat(), 4.0f);
     }
 
-    int idealWidth() const { return 28; }
+    int idealWidth() const { return 26; }
 };
 
 // ── FlatPopup ────────────────────────────────────────────────────────────────

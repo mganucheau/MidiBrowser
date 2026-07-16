@@ -141,6 +141,9 @@ private:
     int activeSavedSearchIdx = -1;
     /** Bumps on each search so stale async completions are ignored. */
     std::atomic<int> searchGeneration { 0 };
+    /** Bumps on each async folder Update so stale completions are ignored. */
+    std::atomic<int> folderScanGeneration { 0 };
+    bool sidebarScanning = false;
     /** Primary clip path -> all Finder locations (including primary) after dedupe. */
     std::map<juce::String, juce::StringArray> searchDuplicateLocations;
 
