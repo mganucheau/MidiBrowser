@@ -30,6 +30,8 @@ public:
     uint32_t getSectionLocks() const { return sectionLocks; }
     void setHasClip(bool has);
     void setClipRoot(int rootPc);
+    /** Native scientific octave of the loaded clip (for absolute Octave selector). */
+    void setClipSourceOctave(int oct);
     /** Clip baseline complexity (1..100) — drives the Complexity slider position. */
     void setClipComplexity(int complexity);
     void setTrimState(bool active, bool enabled, const juce::String& label = {});
@@ -52,6 +54,8 @@ private:
     void refreshPitchAnnotation();
     void refreshComplexitySlider();
     void syncArticulationKnobsToUi();
+    void syncNoteFilterScale();
+    int displayedOctave() const;
     int resolvedPitchMidi() const;
     void resetPitchEditFields();
     void resetPlaybackSection();
@@ -69,6 +73,7 @@ private:
     uint32_t sectionLocks = 0;
     bool hasClip = false;
     int clipRootPc = -1;
+    int clipSourceOctave = 4;
     int clipComplexity = 50;
 
     IconBtn btnReset { icons::undo, "Reset effects to defaults" };
@@ -98,8 +103,7 @@ private:
 
     fx::FlatSliderRow dynamicsSl;
     fx::FlatSliderRow intensitySl;
-    fx::FlatPopup articulationPopup;
-    fx::InlineRow articulationRow;
+    fx::ChipGrid articulationGrid;
     fx::FlatSliderRow articulationStrengthSl;
     fx::FlatRangeSliderRow velocityRangeSl;
     fx::FlatPopup sustainPopup;
@@ -112,15 +116,12 @@ private:
     fx::FlatSliderRow delayAmountSl;
     fx::FlatSliderRow delayFeedbackSl;
 
-    fx::FlatStepper octaveStepper;
-    fx::InlineRow octaveRow;
+    fx::SegmentedSelector octaveSelector;
     fx::FlatPopup octaveRangePopup;
     fx::InlineRow octaveRangeRow;
     fx::PitchRow pitchRow;
-    fx::FlatPopup keyPopup;
-    fx::FlatPopup modePopup;
-    fx::InlineRow keyRow;
-    fx::InlineRow modeRow;
+    fx::ChipGrid keyGrid;
+    fx::ChipGrid modeGrid;
     fx::FlatSwitch fitSwitch;
     fx::FlatSwitch mapSwitch;
     fx::NoteFilterBlock noteFilter;

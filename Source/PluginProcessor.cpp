@@ -419,13 +419,12 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("colDifNotes", columnVisibility.difNotes ? 1 : 0);
     xml.setAttribute("colTimeSig", columnVisibility.timeSig ? 1 : 0);
     xml.setAttribute("colNotes", columnVisibility.notes ? 1 : 0);
-            syncLockFlagsFromSections();
-            xml.setAttribute("sectionLocks", (int) sectionLocks);
     syncLockFlagsFromSections();
     xml.setAttribute("sectionLocks", (int) sectionLocks);
     xml.setAttribute("editLock", editLock ? 1 : 0);
     xml.setAttribute("effectsLock", effectsLock ? 1 : 0);
     xml.setAttribute("lockAutoTrim", lockAutoTrim ? 1 : 0);
+    xml.setAttribute("lockOctaveAbs", 1);
     xml.setAttribute("lockOctave", lockedEdit.octave);
     xml.setAttribute("lockPitchShift", lockedEdit.pitchShift);
     xml.setAttribute("lockOctaveRange", lockedEdit.octaveRange);
@@ -492,6 +491,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         child->setAttribute("bpmMin", ss.search.bpmMin);
         child->setAttribute("bpmMax", ss.search.bpmMax);
         child->setAttribute("key", ss.search.keyRoot);
+        child->setAttribute("keyMask", (int) ss.search.keyMask);
         child->setAttribute("barsMin", ss.search.barsMin);
         child->setAttribute("barsMax", ss.search.barsMax);
         child->setAttribute("complexityMin", ss.search.complexityMin);
@@ -506,6 +506,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
             continue;
         auto* e = xml.createNewChildElement("ClipEdit");
         e->setAttribute("path", path);
+        e->setAttribute("octaveAbs", 1);
         e->setAttribute("octave", edit.octave);
         e->setAttribute("pitchShift", edit.pitchShift);
         e->setAttribute("octaveRange", edit.octaveRange);
@@ -654,7 +655,13 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             syncLockFlagsFromSections();
             lockAutoTrim = xml->getIntAttribute("lockAutoTrim", 0) != 0;
             lockedEdit = ClipEdit();
-            lockedEdit.octave = juce::jlimit(-3, 3, xml->getIntAttribute("lockOctave", 0));
+            if (xml->hasAttribute("lockOctaveAbs"))
+                lockedEdit.octave = juce::jlimit(-1, 6, xml->getIntAttribute("lockOctave", -1));
+            else
+            {
+                const int rel = juce::jlimit(-3, 3, xml->getIntAttribute("lockOctave", 0));
+                lockedEdit.octave = rel == 0 ? -1 : juce::jlimit(0, 6, 4 + rel);
+            }
             lockedEdit.pitchShift = juce::jlimit(-12, 12, xml->getIntAttribute("lockPitchShift", 0));
             lockedEdit.octaveRange = juce::jlimit(0, 3, xml->getIntAttribute("lockOctaveRange", 0));
             lockedEdit.pitchMin = juce::jlimit(0, 127, xml->getIntAttribute("lockPitchMin", 0));
@@ -758,6 +765,9 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                         entry.search.bpmMax = bpm;
                     }
                     entry.search.keyRoot = juce::jlimit(-1, 11, child->getIntAttribute("key", -1));
+                    entry.search.keyMask = (uint16_t) juce::jlimit(0, 0x0FFF, child->getIntAttribute("keyMask", 0));
+                    if (entry.search.keyMask == 0 && entry.search.keyRoot >= 0)
+                        entry.search.keyMask = (uint16_t) (1u << entry.search.keyRoot);
                     if (child->hasAttribute("barsMin") || child->hasAttribute("barsMax"))
                     {
                         entry.search.barsMin = juce::jmax(0, child->getIntAttribute("barsMin", 0));
@@ -781,7 +791,13 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     const auto path = child->getStringAttribute("path");
                     if (path.isEmpty()) continue;
                     ClipEdit e;
-                    e.octave = juce::jlimit(-3, 3, child->getIntAttribute("octave", 0));
+                    if (child->hasAttribute("octaveAbs"))
+                        e.octave = juce::jlimit(-1, 6, child->getIntAttribute("octave", -1));
+                    else
+                    {
+                        const int rel = juce::jlimit(-3, 3, child->getIntAttribute("octave", 0));
+                        e.octave = rel == 0 ? -1 : juce::jlimit(0, 6, 4 + rel);
+                    }
                     e.pitchShift = juce::jlimit(-12, 12, child->getIntAttribute("pitchShift", 0));
                     e.octaveRange = juce::jlimit(0, 3, child->getIntAttribute("octaveRange", 0));
                     e.pitchMin = juce::jlimit(0, 127, child->getIntAttribute("pitchMin", 0));

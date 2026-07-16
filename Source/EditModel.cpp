@@ -59,6 +59,21 @@ bool isBlackKeyPitch(int midi)
     return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
 }
 
+int scientificOctave(int midi)
+{
+    return (int) std::floor((double) midi / 12.0) - 1;
+}
+
+int clipReferenceOctave(const StepClip& clip)
+{
+    if (clip.notes.empty())
+        return 4;
+    int lo = 127;
+    for (const auto& n : clip.notes)
+        lo = juce::jmin(lo, n.pitch);
+    return juce::jlimit(0, 6, scientificOctave(lo));
+}
+
 bool pitchInScale(int midi, int rootPc, Mode mode)
 {
     bool inScale[12] = {};
@@ -172,7 +187,7 @@ void applyPitchLock(const ClipEdit& locked, ClipEdit& target)
 
 bool editIsClean(const ClipEdit& e)
 {
-    if (e.octave != 0 || e.pitchShift != 0 || e.octaveRange != 0 || e.hasPitchRange()
+    if (e.octave >= 0 || e.pitchShift != 0 || e.octaveRange != 0 || e.hasPitchRange()
         || e.extendMult > 1
         || e.fitScale || e.mapToRoot || e.hasNoteFilter() || e.hasTrim()
         || e.legacyTrimLead != 0 || e.legacyTrimTail != 0)
@@ -206,6 +221,9 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
 {
     ResolvedClip out;
     out.notes.reserve(clip.notes.size());
+    const int srcOct = clipReferenceOctave(clip);
+    const int tgtOct = e.octave >= 0 ? juce::jlimit(0, 6, e.octave) : srcOct;
+    const int octDelta = (tgtOct - srcOct) * 12;
 
     for (const auto& n : clip.notes)
     {
@@ -216,7 +234,7 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
         if (auto it = e.moves.find(n.id); it != e.moves.end())
             mv = it->second;
 
-        int pitch = n.pitch + mv.dPitch + e.octave * 12 + e.pitchShift;
+        int pitch = n.pitch + mv.dPitch + octDelta + e.pitchShift;
 
         if (e.mapToRoot && e.root >= 0 && clip.root >= 0)
         {
@@ -424,8 +442,8 @@ std::vector<EditBadge> editBadges(const StepClip& clip, const ClipEdit& e)
 {
     std::vector<EditBadge> out;
 
-    if (e.octave != 0)
-        out.push_back({ "oct", juce::String("Oct ") + (e.octave > 0 ? "+" : "") + juce::String(e.octave) });
+    if (e.octave >= 0)
+        out.push_back({ "oct", "Oct " + juce::String(e.octave) });
 
     if (e.octaveRange > 0)
         out.push_back({ "octRange", juce::String(e.octaveRange) + " oct" });

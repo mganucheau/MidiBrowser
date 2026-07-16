@@ -100,14 +100,6 @@ void PianoRollMini::paint(juce::Graphics& g)
     g.setColour(colours::line());
     g.drawRect(b.reduced(0.5f), 1.0f);
 
-    if (notes.empty())
-    {
-        g.setColour(colours::text3());
-        g.setFont(uiFont(13.0f, false));
-        g.drawText("Select a MIDI file", getLocalBounds(), juce::Justification::centred);
-        return;
-    }
-
     auto gutter = b.removeFromLeft(kGutterW);
     g.setColour(colours::panel());
     g.fillRect(gutter);
@@ -318,6 +310,9 @@ PianoRollEditor::PianoRollEditor()
 
     addAndMakeVisible(scalePanel);
     scalePanel.setVisible(false);
+
+    // Empty directory / no selection: show piano roll + grid with no notes.
+    resolved.bars = 4;
 }
 
 PianoRollEditor::~PianoRollEditor() = default;
@@ -362,9 +357,11 @@ void PianoRollEditor::clearClip()
     hasClip = false;
     selection.clear();
     resolved = {};
+    resolved.bars = 4; // empty grid placeholder
     grooved.clear();
     foldPitches.clear();
     refreshControls();
+    updateRollSize();
     repaint();
 }
 
@@ -484,7 +481,7 @@ void PianoRollEditor::removeBadge(const juce::String& key)
 {
     applyEdit([&key](ClipEdit& e)
     {
-        if (key == "oct")        e.octave = 0;
+        if (key == "oct")        e.octave = -1;
         else if (key == "scale") e.fitScale = false;
         else if (key == "map")   e.mapToRoot = false;
         else if (key == "moves") e.moves.clear();
@@ -1194,21 +1191,16 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
     auto& ed = owner;
 
     g.fillAll(colours::rollBg());
-    if (!ed.hasClip)
-    {
-        g.setColour(colours::text3());
-        g.setFont(uiFont(14.0f, false));
-        g.drawText("Select a MIDI file to edit", getLocalBounds(), juce::Justification::centred);
-        return;
-    }
 
     const float pps = ed.pxPerStep();
     const auto clipB = g.getClipBounds().toFloat();
 
     // Pitch rows: shade black-key lanes; soft accent wash for pitches in the key.
-    const int rootPc = ed.edit.root >= 0 ? ed.edit.root
-                     : (ed.clip.root >= 0 ? ed.clip.root : 0);
-    const Mode mode = ed.edit.mode;
+    const int rootPc = ed.hasClip
+        ? (ed.edit.root >= 0 ? ed.edit.root
+                             : (ed.clip.root >= 0 ? ed.clip.root : 0))
+        : 0;
+    const Mode mode = ed.hasClip ? ed.edit.mode : Mode::Ionian;
     const int firstRow = juce::jmax(0, (int) std::floor(clipB.getY() / ed.effRowH()));
     const int lastRow = juce::jmin(ed.numRows() - 1, (int) std::ceil(clipB.getBottom() / ed.effRowH()));
     for (int row = firstRow; row <= lastRow; ++row)
@@ -1528,12 +1520,6 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
     // Dark well behind the keys (matches classic piano-roll chrome).
     g.setColour(usesDarkAppearance() ? juce::Colour(0xff1a1a1c) : juce::Colour(0xffd8dbe2));
     g.fillAll();
-    if (!ed.hasClip)
-    {
-        g.setColour(colours::line());
-        g.fillRect(getLocalBounds().removeFromRight(1));
-        return;
-    }
 
     const int viewY = ed.rollViewport.getViewPositionY();
     const float rowH = ed.effRowH();
@@ -1544,9 +1530,11 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
         if (ed.selection.count(n.id) > 0)
             selectedPitches.insert(n.pitch);
 
-    const int rootPc = ed.edit.root >= 0 ? ed.edit.root
-                     : (ed.clip.root >= 0 ? ed.clip.root : 0);
-    const Mode mode = ed.edit.mode;
+    const int rootPc = ed.hasClip
+        ? (ed.edit.root >= 0 ? ed.edit.root
+                             : (ed.clip.root >= 0 ? ed.clip.root : 0))
+        : 0;
+    const Mode mode = ed.hasClip ? ed.edit.mode : Mode::Ionian;
 
     const int firstRow = juce::jmax(0, (int) std::floor((float) viewY / rowH));
     const int lastRow = juce::jmin(ed.numRows() - 1,

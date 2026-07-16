@@ -17,6 +17,7 @@ bool LibraryStore::searchesEqual(const BrowserSearch& a, const BrowserSearch& b)
         && std::abs(a.bpmMin - b.bpmMin) < 1.0e-6
         && std::abs(a.bpmMax - b.bpmMax) < 1.0e-6
         && a.keyRoot == b.keyRoot
+        && a.keyMask == b.keyMask
         && a.barsMin == b.barsMin
         && a.barsMax == b.barsMax
         && a.complexityMin == b.complexityMin
@@ -32,6 +33,9 @@ BrowserSearch readBrowserSearch(const juce::XmlElement& el)
     BrowserSearch s;
     s.query = el.getStringAttribute("query");
     s.keyRoot = el.getIntAttribute("key", -1);
+    s.keyMask = (uint16_t) juce::jlimit(0, 0x0FFF, el.getIntAttribute("keyMask", 0));
+    if (s.keyMask == 0 && s.keyRoot >= 0 && s.keyRoot < 12)
+        s.keyMask = (uint16_t) (1u << s.keyRoot);
     s.subdirs = el.getIntAttribute("subdirs", 1) != 0;
     s.removeDuplicates = el.getIntAttribute("removeDuplicates", 1) != 0;
     s.complexityMin = juce::jmax(0, el.getIntAttribute("complexityMin", 0));
@@ -72,6 +76,7 @@ void writeBrowserSearch(juce::XmlElement& el, const BrowserSearch& s)
     el.setAttribute("bpmMin", s.bpmMin);
     el.setAttribute("bpmMax", s.bpmMax);
     el.setAttribute("key", s.keyRoot);
+    el.setAttribute("keyMask", (int) s.keyMask);
     el.setAttribute("barsMin", s.barsMin);
     el.setAttribute("barsMax", s.barsMax);
     el.setAttribute("complexityMin", s.complexityMin);

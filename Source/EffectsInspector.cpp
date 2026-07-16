@@ -16,7 +16,6 @@ EffectsInspector::EffectsInspector()
     , lengthSl("Length", 25, 200, 100, false)
     , dynamicsSl("Dynamics", -100, 100, 0, true)
     , intensitySl("Intensity", 0, 200, 100, false)
-    , articulationRow("Articulation", articulationPopup)
     , articulationStrengthSl("Strength", 0, 100, 0, false)
     , velocityRangeSl("Velocity", 1, 127, 1, 127)
     , sustainRow("Sustain Pedal", sustainPopup)
@@ -25,10 +24,7 @@ EffectsInspector::EffectsInspector()
     , delayTimeRow("Delay", delayTimePopup)
     , delayAmountSl("Delay Amount", 0, 100, 0, false)
     , delayFeedbackSl("Delay Feedback", 0, 100, 40, false)
-    , octaveRow("Octave", octaveStepper)
     , octaveRangeRow("Octave Range", octaveRangePopup)
-    , keyRow("Key", keyPopup)
-    , modeRow("Mode", modePopup)
     , pitchRangeSl("Range", 0, 127, 0, 127)
     , filterTypeRow("Filter Type", filterTypePopup)
     , trimRow("Trim empty measures", trimSwitch)
@@ -75,7 +71,6 @@ EffectsInspector::EffectsInspector()
     quantizeStrengthSl.setTooltip("How strongly notes snap to the quantize grid");
     quantizeTimePopup.setTooltip("Grid for quantize snapping");
     swingTimePopup.setTooltip("Swing subdivision (which offbeats are delayed)");
-    articulationPopup.setTooltip("Phrasing preset that drives Length, Intensity, and Dynamics");
     articulationStrengthSl.setTooltip("How strongly articulation reshapes phrasing");
     velocityRangeSl.setTooltip("Compress clip velocities into this MIDI range");
     sustainPopup.setTooltip("Generate sustain-pedal automation for preview and export");
@@ -85,12 +80,9 @@ EffectsInspector::EffectsInspector()
     delayAmountSl.setTooltip("How loud delayed repeats are");
     delayFeedbackSl.setTooltip("How many delay repeats and how long they decay");
     extendPopup.setTooltip("Tile the clip longer so delays can evolve past the file length");
-    octaveStepper.setTooltip("Transpose the whole clip by octaves");
     octaveRangePopup.setTooltip("Fold or spread pitches into 1-3 octaves");
     pitchRow.stepper.setTooltip("Transpose the whole clip by semitones");
     pitchRangeSl.setTooltip("Clamp pitches into this MIDI note range");
-    keyPopup.setTooltip("Target key root for Fit to Scale / Map to Root");
-    modePopup.setTooltip("Scale mode used with Fit to Scale");
     fitSwitch.setTooltip("Snap pitches into the selected key and mode");
     mapSwitch.setTooltip("Transpose so the clip root matches the selected key");
 
@@ -178,9 +170,15 @@ EffectsInspector::EffectsInspector()
     juce::StringArray artItems;
     for (int i = 0; i < (int) Articulation::Count; ++i)
         artItems.add(articulationLabel((Articulation) i));
-    articulationPopup.setItems(artItems, (int) Articulation::Off);
-    articulationPopup.onChange = [this](int idx)
+    articulationGrid.title = "ARTICULATION";
+    articulationGrid.columns = 6;
+    articulationGrid.multiSelect = false;
+    articulationGrid.fitContent = true;
+    articulationGrid.setItems(artItems);
+    articulationGrid.setSelectedIndex((int) Articulation::Off, juce::dontSendNotification);
+    articulationGrid.onChange = [this]
     {
+        const int idx = juce::jmax(0, articulationGrid.getSelectedIndex());
         groove.articulationIndex = idx;
         if (idx == (int) Articulation::Off)
         {
@@ -225,12 +223,18 @@ EffectsInspector::EffectsInspector()
 
 
 
-    octaveStepper.minV = -3;
-    octaveStepper.maxV = 3;
-    octaveStepper.format = [](int v) { return signedIntText(v); };
-    octaveStepper.onChange = [this](int v)
+    octaveSelector.title = "OCTAVE";
     {
-        edit.octave = v;
+        juce::StringArray octs;
+        for (int i = 0; i <= 6; ++i) octs.add(juce::String(i));
+        octaveSelector.setItems(octs, 4);
+    }
+    octaveSelector.onChange = [this](int idx)
+    {
+        // Absolute octave on the keyboard (file C4 + select 1 → C1).
+        edit.octave = juce::jlimit(0, 6, idx);
+        if (edit.octave == clipSourceOctave)
+            edit.octave = -1; // native = clean
         refreshPitchAnnotation();
         notifyEdit();
     };
@@ -279,20 +283,31 @@ EffectsInspector::EffectsInspector()
 
     juce::StringArray keys;
     for (int i = 0; i < 12; ++i) keys.add(kNoteNames[(size_t) i]);
-    keyPopup.setItems(keys, 0);
-    keyPopup.onChange = [this](int idx)
+    keyGrid.title = "KEY";
+    keyGrid.columns = 6;
+    keyGrid.multiSelect = false;
+    keyGrid.setItems(keys);
+    keyGrid.setSelectedIndex(0, juce::dontSendNotification);
+    keyGrid.onChange = [this]
     {
-        edit.root = idx;
+        edit.root = juce::jmax(0, keyGrid.getSelectedIndex());
+        syncNoteFilterScale();
         refreshPitchAnnotation();
         notifyEdit();
     };
 
     juce::StringArray modes;
     for (int i = 0; i < kNumModes; ++i) modes.add(modeName((Mode) i));
-    modePopup.setItems(modes, 0);
-    modePopup.onChange = [this](int idx)
+    modeGrid.title = "MODE";
+    modeGrid.columns = 6;
+    modeGrid.multiSelect = false;
+    modeGrid.fitContent = true;
+    modeGrid.setItems(modes);
+    modeGrid.setSelectedIndex(0, juce::dontSendNotification);
+    modeGrid.onChange = [this]
     {
-        edit.mode = (Mode) idx;
+        edit.mode = (Mode) juce::jmax(0, modeGrid.getSelectedIndex());
+        syncNoteFilterScale();
         refreshPitchAnnotation();
         notifyEdit();
     };
@@ -326,9 +341,8 @@ EffectsInspector::EffectsInspector()
     timing.addRow(&pocket, kSliderRowH, [this] { return groove.pocket != 0; });
     timing.addRow(&humanize, kSliderRowH, [this] { return groove.humanize != 0; });
 
-    performance.addRow(&articulationRow, kRowMinH, [this] {
-        return groove.articulationIndex != (int) Articulation::Off;
-    });
+    performance.addRow(&articulationGrid, [this] { return articulationGrid.idealHeight(); },
+                       [this] { return groove.articulationIndex != (int) Articulation::Off; });
     performance.addRow(&articulationStrengthSl, kSliderRowH, [this] {
         return groove.articulationIndex != (int) Articulation::Off && groove.articulationStrength > 0;
     });
@@ -341,15 +355,14 @@ EffectsInspector::EffectsInspector()
         return groove.sustainPedalMode != (int) SustainPedalMode::Off;
     });
 
-    pitchSec.addRow(&octaveRow, kRowMinH, [this] { return edit.octave != 0; });
+    pitchSec.addRow(&octaveSelector, [this] { return octaveSelector.idealHeight(); },
+                    [this] { return edit.octave >= 0; });
     pitchSec.addRow(&octaveRangeRow, kRowMinH, [this] { return edit.octaveRange != 0; });
     pitchSec.addRow(&pitchRow, kRowMinH, [this] { return edit.pitchShift != 0; });
-    pitchSec.addRow(&keyRow, kRowMinH, [this] {
-        return edit.root >= 0 && (edit.fitScale || edit.mapToRoot);
-    });
-    pitchSec.addRow(&modeRow, kRowMinH, [this] {
-        return edit.root >= 0 && (edit.fitScale || edit.mapToRoot);
-    });
+    pitchSec.addRow(&keyGrid, [this] { return keyGrid.idealHeight(); },
+                    [this] { return edit.root >= 0 && (edit.fitScale || edit.mapToRoot); });
+    pitchSec.addRow(&modeGrid, [this] { return modeGrid.idealHeight(); },
+                    [this] { return edit.root >= 0 && (edit.fitScale || edit.mapToRoot); });
     pitchSec.addRow(&fitRow, kRowMinH, [this] { return edit.fitScale; });
     pitchSec.addRow(&mapRow, kRowMinH, [this] { return edit.mapToRoot; });
     // Filter / Range / Filter Type sit at the bottom of Pitch & Scale.
@@ -401,7 +414,7 @@ EffectsInspector::EffectsInspector()
 
 void EffectsInspector::resetPitchEditFields()
 {
-    edit.octave = 0;
+    edit.octave = -1;
     edit.pitchShift = 0;
     edit.octaveRange = 0;
     edit.pitchMin = 0;
@@ -537,10 +550,22 @@ void EffectsInspector::syncArticulationKnobsToUi()
     dynamicsSl.repaint();
 }
 
+int EffectsInspector::displayedOctave() const
+{
+    return edit.octave >= 0 ? juce::jlimit(0, 6, edit.octave) : juce::jlimit(0, 6, clipSourceOctave);
+}
+
+void EffectsInspector::syncNoteFilterScale()
+{
+    const int root = edit.root >= 0 ? edit.root : clipRootPc;
+    noteFilter.setScaleContext(root, edit.mode);
+}
+
 int EffectsInspector::resolvedPitchMidi() const
 {
     const int refPc = edit.root >= 0 ? edit.root : (clipRootPc >= 0 ? clipRootPc : 0);
-    int midi = juce::jlimit(0, 127, 60 + refPc + edit.octave * 12 + edit.pitchShift);
+    const int oct = displayedOctave();
+    int midi = juce::jlimit(0, 127, (oct + 1) * 12 + refPc + edit.pitchShift);
     if (edit.root >= 0 && edit.fitScale)
         midi = fitToScale(midi, edit.root, edit.mode);
     return midi;
@@ -577,6 +602,14 @@ void EffectsInspector::setHasClip(bool has)
 void EffectsInspector::setClipRoot(int rootPc)
 {
     clipRootPc = rootPc;
+    syncNoteFilterScale();
+    refreshPitchAnnotation();
+}
+
+void EffectsInspector::setClipSourceOctave(int oct)
+{
+    clipSourceOctave = juce::jlimit(0, 6, oct);
+    octaveSelector.setIndex(displayedOctave(), juce::dontSendNotification);
     refreshPitchAnnotation();
 }
 
@@ -621,8 +654,9 @@ void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
     swingTimePopup.setIndex(juce::jlimit(0, 5, g.swingGridIndex), juce::dontSendNotification);
     quantizeTimePopup.setIndex(juce::jlimit(0, (int) QuantizeGrid::Count - 1, g.quantizeGridIndex),
                                juce::dontSendNotification);
-    articulationPopup.setIndex(juce::jlimit(0, (int) Articulation::Count - 1, g.articulationIndex),
-                               juce::dontSendNotification);
+    articulationGrid.setSelectedIndex(
+        juce::jlimit(0, (int) Articulation::Count - 1, g.articulationIndex),
+        juce::dontSendNotification);
     sustainPopup.setIndex(juce::jlimit(0, (int) SustainPedalMode::Count - 1, g.sustainPedalMode),
                           juce::dontSendNotification);
     delayTimePopup.setIndex(juce::jlimit(0, (int) DelayTime::Count - 1, g.delayTimeIndex),
@@ -648,7 +682,7 @@ void EffectsInspector::setGroove(const GrooveParams& g, juce::NotificationType)
 void EffectsInspector::setEdit(const ClipEdit& e, juce::NotificationType)
 {
     edit = e;
-    octaveStepper.setValue(e.octave, juce::dontSendNotification);
+    octaveSelector.setIndex(displayedOctave(), juce::dontSendNotification);
     octaveRangePopup.setIndex(juce::jlimit(0, 3, e.octaveRange), juce::dontSendNotification);
     pitchRow.stepper.setValue(e.pitchShift, juce::dontSendNotification);
     pitchRangeSl.setRange(e.pitchMin, e.pitchMax, juce::dontSendNotification);
@@ -660,13 +694,14 @@ void EffectsInspector::setEdit(const ClipEdit& e, juce::NotificationType)
         else if (e.extendMult == 8) extIdx = 3;
         extendPopup.setIndex(extIdx, juce::dontSendNotification);
     }
-    keyPopup.setIndex(e.root >= 0 ? e.root : 0, juce::dontSendNotification);
-    modePopup.setIndex((int) e.mode, juce::dontSendNotification);
+    keyGrid.setSelectedIndex(e.root >= 0 ? e.root : 0, juce::dontSendNotification);
+    modeGrid.setSelectedIndex((int) e.mode, juce::dontSendNotification);
     fitSwitch.setToggleState(e.fitScale, juce::dontSendNotification);
     mapSwitch.setToggleState(e.mapToRoot, juce::dontSendNotification);
     noteFilter.setState(e.noteFilterMask, juce::dontSendNotification);
     filterTypePopup.setIndex(e.noteFilterType == NoteFilterType::Fold ? 1 : 0,
                              juce::dontSendNotification);
+    syncNoteFilterScale();
     refreshPitchAnnotation();
     refreshDirtySections();
 }
@@ -742,16 +777,11 @@ void EffectsInspector::resized()
     fitSelect(extendPopup, extendRow);
     fitSelect(swingTimePopup, swingTimeRow);
     fitSelect(quantizeTimePopup, quantizeTimeRow);
-    fitSelect(articulationPopup, articulationRow);
     fitSelect(sustainPopup, sustainRow);
     fitSelect(delayTimePopup, delayTimeRow);
     fitSelect(octaveRangePopup, octaveRangeRow);
-    fitSelect(keyPopup, keyRow);
-    fitSelect(modePopup, modeRow);
     fitSelect(filterTypePopup, filterTypeRow);
 
-    octaveStepper.setSize(kSelectW, kControlH);
-    octaveRow.setControlWidth(kSelectW);
     pitchRow.stepper.setSize(pitchRow.stepper.idealWidth(), kControlH);
     fitRow.setControlWidth(fitSwitch.idealWidth());
     mapRow.setControlWidth(mapSwitch.idealWidth());

@@ -12,7 +12,9 @@ struct BrowserSearch
     juce::String query;
     double bpmMin = 0.0; // 0 = no lower bound
     double bpmMax = 0.0; // 0 = no upper bound
-    int keyRoot = -1;    // -1 = any
+    int keyRoot = -1;    // legacy single key; -1 = any (used when keyMask == 0)
+    /** Bit i set = pitch-class i selected. 0 = any key. */
+    uint16_t keyMask = 0;
     int barsMin = 0;     // 0 = any; 64 = 64+ (≥64)
     int barsMax = 0;     // 0 = any; 64 = 64+ (unlimited upper)
     int complexityMin = 0; // 0 = no lower bound
@@ -73,8 +75,13 @@ public:
     std::function<void(const juce::String&)> onRemoveDir;
     /** Heart on current folder — add/remove from Saved favorites. */
     std::function<void()> onAddCurrent;
-    /** Recursive load of the current folder tree into the browser. */
-    std::function<void()> onScanAllFolders;
+    /** Include Subdirectories toggle on the current-folder row. */
+    std::function<void(bool)> onIncludeSubdirsChanged;
+    void setIncludeSubdirs(bool on);
+    bool getIncludeSubdirs() const { return includeSubdirs; }
+
+    /** Refresh Filter histogram bars from loaded browser clips. */
+    void setFilterHistograms(const std::vector<StepClip>& clips);
     std::function<void()> onShowStarred;
     std::function<void()> onShowSearch;
     /** Text search (Enter / saved search) — scans disk by query. */
@@ -108,7 +115,7 @@ private:
         int index = -1;
         bool removeZone = false;
         bool heartZone = false;   // current-folder heart → favorite
-        bool scanZone = false;    // "Scan all folders" trailing control
+        bool scanZone = false;    // "Include Subdirectories" trailing control
     };
     enum class ChromeHit
     {
@@ -186,9 +193,10 @@ private:
     int resizeStartWidth = 0;
     int resizeStartX = 0;
 
-    bool filterOpen = true;
+    bool filterOpen = false;
     bool searchOpen = true;
     bool savedOpen = true;
+    bool includeSubdirs = false;
 
     juce::Rectangle<int> settingsRowBounds;
     juce::Rectangle<int> filterHeaderBounds, searchHeaderBounds, savedHeaderBounds;
@@ -196,7 +204,7 @@ private:
 
     std::vector<Row> rows;
 
-    // ── Filter panel (Key + ranges + Hide Duplicates)
+    // ── Filter panel (Key grid + histogram ranges + Hide Duplicates)
     class FilterPanel : public juce::Component
     {
     public:
@@ -206,18 +214,17 @@ private:
         void lookAndFeelChanged() override;
         void applyTo(BrowserSearch&) const;
         void loadFrom(const BrowserSearch&);
+        void setHistograms(const std::vector<StepClip>& clips);
         int idealHeight() const;
         std::function<void()> onCriteriaChanged;
-        static constexpr int kKeySelectW = 72;
     private:
-        void syncRangeLabels();
         int rowH() const;
-        fx::FlatPopup keyPicker;
-        fx::FlatRangeSliderRow bpmRange { "BPM", 40, 240, 40, 240 };
-        fx::FlatRangeSliderRow barsRange { "Bars", 1, 64, 1, 64 };
-        fx::FlatRangeSliderRow complexityRange { "Complexity", 0, 100, 0, 100 };
+        fx::ChipGrid keyGrid;
+        fx::HistRangeSlider bpmRange { "TEMPO", 40, 240 };
+        fx::HistRangeSlider barsRange { "BARS", 1, 64 };
+        fx::HistRangeSlider complexityRange { "COMPLEXITY", 0, 100 };
         fx::FlatSwitch hideDupesSwitch;
-        juce::Rectangle<int> keyRow, hideDupesRow;
+        juce::Rectangle<int> hideDupesRow;
     };
 
     // ── Search query (field + clear × + save +)

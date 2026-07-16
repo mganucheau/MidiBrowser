@@ -88,11 +88,12 @@ TEST_CASE("editIsClean detects default edits", "[editmodel]")
     }
 }
 
-TEST_CASE("resolveClip applies octave and per-note moves", "[editmodel]")
+TEST_CASE("resolveClip applies absolute octave and per-note moves", "[editmodel]")
 {
+    // Clip starts at C4 (60); absolute octave 3 → C3 (48).
     auto clip = makeClip({ { 0, 60, 0.0, 4.0 }, { 1, 64, 4.0, 2.0 } }, 1);
     ClipEdit e;
-    e.octave = -1;
+    e.octave = 3;
     e.moves[1] = { 2, 3 };
 
     const auto r = resolveClip(clip, e);
@@ -107,6 +108,11 @@ TEST_CASE("resolveClip applies octave and per-note moves", "[editmodel]")
     // Source clip untouched (non-destructive contract).
     CHECK(clip.notes[1].pitch == 64);
     CHECK(clip.notes[1].start == Approx(4.0));
+
+    // -1 keeps the clip's native octave.
+    e.octave = -1;
+    e.moves.clear();
+    CHECK(resolveClip(clip, e).notes[0].pitch == 60);
 }
 
 TEST_CASE("resolveClip octave range folds span into N octaves", "[editmodel]")
@@ -240,7 +246,7 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
 
     const auto badges = editBadges(clip, e);
     REQUIRE(badges.size() == 5);
-    CHECK(badges[0].label == "Oct +2");
+    CHECK(badges[0].label == "Oct 2");
     CHECK(badges[1].label == "D# Minor");
     CHECK(badges[2].label == "-> D# root");
     CHECK(badges[3].label == "1 note moved");
@@ -255,11 +261,11 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
         CHECK(b[4].label == "Trim -2 bars");
     }
 
-    SECTION("negative octave")
+    SECTION("native octave is not badged")
     {
-        ClipEdit neg;
-        neg.octave = -1;
-        CHECK(editBadges(clip, neg)[0].label == "Oct -1");
+        ClipEdit native;
+        native.octave = -1;
+        CHECK(editBadges(clip, native).empty());
     }
 }
 

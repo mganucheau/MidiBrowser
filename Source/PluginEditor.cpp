@@ -33,8 +33,15 @@ bool clipMatchesFilter(const StepClip& clip, const BrowserSearch& s)
     if (s.bpmMax > 0.0 && clip.bpm > s.bpmMax + 0.5)
         return false;
 
-    if (s.keyRoot >= 0 && clip.root != s.keyRoot)
+    if (s.keyMask != 0)
+    {
+        if (clip.root < 0 || (s.keyMask & (uint16_t) (1u << clip.root)) == 0)
+            return false;
+    }
+    else if (s.keyRoot >= 0 && clip.root != s.keyRoot)
+    {
         return false;
+    }
 
     if (s.barsMin > 0)
     {
@@ -76,7 +83,7 @@ BrowserSearch searchScanKey(const BrowserSearch& s)
 {
     BrowserSearch k;
     k.query = s.query;
-    k.subdirs = true;
+    k.subdirs = s.subdirs;
     return k;
 }
 
@@ -274,7 +281,26 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (sidebar.isCollapsed())
             sidebar.setCollapsed(false);
     };
-    sidebar.onScanAllFolders = [this] { scanAllFolders(); };
+    sidebar.onIncludeSubdirsChanged = [this](bool on)
+    {
+        // `on` is the new toggle state (sidebar already applied it).
+        if (!rootDir.isDirectory() && processorRef.lastBrowserDir.isNotEmpty())
+            rootDir = juce::File(processorRef.lastBrowserDir);
+        if (!rootDir.isDirectory())
+            return;
+
+        processorRef.lastBrowserDir = rootDir.getFullPathName();
+        setBrowseMode(0);
+        starredFilter = false;
+        sidebar.setStarredFilter(false);
+        activeSavedSearchIdx = -1;
+        ++searchGeneration;
+        // Force recursiveBrowse from the toggle (do not rely on stale flag).
+        recursiveBrowse = on;
+        rescanFolder(true);
+        refreshSidebar();
+        fileList.grabBrowseFocus();
+    };
     sidebar.onRemoveDir = [this](const juce::String& path)
     {
         processorRef.removeSavedBrowserDir(path);
@@ -576,7 +602,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             }
             if ((locks & toolkitLock::Pitch) == 0)
             {
-                e.octave = 0;
+                e.octave = -1;
                 e.pitchShift = 0;
                 e.octaveRange = 0;
                 e.pitchMin = 0;
@@ -665,15 +691,36 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
         (keepSelection && selectedIdx >= 0 && selectedIdx < (int) clips.size())
             ? clips[(size_t) selectedIdx].filePath : juce::String();
 
-    recursiveBrowse = false;
-    auto files = rootDir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi");
-    files.sort();
-
+    // Prefer the sidebar toggle; keep recursiveBrowse aligned for rebuildEntries.
+    recursiveBrowse = sidebar.getIncludeSubdirs();
     clips.clear();
-    for (const auto& f : files)
-        clips.push_back(makeStepClip(parseMidiFile(f)));
+    if (rootDir.isDirectory())
+    {
+        if (recursiveBrowse)
+        {
+            scanMidiFiles(rootDir, true, clips,
+                          [](const StepClip&, const juce::File&) { return true; });
+        }
+        else
+        {
+            auto files = rootDir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi");
+            files.sort();
+            for (const auto& f : files)
+                clips.push_back(makeStepClip(parseMidiFile(f)));
+        }
+    }
 
-    fileList.setFolderName(rootDir.isDirectory() ? rootDir.getFileName() : "Select a folder");
+    if (rootDir.isDirectory())
+    {
+        auto name = rootDir.getFileName();
+        if (name.isEmpty()) name = rootDir.getFullPathName();
+        if (recursiveBrowse) name += " (all)";
+        fileList.setFolderName(name);
+    }
+    else
+    {
+        fileList.setFolderName("Select a folder");
+    }
 
     rebuildEntries();
 
@@ -704,54 +751,17 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
 
 void MidiBrowserEditor::scanAllFolders()
 {
-    juce::File dir = rootDir;
-    if (!dir.isDirectory() && processorRef.lastBrowserDir.isNotEmpty())
-        dir = juce::File(processorRef.lastBrowserDir);
-    if (!dir.isDirectory())
-        return;
-
-    const juce::String previousPath =
-        (selectedIdx >= 0 && selectedIdx < (int) clips.size())
-            ? clips[(size_t) selectedIdx].filePath : juce::String();
-
-    rootDir = dir;
-    processorRef.lastBrowserDir = dir.getFullPathName();
-    setBrowseMode(0);
-    starredFilter = false;
-    sidebar.setStarredFilter(false);
-    recursiveBrowse = true;
-    activeSavedSearchIdx = -1;
-    ++searchGeneration;
-
-    clips.clear();
-    scanMidiFiles(dir, true, clips, [](const StepClip&, const juce::File&) { return true; });
-
-    fileList.setFolderName(dir.getFileName().isNotEmpty() ? dir.getFileName() : "All folders");
-    rebuildEntries();
-    refreshSidebar();
-
-    int nextSel = clips.empty() ? -1 : 0;
-    if (previousPath.isNotEmpty())
-        for (int i = 0; i < (int) clips.size(); ++i)
-            if (clips[(size_t) i].filePath == previousPath)
-                nextSel = i;
-    if (nextSel >= 0 && displayForClip(nextSel) < 0)
+    sidebar.setIncludeSubdirs(true);
+    if (rootDir.isDirectory()
+        || (processorRef.lastBrowserDir.isNotEmpty()
+            && juce::File(processorRef.lastBrowserDir).isDirectory()))
     {
-        nextSel = -1;
-        for (const auto& row : displayRows)
-            if (!row.isDirectory) { nextSel = row.clipIndex; break; }
+        if (!rootDir.isDirectory())
+            rootDir = juce::File(processorRef.lastBrowserDir);
+        rescanFolder(true);
+        refreshSidebar();
+        fileList.grabBrowseFocus();
     }
-
-    selectedIdx = -1;
-    if (nextSel >= 0)
-        selectIndex(nextSel);
-    else
-    {
-        rollEditor.clearClip();
-        syncEffectsInspector();
-        processorRef.setPreviewState({}, false, false, false);
-    }
-    fileList.grabBrowseFocus();
 }
 
 void MidiBrowserEditor::applyBrowserFilter()
@@ -861,7 +871,7 @@ void MidiBrowserEditor::runSearch(const BrowserSearch& criteria)
         {
             return clipMatchesQuery(f, criteria);
         };
-        scanMidiFiles(searchRoot, true, clips, matcher);
+        scanMidiFiles(searchRoot, criteria.subdirs, clips, matcher);
     }
 
     juce::String title = "Search";
@@ -1029,7 +1039,7 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria, int savedI
             {
                 return clipMatchesQuery(f, criteria);
             };
-            scanMidiFiles(searchRoot, true, found, matcher);
+            scanMidiFiles(searchRoot, criteria.subdirs, found, matcher);
 
             for (const auto& c : found)
                 resultPaths.add(c.filePath);
@@ -1059,7 +1069,7 @@ void MidiBrowserEditor::saveCurrentSearch()
     // Prefer the live sidebar form; fall back to the last-run search.
     BrowserSearch criteria = sidebar.getCriteria();
     const bool formEmpty = criteria.query.isEmpty()
-        && criteria.keyRoot < 0
+        && criteria.keyRoot < 0 && criteria.keyMask == 0
         && criteria.bpmMin <= 0.0 && criteria.bpmMax <= 0.0
         && criteria.barsMin <= 0 && criteria.barsMax <= 0
         && criteria.complexityMin <= 0 && criteria.complexityMax <= 0;
@@ -1083,8 +1093,19 @@ void MidiBrowserEditor::saveCurrentSearch()
         parts.add(criteria.query);
     if (const auto bpmLabel = searchBpmTitle(criteria); bpmLabel.isNotEmpty())
         parts.add(bpmLabel);
-    if (criteria.keyRoot >= 0 && criteria.keyRoot < 12)
+    if (criteria.keyMask != 0)
+    {
+        juce::StringArray keys;
+        for (int i = 0; i < 12; ++i)
+            if ((criteria.keyMask & (uint16_t) (1u << i)) != 0)
+                keys.add(kNoteNames[(size_t) i]);
+        if (keys.size() > 0)
+            parts.add(keys.joinIntoString(" "));
+    }
+    else if (criteria.keyRoot >= 0 && criteria.keyRoot < 12)
+    {
         parts.add(kNoteNames[(size_t) criteria.keyRoot]);
+    }
     if (const auto barsLabel = searchBarsLabel(criteria); barsLabel.isNotEmpty())
         parts.add(barsLabel);
     entry.name = parts.isEmpty() ? "Search" : parts.joinIntoString(" - ");
@@ -1166,6 +1187,7 @@ void MidiBrowserEditor::rebuildEntries()
     }
 
     fileList.setEntries(std::move(entries));
+    sidebar.setFilterHistograms(clips);
 
     if (const int d = displayForClip(selectedIdx); d >= 0)
         fileList.setSelectedIndex(d, juce::dontSendNotification);
@@ -1214,6 +1236,7 @@ void MidiBrowserEditor::syncEffectsInspector()
     const auto* clip = selectedClip();
     effectsInspector.setHasClip(clip != nullptr);
     effectsInspector.setClipRoot(clip != nullptr ? clip->root : -1);
+    effectsInspector.setClipSourceOctave(clip != nullptr ? clipReferenceOctave(*clip) : 4);
     effectsInspector.setClipComplexity(clip != nullptr ? clip->complexity : 50);
     effectsInspector.setEdit(selectedEdit(), juce::dontSendNotification);
     effectsInspector.setGroove(selectedGroove(), juce::dontSendNotification);
@@ -1521,7 +1544,7 @@ void MidiBrowserEditor::updateMiniPreview()
     const auto* clip = selectedClip();
     if (clip == nullptr)
     {
-        miniRoll.setNotes({}, 1, {});
+        miniRoll.setNotes({}, 4, GrooveParams{}, 0, {}, Mode::Ionian, 4, 0x0FFF);
         previewHeader.repaint();
         transport.setHasClip(false);
         return;

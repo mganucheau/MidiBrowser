@@ -61,6 +61,11 @@ const std::array<int, 7>& modeIntervals(Mode m);
 juce::String pitchName(int midi);           // MIDI 60 = "C4"
 bool isBlackKeyPitch(int midi);
 
+/** Scientific octave for a MIDI pitch (60 → 4). */
+int scientificOctave(int midi);
+/** Lowest-note octave of a clip, clamped to 0..6 (empty → 4). */
+int clipReferenceOctave(const StepClip& clip);
+
 /** True when midi pitch-class belongs to scale(rootPc, mode). */
 bool pitchInScale(int midi, int rootPc, Mode mode);
 int  noteNameIndex(const juce::String& name);   // "C"..."B" -> 0..11, else -1
@@ -88,7 +93,8 @@ struct NoteMove { int dPitch = 0; int dStep = 0; };
 
 struct ClipEdit
 {
-    int  octave    = 0;
+    /** Absolute target octave 0..6. -1 = keep the clip's native octave. */
+    int  octave    = -1;
     int  pitchShift = 0;   // whole-file semitone transpose, -12..12
     /** 0 = Off. 1..3 = fold/spread the clip into that many octaves. */
     int  octaveRange = 0;

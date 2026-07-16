@@ -1,8 +1,10 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <vector>
 #include "Theme.h"
 #include "UiAtoms.h"
 #include "GrooveEngine.h"
+#include "EditModel.h"
 
 namespace pflow {
 namespace fx {
@@ -12,11 +14,13 @@ constexpr float kFontPt = 12.0f;
 constexpr float kAnnotPt = 11.0f;
 constexpr float kPopupFontPt = 12.0f;
 constexpr float kSectionTitlePt = 14.0f;
-constexpr int kSectionPadH = 12;       // shell horizontal pad
+constexpr int kSectionPadH = 12;       // shell horizontal pad (section header chrome)
 constexpr int kRowMinH = 26;
 constexpr int kControlH = 26;
 constexpr int kSectionHeaderH = 30;
 constexpr int kSectionRowInset = 22;   // INDENT past padded edge (chevron column)
+/** Content inset from pane edge ≈ left-edge→title (excludes chevron). */
+constexpr int kContentPadX = kSectionPadH + kSectionRowInset; // 34
 constexpr int kSliderRowH = 26;
 constexpr int kSelectW = 96;
 constexpr int kHeaderIconW = 20; // match library sidebar glyph hit target
@@ -119,7 +123,7 @@ public:
             else if (over) fill = fill.brighter(0.06f);
             g.setColour(fill);
             g.fillRoundedRectangle(r, metrics::controlRadius);
-            g.setColour(juce::Colours::white);
+            g.setColour(juce::Colours::black);
         }
         else
         {
@@ -303,7 +307,7 @@ private:
                     g.fillRoundedRectangle(row, 4.0f);
                 }
                 g.setFont(inspectorFont());
-                g.setColour(hi ? juce::Colours::white : t.rowLabel);
+                g.setColour(hi ? juce::Colours::black : t.rowLabel);
                 g.drawText(labels[i], row.reduced(8.0f, 0.0f).toNearestInt(),
                            juce::Justification::centredLeft, true);
             }
@@ -543,7 +547,7 @@ public:
         g.setFont(inspectorFont());
         auto textCol = [&](Sel s)
         {
-            return selected == s ? juce::Colours::white : t.rowLabel;
+            return selected == s ? juce::Colours::black : t.rowLabel;
         };
         g.setColour(textCol(Sel::Half));
         g.drawText("Half", left.toNearestInt(), juce::Justification::centred, false);
@@ -630,13 +634,13 @@ public:
             g.setColour(valueCol);
             g.drawText(text, pad, juce::Justification::centredRight, true);
         };
-        // Base colours on the well; white wherever text sits on the accent fill.
+        // Black text on accent fill for contrast.
         drawTexts(hot ? t.headerText : t.rowLabel, t.headerText);
         if (fill.getWidth() > 0.5f)
         {
             juce::Graphics::ScopedSaveState state(g);
             g.reduceClipRegion(fill.getSmallestIntegerContainer());
-            drawTexts(juce::Colours::white, juce::Colours::white);
+            drawTexts(juce::Colours::black, juce::Colours::black);
         }
     }
 
@@ -758,12 +762,13 @@ public:
             g.setColour(valueCol);
             g.drawText(text, pad, juce::Justification::centredRight, true);
         };
+        // Black text on accent fill — higher contrast than white-on-blue.
         drawTexts(hot ? t.headerText : t.rowLabel, t.headerText);
         if (fill.getWidth() > 0.5f)
         {
             juce::Graphics::ScopedSaveState state(g);
             g.reduceClipRegion(fill.getSmallestIntegerContainer());
-            drawTexts(juce::Colours::white, juce::Colours::white);
+            drawTexts(juce::Colours::black, juce::Colours::black);
         }
     }
 
@@ -795,6 +800,456 @@ private:
 
     juce::String label;
     int minV, maxV, lo, hi, defLoV, defHiV;
+};
+
+// ── ChipGrid (2×N key / articulation / mode buttons) ─────────────────────────
+
+class ChipGrid : public juce::Component
+{
+public:
+    std::function<void()> onChange;
+    bool multiSelect = false;
+    int columns = 6;
+    /** When true, chip width follows label text and rows wrap to available width. */
+    bool fitContent = false;
+
+    void setItems(juce::StringArray labelsIn)
+    {
+        labels = std::move(labelsIn);
+        selected.assign((size_t) labels.size(), false);
+        layoutDirty = true;
+        repaint();
+        resized();
+    }
+
+    void setSelectedIndex(int idx, juce::NotificationType notify = juce::dontSendNotification)
+    {
+        if (labels.isEmpty()) return;
+        selected.assign((size_t) labels.size(), false);
+        if (juce::isPositiveAndBelow(idx, labels.size()))
+            selected[(size_t) idx] = true;
+        repaint();
+        if (notify != juce::dontSendNotification && onChange) onChange();
+    }
+
+    void setSelectedMask(uint16_t mask, juce::NotificationType notify = juce::dontSendNotification)
+    {
+        selected.assign((size_t) labels.size(), false);
+        for (int i = 0; i < labels.size() && i < 16; ++i)
+            selected[(size_t) i] = (mask & (uint16_t) (1u << i)) != 0;
+        repaint();
+        if (notify != juce::dontSendNotification && onChange) onChange();
+    }
+
+    int getSelectedIndex() const
+    {
+        for (int i = 0; i < (int) selected.size(); ++i)
+            if (selected[(size_t) i]) return i;
+        return -1;
+    }
+
+    uint16_t getSelectedMask() const
+    {
+        uint16_t m = 0;
+        for (int i = 0; i < (int) selected.size() && i < 16; ++i)
+            if (selected[(size_t) i]) m = (uint16_t) (m | (uint16_t) (1u << i));
+        return m;
+    }
+
+    juce::String selectedSummary() const
+    {
+        juce::StringArray parts;
+        for (int i = 0; i < labels.size(); ++i)
+            if (i < (int) selected.size() && selected[(size_t) i])
+                parts.add(labels[i]);
+        return parts.isEmpty() ? "Any" : parts.joinIntoString(" ");
+    }
+
+    int idealHeight() const
+    {
+        if (labels.isEmpty()) return kLabelH;
+        if (!fitContent)
+        {
+            const int rows = (labels.size() + columns - 1) / juce::jmax(1, columns);
+            return kLabelH + toolkitRowGap() + rows * kChipH + juce::jmax(0, rows - 1) * kChipGap;
+        }
+        // Prefer laid-out width; else estimate Toolkit content column width.
+        const int w = juce::jmax(120, getWidth() > 10 ? getWidth()
+                                    : metrics::effectsPaneWidth() - 2 * kContentPadX);
+        return kLabelH + toolkitRowGap() + measureWrappedHeight(w);
+    }
+
+    juce::String title;
+
+    void resized() override
+    {
+        layoutDirty = true;
+        rebuildChipBounds();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        rebuildChipBounds();
+        const auto& t = inspectorTokens();
+        auto header = getLocalBounds().removeFromTop(kLabelH);
+        g.setFont(inspectorFont(true));
+        g.setColour(t.rowLabel);
+        g.drawText(title, header.removeFromLeft(header.getWidth() / 2),
+                   juce::Justification::centredLeft, true);
+        g.setFont(inspectorFont(true));
+        g.setColour(t.accent);
+        g.drawText(selectedSummary(), header, juce::Justification::centredRight, true);
+
+        for (int i = 0; i < labels.size(); ++i)
+        {
+            if (i >= (int) chipBounds.size()) break;
+            auto cell = chipBounds[(size_t) i].toFloat();
+            const bool on = i < (int) selected.size() && selected[(size_t) i];
+            g.setColour(on ? t.accent : t.tallWell);
+            g.fillRoundedRectangle(cell, 5.0f);
+            if (!on)
+            {
+                g.setColour(t.controlHairline);
+                g.drawRoundedRectangle(cell.reduced(0.5f), 5.0f, 1.0f);
+            }
+            g.setFont(uiFontFixed(kAnnotPt, on));
+            g.setColour(on ? juce::Colours::black : t.headerText);
+            g.drawText(labels[i], cell.toNearestInt(), juce::Justification::centred, false);
+        }
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        rebuildChipBounds();
+        const int idx = hitIndex(e.getPosition());
+        if (idx < 0) return;
+        if (multiSelect)
+        {
+            selected[(size_t) idx] = !selected[(size_t) idx];
+        }
+        else
+        {
+            selected.assign((size_t) labels.size(), false);
+            selected[(size_t) idx] = true;
+        }
+        repaint();
+        if (onChange) onChange();
+    }
+
+private:
+    static constexpr int kLabelH = 18;
+    static constexpr int kChipH = 26;
+    static constexpr int kChipGap = 4;
+    static constexpr int kChipPadX = 10;
+
+    int chipWidthFor(int idx) const
+    {
+        const auto f = uiFontFixed(kAnnotPt, false);
+        const float tw = juce::GlyphArrangement::getStringWidth(f, labels[idx]);
+        return juce::jmax(28, (int) std::ceil(tw) + kChipPadX * 2);
+    }
+
+    int measureWrappedHeight(int width) const
+    {
+        if (labels.isEmpty() || width <= 0) return kChipH;
+        int x = 0, rows = 1;
+        for (int i = 0; i < labels.size(); ++i)
+        {
+            const int cw = chipWidthFor(i);
+            if (x > 0 && x + cw > width)
+            {
+                ++rows;
+                x = 0;
+            }
+            x += cw + kChipGap;
+        }
+        return rows * kChipH + juce::jmax(0, rows - 1) * kChipGap;
+    }
+
+    void rebuildChipBounds() const
+    {
+        if (!layoutDirty && (int) chipBounds.size() == labels.size())
+            return;
+        layoutDirty = false;
+        chipBounds.assign((size_t) labels.size(), {});
+        auto body = getLocalBounds().withTrimmedTop(kLabelH + toolkitRowGap());
+        if (body.getWidth() <= 0 || labels.isEmpty())
+            return;
+
+        if (!fitContent)
+        {
+            const int cols = juce::jmax(1, columns);
+            const float gap = (float) kChipGap;
+            const float cellW = (body.getWidth() - gap * (float) (cols - 1)) / (float) cols;
+            const float cellH = (float) kChipH;
+            for (int i = 0; i < labels.size(); ++i)
+            {
+                const int r = i / cols, c = i % cols;
+                chipBounds[(size_t) i] = juce::Rectangle<int>(
+                    body.getX() + (int) ((float) c * (cellW + gap)),
+                    body.getY() + r * (kChipH + kChipGap),
+                    (int) cellW, (int) cellH);
+            }
+            return;
+        }
+
+        int x = body.getX(), y = body.getY();
+        for (int i = 0; i < labels.size(); ++i)
+        {
+            const int cw = chipWidthFor(i);
+            if (x > body.getX() && x + cw > body.getRight())
+            {
+                x = body.getX();
+                y += kChipH + kChipGap;
+            }
+            chipBounds[(size_t) i] = { x, y, cw, kChipH };
+            x += cw + kChipGap;
+        }
+    }
+
+    int hitIndex(juce::Point<int> pos) const
+    {
+        for (int i = 0; i < (int) chipBounds.size(); ++i)
+            if (chipBounds[(size_t) i].contains(pos))
+                return i;
+        return -1;
+    }
+
+    juce::StringArray labels;
+    std::vector<bool> selected;
+    mutable std::vector<juce::Rectangle<int>> chipBounds;
+    mutable bool layoutDirty = true;
+};
+
+// ── SegmentedSelector (single-row pill group: octave / bars-style) ────────────
+
+class SegmentedSelector : public juce::Component
+{
+public:
+    std::function<void(int)> onChange;
+    juce::String title;
+
+    void setItems(juce::StringArray labelsIn, int selectedIdx = 0)
+    {
+        labels = std::move(labelsIn);
+        index = juce::jlimit(0, juce::jmax(0, labels.size() - 1), selectedIdx);
+        repaint();
+    }
+
+    void setIndex(int i, juce::NotificationType notify = juce::dontSendNotification)
+    {
+        i = juce::jlimit(0, juce::jmax(0, labels.size() - 1), i);
+        if (i == index) return;
+        index = i;
+        repaint();
+        if (notify != juce::dontSendNotification && onChange) onChange(index);
+    }
+
+    int getIndex() const { return index; }
+
+    int idealHeight() const { return kLabelH + toolkitRowGap() + kTrackH; }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& t = inspectorTokens();
+        auto r = getLocalBounds();
+        auto header = r.removeFromTop(kLabelH);
+        g.setFont(inspectorFont(true));
+        g.setColour(t.rowLabel);
+        g.drawText(title, header, juce::Justification::centredLeft, true);
+
+        r.removeFromTop(toolkitRowGap());
+        auto track = r.removeFromTop(kTrackH).toFloat();
+        g.setColour(t.tallWell);
+        g.fillRoundedRectangle(track, track.getHeight() * 0.5f);
+        g.setColour(t.controlHairline);
+        g.drawRoundedRectangle(track.reduced(0.5f), track.getHeight() * 0.5f, 1.0f);
+
+        if (labels.isEmpty()) return;
+        const float cellW = track.getWidth() / (float) labels.size();
+        for (int i = 0; i < labels.size(); ++i)
+        {
+            auto cell = juce::Rectangle<float>(track.getX() + cellW * (float) i,
+                                               track.getY(), cellW, track.getHeight())
+                            .reduced(2.0f, 2.0f);
+            if (i == index)
+            {
+                g.setColour(t.accent);
+                g.fillRoundedRectangle(cell, cell.getHeight() * 0.5f);
+            }
+            g.setFont(uiFontFixed(kAnnotPt, i == index));
+            g.setColour(i == index ? juce::Colours::black : t.headerText);
+            g.drawText(labels[i], cell.toNearestInt(), juce::Justification::centred, false);
+        }
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        auto track = getLocalBounds().withTrimmedTop(kLabelH + toolkitRowGap()).removeFromTop(kTrackH);
+        if (!track.contains(e.getPosition()) || labels.isEmpty()) return;
+        const int i = juce::jlimit(0, labels.size() - 1,
+            (int) ((float) (e.x - track.getX()) / (float) track.getWidth() * (float) labels.size()));
+        setIndex(i, juce::sendNotification);
+    }
+
+private:
+    static constexpr int kLabelH = 18;
+    static constexpr int kTrackH = 28;
+    juce::StringArray labels;
+    int index = 0;
+};
+
+// ── HistRangeSlider (TEMPO-style histogram + dual thumbs) ─────────────────────
+
+class HistRangeSlider : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    HistRangeSlider(const juce::String& l, int mn, int mx)
+        : label(l), minV(mn), maxV(mx), lo(mn), hi(mx), defLo(mn), defHi(mx)
+    {
+        setWantsKeyboardFocus(true);
+        setRepaintsOnMouseActivity(true);
+        bins.assign(16, 0);
+    }
+
+    std::function<void(int, int)> onChange;
+
+    /** Visual histogram bins spanning [minV, maxV] evenly (any length). */
+    void setHistogram(const std::vector<int>& counts)
+    {
+        bins = counts;
+        if (bins.empty())
+            bins.assign(16, 0);
+        repaint();
+    }
+
+    /** Build ~`numBins` bars from integer samples in [minV, maxV]. */
+    void setHistogramFromSamples(const std::vector<int>& samples, int numBins = 16)
+    {
+        numBins = juce::jlimit(4, 48, numBins);
+        bins.assign((size_t) numBins, 0);
+        const float span = (float) juce::jmax(1, maxV - minV);
+        for (int s : samples)
+        {
+            const int v = juce::jlimit(minV, maxV, s);
+            int idx = (int) ((float) (v - minV) / span * (float) numBins);
+            idx = juce::jlimit(0, numBins - 1, idx);
+            bins[(size_t) idx] += 1;
+        }
+        repaint();
+    }
+
+    void setRange(int newLo, int newHi, juce::NotificationType notify = juce::sendNotification)
+    {
+        newLo = juce::jlimit(minV, maxV, newLo);
+        newHi = juce::jlimit(minV, maxV, newHi);
+        if (newHi < newLo) std::swap(newLo, newHi);
+        if (newLo == lo && newHi == hi) return;
+        lo = newLo;
+        hi = newHi;
+        repaint();
+        if (notify != juce::dontSendNotification && onChange)
+            onChange(lo, hi);
+    }
+
+    int getLo() const { return lo; }
+    int getHi() const { return hi; }
+    bool isFullRange() const { return lo <= minV && hi >= maxV; }
+
+    int idealHeight() const { return kLabelH + toolkitRowGap() + kHistH + 4 + kTrackH; }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (!hasKeyboardFocus(true)) grabKeyboardFocus();
+        dragThumb = hitThumb(e.position.x);
+        setFromX(e.position.x);
+    }
+    void mouseDrag(const juce::MouseEvent& e) override { setFromX(e.position.x); }
+    void mouseDoubleClick(const juce::MouseEvent&) override { setRange(defLo, defHi); }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& t = inspectorTokens();
+        auto r = getLocalBounds();
+        auto header = r.removeFromTop(kLabelH);
+        g.setFont(inspectorFont(true));
+        g.setColour(t.rowLabel);
+        g.drawText(label, header.removeFromLeft(header.getWidth() / 2),
+                   juce::Justification::centredLeft, true);
+        g.setColour(t.accent);
+        g.setFont(inspectorMono(true));
+        const juce::String val = isFullRange() ? "Any"
+            : (juce::String(lo) + juce::String::charToString((juce::juce_wchar) 0x2013) + juce::String(hi));
+        g.drawText(val, header, juce::Justification::centredRight, true);
+
+        r.removeFromTop(toolkitRowGap());
+        auto hist = r.removeFromTop(kHistH).toFloat();
+        const int n = juce::jmax(1, (int) bins.size());
+        int peak = 1;
+        for (int c : bins) peak = juce::jmax(peak, c);
+        const float gap = 1.5f;
+        const float barW = juce::jmax(2.0f, (hist.getWidth() - gap * (float) (n - 1)) / (float) n);
+        const float span = (float) juce::jmax(1, maxV - minV);
+        for (int i = 0; i < n; ++i)
+        {
+            const int binLo = minV + (int) std::floor((float) i / (float) n * span);
+            const int binHi = minV + (int) std::floor((float) (i + 1) / (float) n * span) - 1;
+            const bool inRange = binHi >= lo && binLo <= hi;
+            const float h = hist.getHeight() * ((float) bins[(size_t) i] / (float) peak);
+            auto bar = juce::Rectangle<float>(
+                hist.getX() + (float) i * (barW + gap),
+                hist.getBottom() - juce::jmax(2.0f, h),
+                barW, juce::jmax(2.0f, h));
+            g.setColour(inRange ? t.accent : t.tallFill);
+            g.fillRoundedRectangle(bar, 1.5f);
+        }
+
+        r.removeFromTop(4);
+        auto track = r.removeFromTop(kTrackH).toFloat().reduced(0.0f, 6.0f);
+        g.setColour(t.tallFill);
+        g.fillRoundedRectangle(track, track.getHeight() * 0.5f);
+        const float trackSpan = (float) juce::jmax(1, maxV - minV);
+        const float xLo = track.getX() + track.getWidth() * ((float) (lo - minV) / trackSpan);
+        const float xHi = track.getX() + track.getWidth() * ((float) (hi - minV) / trackSpan);
+        auto sel = juce::Rectangle<float>::leftTopRightBottom(xLo, track.getY(), xHi, track.getBottom());
+        g.setColour(t.accent);
+        g.fillRoundedRectangle(sel, track.getHeight() * 0.5f);
+        const float th = track.getHeight() + 6.0f;
+        g.setColour(juce::Colours::white);
+        g.fillEllipse(xLo - th * 0.5f, track.getCentreY() - th * 0.5f, th, th);
+        g.fillEllipse(xHi - th * 0.5f, track.getCentreY() - th * 0.5f, th, th);
+        g.setColour(t.controlHairline);
+        g.drawEllipse(xLo - th * 0.5f, track.getCentreY() - th * 0.5f, th, th, 0.8f);
+        g.drawEllipse(xHi - th * 0.5f, track.getCentreY() - th * 0.5f, th, th, 0.8f);
+    }
+
+private:
+    static constexpr int kLabelH = 18;
+    static constexpr int kHistH = 16;
+    static constexpr int kTrackH = 20;
+    enum class Thumb { None, Lo, Hi };
+    Thumb dragThumb = Thumb::None;
+
+    Thumb hitThumb(float x) const
+    {
+        const float span = (float) juce::jmax(1, maxV - minV);
+        const float w = (float) juce::jmax(1, getWidth());
+        const float xLo = w * ((float) (lo - minV) / span);
+        const float xHi = w * ((float) (hi - minV) / span);
+        return std::abs(x - xLo) <= std::abs(x - xHi) ? Thumb::Lo : Thumb::Hi;
+    }
+
+    void setFromX(float x)
+    {
+        const float t = juce::jlimit(0.0f, 1.0f, x / (float) juce::jmax(1, getWidth()));
+        const int v = minV + (int) std::lround(t * (float) (maxV - minV));
+        if (dragThumb == Thumb::Lo) setRange(juce::jmin(v, hi), hi);
+        else setRange(lo, juce::jmax(v, lo));
+    }
+
+    juce::String label;
+    int minV, maxV, lo, hi, defLo, defHi;
+    std::vector<int> bins;
 };
 
 // ── InlineRow (title left · control right-aligned at kSelectW) ───────────────
@@ -937,6 +1392,13 @@ public:
             onChange();
     }
 
+    void setScaleContext(int rootPc, Mode mode)
+    {
+        scaleRoot = rootPc;
+        scaleMode = mode;
+        repaint();
+    }
+
     uint16_t getMask() const { return noteFilterMask; }
 
     int idealHeight() const
@@ -988,28 +1450,33 @@ public:
 private:
     static constexpr int kLabelH = 18;
     static constexpr int kKeysH = 40;
-    /** Solid dark gray for filtered-off keys (deactivated look). */
-    static juce::Colour offKeyFill() { return juce::Colour(0xff3a3a3a); }
+    /** Deactivated keys — light enough to read black-key silhouette. */
+    static juce::Colour offWhiteKey() { return juce::Colour(0xffb0b0b4); }
+    static juce::Colour offBlackKey() { return juce::Colour(0xff6a6a70); }
 
     void paintKeyboard(juce::Graphics& g, juce::Rectangle<float> area) const
     {
         if (area.getWidth() < 8.0f || area.getHeight() < 8.0f)
             return;
 
-        // White keys: C D E F G A B
         static constexpr int kWhitePc[7] = { 0, 2, 4, 5, 7, 9, 11 };
         static constexpr int kBlackPc[5] = { 1, 3, 6, 8, 10 };
-        // Black sits after white index: C#, D#, F#, G#, A#
         static constexpr int kBlackAfterWhite[5] = { 0, 1, 3, 4, 5 };
 
         const float whiteW = area.getWidth() / 7.0f;
         const float whiteH = area.getHeight();
         const float blackW = whiteW * 0.62f;
         const float blackH = whiteH * 0.58f;
+        const auto& t = inspectorTokens();
 
         auto enabled = [this](int pc)
         {
             return (noteFilterMask & (uint16_t) (1u << pc)) != 0;
+        };
+        auto inScale = [this](int pc)
+        {
+            if (scaleRoot < 0) return true;
+            return pitchInScale(pc, scaleRoot, scaleMode);
         };
 
         for (int i = 0; i < 7; ++i)
@@ -1018,9 +1485,20 @@ private:
             auto key = juce::Rectangle<float>(area.getX() + whiteW * (float) i,
                                               area.getY(), whiteW - 1.0f, whiteH);
             const bool on = enabled(pc);
-            g.setColour(on ? colours::kbWhite() : offKeyFill());
+            const bool scale = inScale(pc);
+            if (!on)
+                g.setColour(offWhiteKey());
+            else if (scale)
+                g.setColour(colours::kbWhite());
+            else
+                g.setColour(colours::kbWhite().interpolatedWith(juce::Colour(0xff9a9aa0), 0.55f));
             g.fillRoundedRectangle(key, 2.0f);
-            g.setColour(colours::line().withAlpha(on ? 0.55f : 0.35f));
+            if (on && scale)
+            {
+                g.setColour(t.accent.withAlpha(0.22f));
+                g.fillRoundedRectangle(key.reduced(1.0f), 2.0f);
+            }
+            g.setColour(colours::line().withAlpha(on ? 0.55f : 0.40f));
             g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
         }
 
@@ -1030,11 +1508,21 @@ private:
             const float cx = area.getX() + whiteW * ((float) kBlackAfterWhite[i] + 1.0f);
             auto key = juce::Rectangle<float>(cx - blackW * 0.5f, area.getY(), blackW, blackH);
             const bool on = enabled(pc);
-            g.setColour(on ? colours::kbBlack() : offKeyFill().darker(0.15f));
-            g.fillRoundedRectangle(key, 2.0f);
-            g.setColour(colours::line().withAlpha(on ? 0.0f : 0.30f));
+            const bool scale = inScale(pc);
             if (!on)
-                g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
+                g.setColour(offBlackKey());
+            else if (scale)
+                g.setColour(colours::kbBlack());
+            else
+                g.setColour(colours::kbBlack().brighter(0.35f));
+            g.fillRoundedRectangle(key, 2.0f);
+            if (on && scale)
+            {
+                g.setColour(t.accent.withAlpha(0.35f));
+                g.fillRoundedRectangle(key.reduced(1.0f), 2.0f);
+            }
+            g.setColour(colours::line().withAlpha(0.35f));
+            g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
         }
     }
 
@@ -1061,6 +1549,8 @@ private:
     }
 
     uint16_t noteFilterMask = 0x0FFF;
+    int scaleRoot = -1;
+    Mode scaleMode = Mode::Ionian;
     juce::Rectangle<int> keysBounds;
 };
 
@@ -1141,8 +1631,8 @@ public:
         auto r = getLocalBounds();
         r.removeFromTop(padT + kSectionHeaderH + titleGap);
         r.removeFromBottom(padB);
-        r.removeFromLeft(kSectionPadH + kSectionRowInset);
-        r.removeFromRight(kSectionPadH);
+        r.removeFromLeft(kContentPadX);
+        r.removeFromRight(kContentPadX);
         bool first = true;
         for (auto& row : rows)
         {
