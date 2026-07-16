@@ -32,6 +32,8 @@ public:
     void setClipRoot(int rootPc);
     /** Native scientific octave of the loaded clip (for absolute Octave selector). */
     void setClipSourceOctave(int oct);
+    /** Highlight all viable keys/modes for the loaded clip. */
+    void setClipScaleAnalysis(const ScaleAnalysis& analysis);
     /** Clip baseline complexity (1..100) — drives the Complexity slider position. */
     void setClipComplexity(int complexity);
     void setTrimState(bool active, bool enabled, const juce::String& label = {});
@@ -75,6 +77,8 @@ private:
     int clipRootPc = -1;
     int clipSourceOctave = 4;
     int clipComplexity = 50;
+    uint16_t candidateKeyMask = 0;
+    uint16_t candidateModeMask = 0;
 
     IconBtn btnReset { icons::undo, "Reset effects to defaults" };
     IconBtn btnEffectsLock { icons::lockOpen, "Lock effects while browsing" };

@@ -50,13 +50,13 @@ const ThemeTokens& themeTokens()
         juce::Colour(0xff1d1d1f),   // text
         juce::Colour(0xff3a3a3c),   // text2 — stronger secondary for table meta
         juce::Colour(0xff59595e),   // text3 — ≥4.5:1 on bg/panel for 11–12pt AA
-        juce::Colour(0xffeef0f4),   // rollBg — cool gray so blue notes read clearly
-        juce::Colour(0xffe2e5eb),   // rollShade — black-key lanes
-        juce::Colour(0xffd0d4dc),   // rollRowline
-        rgba(0, 0, 0, 0.16f),       // rollNoteEdge
-        rgba(0, 0, 0, 0.22f),       // rollGhost
-        juce::Colour(0xfff7f8fa),   // kbWhite
-        juce::Colour(0xff2c2c30),   // kbBlack — real piano black
+        juce::Colour(0xfff0f1f3),   // rollBg — quiet light grid
+        juce::Colour(0xffe6e8ec),   // rollShade — black-key lanes (subtle zebra)
+        rgba(0, 0, 0, 0.06f),       // rollRowline — quiet
+        rgba(0, 0, 0, 0.10f),       // rollNoteEdge
+        rgba(0, 0, 0, 0.14f),       // rollGhost
+        juce::Colour(0xffd1d5db),   // kbWhite — soft gray, not pure white
+        juce::Colour(0xff111827),   // kbBlack
         juce::Colour(0xffece9e5),   // toolbarTop
         juce::Colour(0xffe3e0db),   // toolbarBot
         rgba(245, 245, 247, 0.94f), // sidebarTop
@@ -78,13 +78,13 @@ const ThemeTokens& themeTokens()
         juce::Colour(0xfff5f5f7),   // text — primary
         juce::Colour(0xffc7c7cc),   // text2 — brighter for browser columns
         juce::Colour(0xffa1a1a6),   // text3 — readable meta / headers
-        juce::Colour(0xff2c2c2e),   // rollBg
-        juce::Colour(0xff333335),   // rollShade
-        rgba(255, 255, 255, 0.06f), // rollRowline
-        rgba(255, 255, 255, 0.14f),
-        rgba(255, 255, 255, 0.22f),
-        juce::Colour(0xffe8e8ed),   // kbWhite
-        juce::Colour(0xff48484a),   // kbBlack
+        juce::Colour(0xff1a1a1a),   // rollBg — reference dark grid
+        juce::Colour(0xff262626),   // rollShade — black-key lanes
+        rgba(255, 255, 255, 0.04f), // rollRowline — very quiet
+        rgba(255, 255, 255, 0.08f),
+        rgba(255, 255, 255, 0.12f),
+        juce::Colour(0xffd1d5db),   // kbWhite
+        juce::Colour(0xff111827),   // kbBlack
         juce::Colour(0xff323234),   // toolbarTop
         juce::Colour(0xff2a2a2c),   // toolbarBot
         rgba(44, 44, 46, 0.96f),    // sidebarTop
@@ -99,20 +99,20 @@ const ThemeTokens& themeTokens()
 
 const AccentTokens& accentTokens()
 {
-    // Active accent #599CE7 (light + dark).
+    // Active accent #3B82F6 (piano-roll reference).
     static const AccentTokens lightBlue {
-        juce::Colour(0xff599ce7),
+        juce::Colour(0xff3b82f6),
         juce::Colour(0xffffffff),           // ink
-        rgba(89, 156, 231, 0.16f),          // soft
-        rgba(89, 156, 231, 0.42f),          // line
-        juce::Colour(0xff7ab0ed),           // bright
+        rgba(59, 130, 246, 0.14f),          // soft
+        rgba(59, 130, 246, 0.40f),          // line
+        juce::Colour(0xff60a5fa),           // bright
     };
     static const AccentTokens darkBlue {
-        juce::Colour(0xff599ce7),
+        juce::Colour(0xff3b82f6),
         juce::Colour(0xffffffff),
-        rgba(89, 156, 231, 0.20f),
-        rgba(89, 156, 231, 0.45f),
-        juce::Colour(0xff7ab0ed),
+        rgba(59, 130, 246, 0.18f),
+        rgba(59, 130, 246, 0.42f),
+        juce::Colour(0xff60a5fa),
     };
     return usesDarkAppearance() ? darkBlue : lightBlue;
 }
@@ -121,7 +121,7 @@ const InspectorTokens& inspectorTokens()
 {
     static const InspectorTokens light {
         juce::Colour(0xfff5f5f7),   // panelBg — match library sidebar + header
-        juce::Colour(0xff599ce7),   // accent
+        juce::Colour(0xff3b82f6),   // accent
         juce::Colour(0xff1d1d1f),   // headerText
         juce::Colour(0xff3a3a3c),   // rowLabel — AA secondary on panel/well
         juce::Colour(0xff59595e),   // valueText — AA tertiary / placeholders
@@ -142,7 +142,7 @@ const InspectorTokens& inspectorTokens()
     };
     static const InspectorTokens dark {
         juce::Colour(0xff1e1e1e),   // panelBg — Photos Adjust charcoal
-        juce::Colour(0xff599ce7),
+        juce::Colour(0xff3b82f6),
         juce::Colour(0xfff5f5f7),   // headerText — near-white titles / values
         rgba(255, 255, 255, 0.55f), // rowLabel — muted param names
         rgba(255, 255, 255, 0.55f), // valueText — AA tertiary / placeholders

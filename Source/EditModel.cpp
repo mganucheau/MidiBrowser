@@ -74,6 +74,73 @@ int clipReferenceOctave(const StepClip& clip)
     return juce::jlimit(0, 6, scientificOctave(lo));
 }
 
+ScaleAnalysis analyseClipScale(const StepClip& clip)
+{
+    ScaleAnalysis out;
+    if (clip.notes.empty())
+        return out;
+
+    uint16_t pcs = 0;
+    int lo = 127, hi = 0;
+    int pcWeight[12] = {};
+    for (const auto& n : clip.notes)
+    {
+        const int pc = wrapPc(n.pitch);
+        pcs = (uint16_t) (pcs | (uint16_t) (1u << pc));
+        pcWeight[pc] += juce::jmax(1, (int) std::lround(n.len));
+        lo = juce::jmin(lo, n.pitch);
+        hi = juce::jmax(hi, n.pitch);
+    }
+
+    const int octSpan = scientificOctave(hi) - scientificOctave(lo) + 1;
+    out.octaveRange = juce::jlimit(0, 3, octSpan > 1 ? octSpan : 0);
+
+    int bestScore = -1;
+    for (int root = 0; root < 12; ++root)
+    {
+        for (int mi = 0; mi < kNumModes; ++mi)
+        {
+            bool scalePc[12] = {};
+            for (int iv : modeIntervals((Mode) mi))
+                scalePc[wrapPc(root + iv)] = true;
+
+            bool covers = true;
+            int used = 0;
+            for (int pc = 0; pc < 12; ++pc)
+            {
+                if ((pcs & (uint16_t) (1u << pc)) == 0) continue;
+                if (!scalePc[pc]) { covers = false; break; }
+                ++used;
+            }
+            if (!covers) continue;
+
+            out.keyMask = (uint16_t) (out.keyMask | (uint16_t) (1u << root));
+            out.modeMask = (uint16_t) (out.modeMask | (uint16_t) (1u << mi));
+
+            // Prefer denser coverage of scale tones + weight on the root PC.
+            int score = used * 100 + pcWeight[root];
+            if (clip.root == root) score += 50;
+            if (mi == (int) Mode::Ionian || mi == (int) Mode::Aeolian) score += 5;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                out.primaryRoot = root;
+                out.primaryMode = (Mode) mi;
+            }
+        }
+    }
+
+    // Fallback: estimated root + Major if no diatonic cover (e.g. chromatic).
+    if (out.primaryRoot < 0)
+    {
+        out.primaryRoot = clip.root >= 0 ? clip.root : 0;
+        out.primaryMode = Mode::Ionian;
+        out.keyMask = (uint16_t) (1u << out.primaryRoot);
+        out.modeMask = (uint16_t) (1u << (int) Mode::Ionian);
+    }
+    return out;
+}
+
 bool pitchInScale(int midi, int rootPc, Mode mode)
 {
     bool inScale[12] = {};

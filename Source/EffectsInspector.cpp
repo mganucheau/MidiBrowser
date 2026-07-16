@@ -290,7 +290,7 @@ EffectsInspector::EffectsInspector()
     keyGrid.setSelectedIndex(0, juce::dontSendNotification);
     keyGrid.onChange = [this]
     {
-        edit.root = juce::jmax(0, keyGrid.getSelectedIndex());
+        edit.root = keyGrid.getSelectedIndex();
         syncNoteFilterScale();
         refreshPitchAnnotation();
         notifyEdit();
@@ -613,6 +613,20 @@ void EffectsInspector::setClipSourceOctave(int oct)
     refreshPitchAnnotation();
 }
 
+void EffectsInspector::setClipScaleAnalysis(const ScaleAnalysis& analysis)
+{
+    candidateKeyMask = analysis.keyMask;
+    candidateModeMask = analysis.modeMask;
+    keyGrid.setCandidateMask(candidateKeyMask);
+    modeGrid.setCandidateMask(candidateModeMask);
+    if (analysis.primaryRoot >= 0)
+        keyGrid.setSelectedIndex(analysis.primaryRoot, juce::dontSendNotification);
+    modeGrid.setSelectedIndex((int) analysis.primaryMode, juce::dontSendNotification);
+    syncNoteFilterScale();
+    refreshPitchAnnotation();
+    refreshDirtySections();
+}
+
 void EffectsInspector::setClipComplexity(int complexity)
 {
     clipComplexity = juce::jlimit(0, 100, complexity);
@@ -694,6 +708,8 @@ void EffectsInspector::setEdit(const ClipEdit& e, juce::NotificationType)
         else if (e.extendMult == 8) extIdx = 3;
         extendPopup.setIndex(extIdx, juce::dontSendNotification);
     }
+    keyGrid.setCandidateMask(candidateKeyMask);
+    modeGrid.setCandidateMask(candidateModeMask);
     keyGrid.setSelectedIndex(e.root >= 0 ? e.root : 0, juce::dontSendNotification);
     modeGrid.setSelectedIndex((int) e.mode, juce::dontSendNotification);
     fitSwitch.setToggleState(e.fitScale, juce::dontSendNotification);
@@ -769,7 +785,7 @@ void EffectsInspector::resized()
         row.setControlWidth(kSelectW);
     };
     {
-        const int tempoW = juce::jmax(kSelectW, tempoToggle.idealWidth());
+        const int tempoW = kSelectHalfW;
         tempoToggle.setSize(tempoW, kControlH);
         tempoRow.setControlWidth(tempoW);
     }

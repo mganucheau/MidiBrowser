@@ -66,6 +66,20 @@ int scientificOctave(int midi);
 /** Lowest-note octave of a clip, clamped to 0..6 (empty → 4). */
 int clipReferenceOctave(const StepClip& clip);
 
+/** Candidate keys/modes that contain every pitch-class in the clip. */
+struct ScaleAnalysis
+{
+    uint16_t keyMask = 0;   // bit i = pitch-class i is a viable root
+    uint16_t modeMask = 0;  // bit i = Mode i is viable with some root
+    int primaryRoot = -1;   // best root (prefers estimated clip.root)
+    Mode primaryMode = Mode::Ionian;
+    /** 0 = Off (notes within one octave). Else 1..3 spanning octaves. */
+    int octaveRange = 0;
+};
+
+/** Detect viable keys/modes and octave span from clip note content. */
+ScaleAnalysis analyseClipScale(const StepClip& clip);
+
 /** True when midi pitch-class belongs to scale(rootPc, mode). */
 bool pitchInScale(int midi, int rootPc, Mode mode);
 int  noteNameIndex(const juce::String& name);   // "C"..."B" -> 0..11, else -1

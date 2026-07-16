@@ -22,7 +22,8 @@ constexpr int kSectionRowInset = 22;   // INDENT past padded edge (chevron colum
 /** Content inset from pane edge ≈ left-edge→title (excludes chevron). */
 constexpr int kContentPadX = kSectionPadH + kSectionRowInset; // 34
 constexpr int kSliderRowH = 26;
-constexpr int kSelectW = 96;
+constexpr int kSelectW = 48;       // 1/4 content column (Extend, Quantize, …)
+constexpr int kSelectHalfW = 96;   // 1/2 content column (Half/Double)
 constexpr int kHeaderIconW = 20; // match library sidebar glyph hit target
 constexpr float kTallRadius = 4.0f;
 constexpr float kTallPadX = 10.0f;
@@ -515,12 +516,8 @@ public:
 
     int idealWidth() const
     {
-        const auto f = inspectorFont();
-        // Size each segment for the longer label so neither word is condensed.
-        const float labelW = juce::jmax(juce::GlyphArrangement::getStringWidth(f, "Half"),
-                                        juce::GlyphArrangement::getStringWidth(f, "Double"));
-        const float segW = labelW + 28.0f;
-        return (int) std::ceil(segW * 2.0f);
+        // Fit Half|Double into half a toolkit row (same as former select width).
+        return kSelectHalfW;
     }
 
     void paint(juce::Graphics& g) override
@@ -817,6 +814,7 @@ public:
     {
         labels = std::move(labelsIn);
         selected.assign((size_t) labels.size(), false);
+        candidateMask = 0;
         layoutDirty = true;
         repaint();
         resized();
@@ -841,6 +839,14 @@ public:
         if (notify != juce::dontSendNotification && onChange) onChange();
     }
 
+    /** Soft-highlight chips that match clip analysis (does not change selection). */
+    void setCandidateMask(uint16_t mask)
+    {
+        if (candidateMask == mask) return;
+        candidateMask = mask;
+        repaint();
+    }
+
     int getSelectedIndex() const
     {
         for (int i = 0; i < (int) selected.size(); ++i)
@@ -861,6 +867,12 @@ public:
         juce::StringArray parts;
         for (int i = 0; i < labels.size(); ++i)
             if (i < (int) selected.size() && selected[(size_t) i])
+                parts.add(labels[i]);
+        if (!parts.isEmpty())
+            return parts.joinIntoString(" ");
+        // Fall back to candidate names when nothing is exclusively selected.
+        for (int i = 0; i < labels.size() && i < 16; ++i)
+            if ((candidateMask & (uint16_t) (1u << i)) != 0)
                 parts.add(labels[i]);
         return parts.isEmpty() ? "Any" : parts.joinIntoString(" ");
     }
@@ -905,15 +917,28 @@ public:
             if (i >= (int) chipBounds.size()) break;
             auto cell = chipBounds[(size_t) i].toFloat();
             const bool on = i < (int) selected.size() && selected[(size_t) i];
-            g.setColour(on ? t.accent : t.tallWell);
+            const bool cand = !on && i < 16
+                && (candidateMask & (uint16_t) (1u << i)) != 0;
+            if (on)
+                g.setColour(t.accent);
+            else if (cand)
+                g.setColour(t.accent.withAlpha(0.22f));
+            else
+                g.setColour(t.tallWell);
             g.fillRoundedRectangle(cell, 5.0f);
-            if (!on)
+            if (cand)
+            {
+                g.setColour(t.accent.withAlpha(0.85f));
+                g.drawRoundedRectangle(cell.reduced(0.5f), 5.0f, 1.4f);
+            }
+            else if (!on)
             {
                 g.setColour(t.controlHairline);
                 g.drawRoundedRectangle(cell.reduced(0.5f), 5.0f, 1.0f);
             }
             g.setFont(uiFontFixed(kAnnotPt, on));
-            g.setColour(on ? juce::Colours::black : t.headerText);
+            g.setColour(on ? juce::Colours::black
+                           : (cand ? t.accent.brighter(0.15f) : t.headerText));
             g.drawText(labels[i], cell.toNearestInt(), juce::Justification::centred, false);
         }
     }
@@ -1017,6 +1042,7 @@ private:
 
     juce::StringArray labels;
     std::vector<bool> selected;
+    uint16_t candidateMask = 0;
     mutable std::vector<juce::Rectangle<int>> chipBounds;
     mutable bool layoutDirty = true;
 };
@@ -1450,9 +1476,26 @@ public:
 private:
     static constexpr int kLabelH = 18;
     static constexpr int kKeysH = 40;
-    /** Deactivated keys — light enough to read black-key silhouette. */
-    static juce::Colour offWhiteKey() { return juce::Colour(0xffb0b0b4); }
-    static juce::Colour offBlackKey() { return juce::Colour(0xff6a6a70); }
+    /**
+     * Three clearly separated states on the charcoal inspector:
+     * 1) on + in scale  — bright key + accent wash
+     * 2) on + out of scale — warm muted (reads “available, not in key”)
+     * 3) off — sunken charcoal + slash (reads disabled)
+     */
+    static juce::Colour activeWhite()   { return juce::Colour(0xfff8fafc); }
+    static juce::Colour activeBlack()   { return juce::Colour(0xff0f172a); }
+    static juce::Colour outScaleWhite() { return juce::Colour(0xffc4b5a0); } // warm sand
+    static juce::Colour outScaleBlack() { return juce::Colour(0xff78716c); } // stone
+    static juce::Colour offWhiteKey()   { return juce::Colour(0xff2a2a2e); }
+    static juce::Colour offBlackKey()   { return juce::Colour(0xff3f3f46); }
+
+    static void paintOffSlash(juce::Graphics& g, juce::Rectangle<float> key)
+    {
+        g.setColour(juce::Colour(0xffa1a1aa).withAlpha(0.55f));
+        const float inset = juce::jmin(4.0f, key.getWidth() * 0.18f);
+        g.drawLine(key.getX() + inset, key.getBottom() - inset,
+                   key.getRight() - inset, key.getY() + inset, 1.4f);
+    }
 
     void paintKeyboard(juce::Graphics& g, juce::Rectangle<float> area) const
     {
@@ -1489,17 +1532,21 @@ private:
             if (!on)
                 g.setColour(offWhiteKey());
             else if (scale)
-                g.setColour(colours::kbWhite());
+                g.setColour(activeWhite());
             else
-                g.setColour(colours::kbWhite().interpolatedWith(juce::Colour(0xff9a9aa0), 0.55f));
+                g.setColour(outScaleWhite());
             g.fillRoundedRectangle(key, 2.0f);
             if (on && scale)
             {
-                g.setColour(t.accent.withAlpha(0.22f));
+                g.setColour(t.accent.withAlpha(0.45f));
                 g.fillRoundedRectangle(key.reduced(1.0f), 2.0f);
             }
-            g.setColour(colours::line().withAlpha(on ? 0.55f : 0.40f));
-            g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
+            if (!on)
+                paintOffSlash(g, key);
+            g.setColour(on ? (scale ? t.accent.withAlpha(0.55f)
+                                    : juce::Colour(0xffa8a29e).withAlpha(0.70f))
+                           : juce::Colour(0xff52525b));
+            g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, on ? 1.0f : 1.2f);
         }
 
         for (int i = 0; i < 5; ++i)
@@ -1512,17 +1559,21 @@ private:
             if (!on)
                 g.setColour(offBlackKey());
             else if (scale)
-                g.setColour(colours::kbBlack());
+                g.setColour(activeBlack());
             else
-                g.setColour(colours::kbBlack().brighter(0.35f));
+                g.setColour(outScaleBlack());
             g.fillRoundedRectangle(key, 2.0f);
             if (on && scale)
             {
-                g.setColour(t.accent.withAlpha(0.35f));
+                g.setColour(t.accent.withAlpha(0.55f));
                 g.fillRoundedRectangle(key.reduced(1.0f), 2.0f);
             }
-            g.setColour(colours::line().withAlpha(0.35f));
-            g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, 0.8f);
+            if (!on)
+                paintOffSlash(g, key);
+            g.setColour(on ? (scale ? t.accent.withAlpha(0.65f)
+                                    : juce::Colour(0xffd6d3d1).withAlpha(0.45f))
+                           : juce::Colour(0xff71717a).withAlpha(0.70f));
+            g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, on ? 1.0f : 1.2f);
         }
     }
 

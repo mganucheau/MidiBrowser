@@ -67,6 +67,21 @@ TEST_CASE("fitToScale matches prototype golden values", "[editmodel]")
     CHECK(fitToScale(127, 11, Mode::Lydian) == 126);
 }
 
+TEST_CASE("analyseClipScale detects viable keys/modes and octave span", "[editmodel]")
+{
+    // C major triad C4-E4-G4 → covers C Ionian and related modes/roots.
+    auto clip = makeClip({ { 0, 60, 0.0, 2.0 }, { 1, 64, 0.0, 2.0 }, { 2, 67, 0.0, 2.0 } }, 1, 0);
+    const auto a = analyseClipScale(clip);
+    CHECK((a.keyMask & (uint16_t) (1u << 0)) != 0); // C
+    CHECK((a.modeMask & (uint16_t) (1u << (int) Mode::Ionian)) != 0);
+    CHECK(a.primaryRoot == 0);
+    CHECK(a.octaveRange == 0); // single octave
+
+    // Notes spanning C3..C5 → octaveRange at least 2.
+    auto wide = makeClip({ { 0, 48, 0.0, 1.0 }, { 1, 72, 1.0, 1.0 } }, 1, 0);
+    CHECK(analyseClipScale(wide).octaveRange >= 2);
+}
+
 TEST_CASE("editIsClean detects default edits", "[editmodel]")
 {
     ClipEdit e;

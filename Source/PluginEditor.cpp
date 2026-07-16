@@ -1238,6 +1238,10 @@ void MidiBrowserEditor::syncEffectsInspector()
     effectsInspector.setClipRoot(clip != nullptr ? clip->root : -1);
     effectsInspector.setClipSourceOctave(clip != nullptr ? clipReferenceOctave(*clip) : 4);
     effectsInspector.setClipComplexity(clip != nullptr ? clip->complexity : 50);
+    if (clip != nullptr)
+        effectsInspector.setClipScaleAnalysis(analyseClipScale(*clip));
+    else
+        effectsInspector.setClipScaleAnalysis({});
     effectsInspector.setEdit(selectedEdit(), juce::dontSendNotification);
     effectsInspector.setGroove(selectedGroove(), juce::dontSendNotification);
     effectsInspector.setBpmMultiplier(processorRef.bpmMultiplier.load(), juce::dontSendNotification);
@@ -1328,6 +1332,19 @@ void MidiBrowserEditor::selectIndex(int index)
             e.removedBars = emptyBars(preTrim.notes, clip.bars);
         }
         refreshEntryMeta(index);
+    }
+    else
+    {
+        // Unlocked: seed octave / range / key / mode from clip analysis.
+        auto& e = processorRef.editFor(clip.filePath);
+        if (editIsClean(e) || e.root < 0)
+        {
+            const auto analysis = analyseClipScale(clip);
+            e.octave = -1;
+            e.octaveRange = analysis.octaveRange;
+            e.root = analysis.primaryRoot;
+            e.mode = analysis.primaryMode;
+        }
     }
 
     if ((locks & toolkitLock::AnyGroove) != 0)
