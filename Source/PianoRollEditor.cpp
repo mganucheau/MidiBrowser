@@ -130,10 +130,9 @@ void PianoRollMini::paint(juce::Graphics& g)
         }
         if ((noteFilterMask & (uint16_t) (1u << (p % 12))) == 0)
         {
-            const auto off = juce::Colour(0xff3a3a3a);
-            g.setColour(off.withAlpha(usesDarkAppearance() ? 0.55f : 0.40f));
+            g.setColour(ds::trk().withAlpha(usesDarkAppearance() ? 0.55f : 0.40f));
             g.fillRect(b.getX(), y, b.getWidth(), h);
-            g.setColour(off.withAlpha(usesDarkAppearance() ? 0.65f : 0.50f));
+            g.setColour(ds::trk().withAlpha(usesDarkAppearance() ? 0.65f : 0.50f));
             g.fillRect(gutter.getX(), y, gutter.getWidth(), h);
         }
         // Lane separators stay quieter than vertical grid.
@@ -166,15 +165,15 @@ void PianoRollMini::paint(juce::Graphics& g)
             juce::jmax(2.0f, (float) (n.len * timeStretch) * pps - 0.5f),
             juce::jmax(2.0f, map.rowH - 0.8f));
         // Solid accent blocks; velocity only slightly dims.
-        g.setColour(colours::accent().withAlpha((float) (0.82 + 0.18 * v)));
-        g.fillRoundedRectangle(r, 2.5f);
+        g.setColour(ds::note().withAlpha((float) (0.82 + 0.18 * v)));
+        g.fillRoundedRectangle(r, 3.0f);
     }
 
     if (playing)
     {
-        g.setColour(colours::accent());
+        g.setColour(ds::acc());
         g.fillRect(b.getX() + (float) (playheadStep * timeStretch) * pps,
-                   b.getY(), 1.0f, b.getHeight());
+                   b.getY(), 1.5f, b.getHeight());
     }
 }
 
@@ -1201,7 +1200,7 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
         }
         if (ed.hasClip && !ed.edit.isNoteFilterEnabled(pitch))
         {
-            g.setColour(juce::Colour(0xff3a3a3a).withAlpha(usesDarkAppearance() ? 0.50f : 0.38f));
+            g.setColour(ds::trk().withAlpha(usesDarkAppearance() ? 0.50f : 0.38f));
             g.fillRect(clipB.getX(), y, clipB.getWidth(), ed.effRowH());
         }
         g.setColour(colours::rollRowline());
@@ -1220,7 +1219,7 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
         g.fillRect(x, clipB.getY(), isBar ? 0.7f : 0.35f, clipB.getHeight());
     }
 
-    // Solid accent notes with soft rounded corners (reference photo).
+    // MIDI notes use --note; playhead uses --acc (§1 / §6).
     const bool draggingNotes = drag == Drag::Note;
     for (const auto& n : ed.grooved)
     {
@@ -1231,13 +1230,15 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
         if (!r.intersects(clipB)) continue;
 
         const double v = effectiveVelocity(n, ed.groove);
-        juce::Colour fill = (n.moved || inDrag) ? colours::accentBright() : colours::accent();
+        juce::Colour fill = (n.moved || inDrag) ? ds::note().brighter(0.12f) : ds::note();
         g.setColour(fill.withAlpha((float) (0.85 + 0.15 * v)));
-        g.fillRoundedRectangle(r, 2.5f);
+        g.fillRoundedRectangle(r, 3.0f);
+        g.setColour(ds::note().darker(0.25f));
+        g.drawRoundedRectangle(r, 3.0f, 1.0f);
 
         if (isSelected)
         {
-            g.setColour(colours::accentBright());
+            g.setColour(ds::acc());
             g.drawRoundedRectangle(r.expanded(1.0f), 3.0f, 1.25f);
         }
     }
@@ -1251,11 +1252,11 @@ void PianoRollEditor::RollContent::paint(juce::Graphics& g)
         g.drawRect(marquee, 1.0f);
     }
 
-    // Playhead — same accent blue as notes.
+    // Playhead — accent line (§1).
     if (ed.playing)
     {
-        g.setColour(colours::accent());
-        g.fillRect((float) (ed.playheadStep * ed.timeStretch) * pps, clipB.getY(), 1.0f, clipB.getHeight());
+        g.setColour(ds::acc());
+        g.fillRect((float) (ed.playheadStep * ed.timeStretch) * pps, clipB.getY(), 1.5f, clipB.getHeight());
     }
 
     ed.paintLoopOverlay(g, clipB, clipB.getY(), clipB.getBottom());
@@ -1480,7 +1481,7 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
 {
     auto& ed = owner;
     // Dark well behind the keys (matches classic piano-roll chrome).
-    g.setColour(usesDarkAppearance() ? juce::Colour(0xff1a1a1c) : juce::Colour(0xffd8dbe2));
+    g.setColour(ds::rollchrome());
     g.fillAll();
 
     const int viewY = ed.rollViewport.getViewPositionY();
@@ -1509,7 +1510,7 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
 
         if (!ed.edit.isNoteFilterEnabled(pitch))
         {
-            g.setColour(juce::Colour(0xff6b7280).withAlpha(0.55f));
+            g.setColour(ds::trk().withAlpha(0.55f));
             g.fillRect(key);
         }
 
@@ -1539,7 +1540,7 @@ void PianoRollEditor::KeyGutter::paint(juce::Graphics& g)
 
         if (!ed.edit.isNoteFilterEnabled(pitch))
         {
-            g.setColour(juce::Colour(0xff9ca3af));
+            g.setColour(ds::tx3());
             g.fillRoundedRectangle(key, juce::jmin(2.0f, rowH * 0.25f));
         }
 

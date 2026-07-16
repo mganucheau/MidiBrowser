@@ -95,6 +95,7 @@ target_sources(MidiBrowser PRIVATE
     Source/EffectsInspector.cpp
     Source/PianoRollEditor.cpp
     Source/Theme.cpp
+    Source/DesignSystem.cpp
     Source/LibraryStore.cpp
     "${PF_BUILDINFO_CPP}"
 )

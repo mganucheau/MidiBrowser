@@ -50,40 +50,21 @@ struct SourceListPalette
     juce::Colour tint, card, control, text, text2, text3, accent, selectWash, border, gold, shadow;
 };
 
-inline juce::Colour rgba8(juce::uint8 r, juce::uint8 g, juce::uint8 b, float a)
-{
-    return juce::Colour::fromFloatRGBA((float) r / 255.0f, (float) g / 255.0f,
-                                       (float) b / 255.0f, a);
-}
-
 inline SourceListPalette sl()
 {
-    if (usesDarkAppearance())
-        return {
-            juce::Colour(0xff2b2b2f), // tint
-            juce::Colour(0xff1f1f22), // card
-            juce::Colour(0xff3b3b40), // control
-            juce::Colour(0xfff2f2f5), // text
-            juce::Colour(0xffb3b3ba), // text2
-            juce::Colour(0xff7d7d85), // text3
-            juce::Colour(0xff0a84ff), // accent
-            rgba8(10, 132, 255, 0.22f),
-            rgba8(255, 255, 255, 0.10f),
-            juce::Colour(0xfff5c542), // gold star
-            rgba8(0, 0, 0, 0.35f),
-        };
+    // All colours from ds:: tokens (§2) — no local hex.
     return {
-        juce::Colour(0xffe2e1e6),
-        juce::Colour(0xfff9f9fa),
-        juce::Colour(0xffffffff),
-        juce::Colour(0xff141416),
-        juce::Colour(0xff48484e),
-        juce::Colour(0xff727278),
-        juce::Colour(0xff0068e0),
-        rgba8(0, 104, 224, 0.14f),
-        rgba8(0, 0, 0, 0.20f),
-        juce::Colour(0xffe8a317),
-        rgba8(0, 0, 0, 0.08f),
+        ds::side(),
+        ds::panel(),
+        ds::ctl(),
+        ds::tx(),
+        ds::tx2(),
+        ds::tx3(),
+        ds::acc(),
+        ds::selsoft(),
+        ds::ctlb(),
+        ds::stron(),
+        juce::Colours::black.withAlpha(usesDarkAppearance() ? 0.30f : 0.14f),
     };
 }
 
@@ -94,8 +75,7 @@ inline void fillControlSurface(juce::Graphics& g, juce::Rectangle<float> r, floa
     g.fillRoundedRectangle(r, radius);
     g.setColour(p.border);
     g.drawRoundedRectangle(r.reduced(0.5f), radius, 1.0f);
-    g.setColour(p.shadow);
-    g.drawRoundedRectangle(r.translated(0.0f, 0.5f).reduced(0.5f), radius, 0.5f);
+    ds::shadow::control(g, r, radius);
 }
 
 } // namespace

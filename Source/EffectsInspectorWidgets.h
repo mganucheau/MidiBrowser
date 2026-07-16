@@ -169,7 +169,7 @@ public:
         g.setColour(on ? t.accent : t.switchOffTrack);
         g.fillRoundedRectangle(track, 8.0f);
         const float kx = on ? track.getX() + 11.0f : track.getX() + 1.5f;
-        g.setColour(on ? juce::Colours::white : (t.dark ? juce::Colour(0xffd4d4d8) : juce::Colours::white));
+        g.setColour(juce::Colours::white);
         g.fillEllipse(kx, track.getCentreY() - 6.5f, 13.0f, 13.0f);
         if (!t.dark && !on)
         {
@@ -1477,21 +1477,21 @@ private:
     static constexpr int kLabelH = 18;
     static constexpr int kKeysH = 40;
     /**
-     * Three clearly separated states on the charcoal inspector:
-     * 1) on + in scale  — bright key + accent wash
-     * 2) on + out of scale — warm muted (reads “available, not in key”)
-     * 3) off — sunken charcoal + slash (reads disabled)
+     * Three clearly separated states (ds tokens only):
+     * 1) on + in scale  — kw/kb + accent wash
+     * 2) on + out of scale — tx3 / trk
+     * 3) off — panel/ctl + slash
      */
-    static juce::Colour activeWhite()   { return juce::Colour(0xfff8fafc); }
-    static juce::Colour activeBlack()   { return juce::Colour(0xff0f172a); }
-    static juce::Colour outScaleWhite() { return juce::Colour(0xffc4b5a0); } // warm sand
-    static juce::Colour outScaleBlack() { return juce::Colour(0xff78716c); } // stone
-    static juce::Colour offWhiteKey()   { return juce::Colour(0xff2a2a2e); }
-    static juce::Colour offBlackKey()   { return juce::Colour(0xff3f3f46); }
+    static juce::Colour activeWhite()   { return ds::kw(); }
+    static juce::Colour activeBlack()   { return ds::kb(); }
+    static juce::Colour outScaleWhite() { return ds::tx3(); }
+    static juce::Colour outScaleBlack() { return ds::trk(); }
+    static juce::Colour offWhiteKey()   { return ds::panel(); }
+    static juce::Colour offBlackKey()   { return ds::ctl(); }
 
     static void paintOffSlash(juce::Graphics& g, juce::Rectangle<float> key)
     {
-        g.setColour(juce::Colour(0xffa1a1aa).withAlpha(0.55f));
+        g.setColour(ds::tx3().withAlpha(0.55f));
         const float inset = juce::jmin(4.0f, key.getWidth() * 0.18f);
         g.drawLine(key.getX() + inset, key.getBottom() - inset,
                    key.getRight() - inset, key.getY() + inset, 1.4f);
@@ -1544,8 +1544,8 @@ private:
             if (!on)
                 paintOffSlash(g, key);
             g.setColour(on ? (scale ? t.accent.withAlpha(0.55f)
-                                    : juce::Colour(0xffa8a29e).withAlpha(0.70f))
-                           : juce::Colour(0xff52525b));
+                                    : ds::tx3().withAlpha(0.70f))
+                           : ds::trk());
             g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, on ? 1.0f : 1.2f);
         }
 
@@ -1571,8 +1571,8 @@ private:
             if (!on)
                 paintOffSlash(g, key);
             g.setColour(on ? (scale ? t.accent.withAlpha(0.65f)
-                                    : juce::Colour(0xffd6d3d1).withAlpha(0.45f))
-                           : juce::Colour(0xff71717a).withAlpha(0.70f));
+                                    : ds::tx2().withAlpha(0.45f))
+                           : ds::tx3().withAlpha(0.70f));
             g.drawRoundedRectangle(key.reduced(0.5f), 2.0f, on ? 1.0f : 1.2f);
         }
     }

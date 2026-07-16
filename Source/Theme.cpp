@@ -38,130 +38,58 @@ bool usesDarkAppearance()
 
 const ThemeTokens& themeTokens()
 {
-    // macOS light — independently tuned (not an invert of dark).
-    static const ThemeTokens light {
-        juce::Colour(0xfff5f5f7),   // bg (window)
-        juce::Colour(0xffffffff),   // panel (content)
-        juce::Colour(0xfff5f5f7),   // panel2
-        juce::Colour(0xffe8e8ed),   // elev
-        rgba(0, 0, 0, 0.08f),       // line
-        rgba(0, 0, 0, 0.15f),       // lineStrong
-        rgba(0, 0, 0, 0.06f),       // lineSoft
-        juce::Colour(0xff1d1d1f),   // text
-        juce::Colour(0xff3a3a3c),   // text2 — stronger secondary for table meta
-        juce::Colour(0xff59595e),   // text3 — ≥4.5:1 on bg/panel for 11–12pt AA
-        juce::Colour(0xfff0f1f3),   // rollBg — quiet light grid
-        juce::Colour(0xffe6e8ec),   // rollShade — black-key lanes (subtle zebra)
-        rgba(0, 0, 0, 0.06f),       // rollRowline — quiet
-        rgba(0, 0, 0, 0.10f),       // rollNoteEdge
-        rgba(0, 0, 0, 0.14f),       // rollGhost
-        juce::Colour(0xffd1d5db),   // kbWhite — soft gray, not pure white
-        juce::Colour(0xff111827),   // kbBlack
-        juce::Colour(0xffece9e5),   // toolbarTop
-        juce::Colour(0xffe3e0db),   // toolbarBot
-        juce::Colour(0xffe2e1e6),   // sidebarTop — 3c source-list tint
-        juce::Colour(0xffe2e1e6),   // sidebarBot
-        juce::Colour(0xfff7f6f4),   // tableAlt
-        juce::Colour(0xffc9cfd8),   // desktopTop
-        juce::Colour(0xffaeb6c2),   // desktopBot
-        rgba(0, 0, 0, 0.18f),       // windowBorder
+    // Built each call from ds::palette() so appearance flips live.
+    // Static storage would stale across light/dark toggles.
+    thread_local ThemeTokens cached {};
+    const auto& p = ds::palette();
+    cached = {
+        p.bg, p.panel, p.rollchrome, p.ctl,
+        p.hl, p.hl, p.hl.withAlpha(p.hl.getFloatAlpha() * 0.55f),
+        p.tx, p.tx2, p.tx3,
+        p.panel, p.laneb, p.hl.withAlpha(p.hl.getFloatAlpha() * 0.45f),
+        p.note.darker(0.25f), p.hl,
+        p.kw, p.kb,
+        p.chrome, p.chrome, p.side, p.side,
+        p.rowalt, p.bg, p.bg, p.winbrd,
     };
-    // macOS dark — more separation between surface levels (HIG / SwiftUI).
-    static const ThemeTokens dark {
-        juce::Colour(0xff1c1c1e),   // bg
-        juce::Colour(0xff2c2c2e),   // panel
-        juce::Colour(0xff3a3a3c),   // panel2
-        juce::Colour(0xff48484a),   // elev
-        rgba(255, 255, 255, 0.08f),
-        rgba(255, 255, 255, 0.14f),
-        rgba(255, 255, 255, 0.05f),
-        juce::Colour(0xfff5f5f7),   // text — primary
-        juce::Colour(0xffc7c7cc),   // text2 — brighter for browser columns
-        juce::Colour(0xffa1a1a6),   // text3 — readable meta / headers
-        juce::Colour(0xff1a1a1a),   // rollBg — reference dark grid
-        juce::Colour(0xff262626),   // rollShade — black-key lanes
-        rgba(255, 255, 255, 0.04f), // rollRowline — very quiet
-        rgba(255, 255, 255, 0.08f),
-        rgba(255, 255, 255, 0.12f),
-        juce::Colour(0xffd1d5db),   // kbWhite
-        juce::Colour(0xff111827),   // kbBlack
-        juce::Colour(0xff323234),   // toolbarTop
-        juce::Colour(0xff2a2a2c),   // toolbarBot
-        juce::Colour(0xff2b2b2f),   // sidebarTop — 3c source-list tint
-        juce::Colour(0xff2b2b2f),   // sidebarBot
-        juce::Colour(0xff2a2a2c),   // tableAlt — slightly clearer zebra
-        juce::Colour(0xff1c1c1e),   // desktopTop
-        juce::Colour(0xff0d0d0f),   // desktopBot
-        rgba(255, 255, 255, 0.12f),
-    };
-    return usesDarkAppearance() ? dark : light;
+    return cached;
 }
 
 const AccentTokens& accentTokens()
 {
-    // Active accent #3B82F6 (piano-roll reference).
-    static const AccentTokens lightBlue {
-        juce::Colour(0xff3b82f6),
-        juce::Colour(0xffffffff),           // ink
-        rgba(59, 130, 246, 0.14f),          // soft
-        rgba(59, 130, 246, 0.40f),          // line
-        juce::Colour(0xff60a5fa),           // bright
-    };
-    static const AccentTokens darkBlue {
-        juce::Colour(0xff3b82f6),
-        juce::Colour(0xffffffff),
-        rgba(59, 130, 246, 0.18f),
-        rgba(59, 130, 246, 0.42f),
-        juce::Colour(0xff60a5fa),
-    };
-    return usesDarkAppearance() ? darkBlue : lightBlue;
+    thread_local AccentTokens cached {};
+    const auto& p = ds::palette();
+    cached = { p.acc, juce::Colours::white, p.selsoft, p.acc.withAlpha(0.40f), p.note };
+    return cached;
 }
 
 const InspectorTokens& inspectorTokens()
 {
-    static const InspectorTokens light {
-        juce::Colour(0xfff5f5f7),   // panelBg — match library sidebar + header
-        juce::Colour(0xff3b82f6),   // accent
-        juce::Colour(0xff1d1d1f),   // headerText
-        juce::Colour(0xff3a3a3c),   // rowLabel — AA secondary on panel/well
-        juce::Colour(0xff59595e),   // valueText — AA tertiary / placeholders
-        juce::Colour(0xffe5e2dd),   // divider
-        juce::Colour(0xffd8d5cf),   // sliderTrack (legacy thin track)
-        juce::Colours::white,       // sliderKnob
-        juce::Colours::white,       // controlSurface (raised)
-        juce::Colour(0xfffbfbfa),   // controlSurfaceHi
-        juce::Colour(0xffe5e2dd),   // controlSeparator
-        juce::Colour(0xffd1cdc7),   // switchOffTrack
-        juce::Colour(0xffa3a29e),   // chevron
-        juce::Colour(0xff58585c),   // segmentText
-        rgba(0, 0, 0, 0.12f),       // controlHairline
-        juce::Colour(0xffe5e3df),   // tallWell
-        juce::Colour(0xffcfcbc4),   // tallFill
-        juce::Colour(0xffddd9d3),   // tallWellHot
-        false,
+    thread_local InspectorTokens cached {};
+    const auto& p = ds::palette();
+    const bool d = usesDarkAppearance();
+    cached = {
+        p.panel,           // panelBg
+        p.acc,
+        p.tx,              // headerText
+        p.tx2,             // rowLabel
+        p.tx3,             // valueText
+        p.hl,              // divider
+        p.trk,             // sliderTrack
+        juce::Colours::white,
+        p.ctl,             // controlSurface
+        d ? p.ctl.brighter(0.08f) : p.ctl.darker(0.03f),
+        p.hl,              // controlSeparator
+        p.trk,             // switchOffTrack
+        p.tx3,             // chevron
+        p.tx2,             // segmentText
+        p.ctlb,            // controlHairline
+        p.field,           // tallWell
+        p.trk,             // tallFill
+        d ? p.ctl.brighter(0.12f) : p.ctl.darker(0.06f),
+        d,
     };
-    static const InspectorTokens dark {
-        juce::Colour(0xff1e1e1e),   // panelBg — Photos Adjust charcoal
-        juce::Colour(0xff3b82f6),
-        juce::Colour(0xfff5f5f7),   // headerText — near-white titles / values
-        rgba(255, 255, 255, 0.55f), // rowLabel — muted param names
-        rgba(255, 255, 255, 0.55f), // valueText — AA tertiary / placeholders
-        rgba(255, 255, 255, 0.08f),
-        rgba(255, 255, 255, 0.14f),
-        juce::Colour(0xffd4d4d8),
-        rgba(255, 255, 255, 0.11f),
-        rgba(255, 255, 255, 0.15f),
-        rgba(255, 255, 255, 0.10f),
-        rgba(255, 255, 255, 0.18f),
-        rgba(255, 255, 255, 0.40f), // chevron
-        rgba(255, 255, 255, 0.60f),
-        rgba(255, 255, 255, 0.12f),
-        juce::Colour(0xff3a3a3c),   // tallWell — Photos control block
-        juce::Colour(0xff525254),   // tallFill — value progress
-        juce::Colour(0xff48484a),   // tallWellHot
-        true,
-    };
-    return usesDarkAppearance() ? dark : light;
+    return cached;
 }
 
 void drawInspectorControlSurface(juce::Graphics& g, juce::Rectangle<float> r,
@@ -169,26 +97,13 @@ void drawInspectorControlSurface(juce::Graphics& g, juce::Rectangle<float> r,
 {
     const auto& t = inspectorTokens();
     auto fill = t.controlSurface;
-    if (down) fill = fill.darker(t.dark ? 0.10f : 0.04f);
+    if (down) fill = fill.darker(t.dark ? 0.10f : 0.06f);
     else if (over) fill = t.controlSurfaceHi;
     g.setColour(fill);
     g.fillRoundedRectangle(r, metrics::controlRadius);
-
     g.setColour(t.controlHairline);
-    g.drawRoundedRectangle(r.reduced(0.25f), metrics::controlRadius, 0.5f);
-
-    if (!t.dark)
-    {
-        // Light: raised control — subtle bottom edge (SwiftUI default button).
-        g.setColour(rgba(0, 0, 0, 0.05f));
-        g.drawHorizontalLine((int) r.getBottom() - 0.5f, r.getX() + 1.5f, r.getRight() - 1.5f);
-    }
-    else
-    {
-        // Dark: inset control — inner top highlight.
-        g.setColour(rgba(255, 255, 255, 0.06f));
-        g.drawHorizontalLine((int) r.getY() + 0.5f, r.getX() + 1.5f, r.getRight() - 1.5f);
-    }
+    g.drawRoundedRectangle(r.reduced(0.25f), metrics::controlRadius, 1.0f);
+    ds::shadow::control(g, r, metrics::controlRadius);
 }
 
 void drawInspectorDivider(juce::Graphics& g, juce::Rectangle<int> bounds)
@@ -263,18 +178,19 @@ juce::Font monoFontFixed(float pt, bool semibold)
 
 juce::Font fontFor(TextStyle s)
 {
+    // Map legacy TextStyle → Design System §3 styles (no in-between sizes).
     switch (s)
     {
-        case TextStyle::LargeTitle:  return uiFont(28.0f, true);
-        case TextStyle::Title2:      return uiFont(17.0f, true);
-        case TextStyle::Headline:    return uiFont(14.5f, true);
-        case TextStyle::Body:        return uiFont(12.0f, false);
-        case TextStyle::Callout:     return uiFont(13.0f, false);
-        case TextStyle::Subheadline: return uiFont(12.5f, false);
-        case TextStyle::Footnote:    return uiFont(11.0f, false);
-        case TextStyle::Caption:     return uiFont(10.5f, false);
+        case TextStyle::LargeTitle:  return ds::font(ds::Type::NumericDisplay);
+        case TextStyle::Title2:      return ds::font(ds::Type::PanelHeading);
+        case TextStyle::Headline:    return ds::font(ds::Type::PanelHeading);
+        case TextStyle::Body:        return ds::font(ds::Type::Body);
+        case TextStyle::Callout:     return ds::font(ds::Type::AppName);
+        case TextStyle::Subheadline: return ds::font(ds::Type::Body);
+        case TextStyle::Footnote:    return ds::font(ds::Type::Metadata);
+        case TextStyle::Caption:     return ds::font(ds::Type::Caption);
     }
-    return uiFont(12.0f, false);
+    return ds::font(ds::Type::Body);
 }
 
 namespace {

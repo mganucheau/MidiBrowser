@@ -1,11 +1,12 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <atomic>
+#include "DesignSystem.h"
 
 namespace pflow {
 
-// ── Cupertino design tokens ──────────────────────────────────────────────────
-// Single light native-macOS palette. Density + content size remain as Tweaks.
+// ── Cupertino design tokens (MidiBrowser Design System v1.0) ─────────────────
+// Source of truth: DesignSystem.h / DesignSystem.cpp (§2). Density tweaks remain.
 
 enum class Density { Compact, Comfortable };
 enum class ContentSize { Small, Medium, Large };
@@ -16,6 +17,7 @@ constexpr int kNumContentSizes = 3;
 constexpr int kNumAppearances = 3;
 constexpr int kNumScalePlacements = 2;
 
+/** Legacy aggregate mapped 1:1 from ds::Palette — prefer ds:: accessors in new code. */
 struct ThemeTokens
 {
     juce::Colour bg, panel, panel2, elev;
@@ -37,7 +39,7 @@ struct AccentTokens
     juce::Colour bright;
 };
 
-/** Flat effects-inspector palette (light / dark). */
+/** Flat effects-inspector palette — derived from ds:: tokens. */
 struct InspectorTokens
 {
     juce::Colour panelBg;
@@ -55,7 +57,6 @@ struct InspectorTokens
     juce::Colour chevron;
     juce::Colour segmentText;
     juce::Colour controlHairline;
-    /** Photos Adjust tall wells (sliders / selects) — solid, flat, not raised buttons. */
     juce::Colour tallWell;
     juce::Colour tallFill;
     juce::Colour tallWellHot;
@@ -146,47 +147,45 @@ inline juce::Font systemFont(float pt, bool semibold = false) { return uiFont(pt
 // ── Colour accessors ─────────────────────────────────────────────────────────
 
 namespace colours {
-    inline const ThemeTokens& th()  { return themeTokens(); }
-    inline const AccentTokens& ac() { return accentTokens(); }
+    // Prefer ds:: tokens; these aliases keep existing call sites compiling.
+    inline juce::Colour bg()            { return ds::bg(); }
+    inline juce::Colour panel()         { return ds::panel(); }
+    inline juce::Colour panel2()        { return ds::rollchrome(); }
+    inline juce::Colour elev()          { return ds::ctl(); }
+    inline juce::Colour line()          { return ds::hl(); }
+    inline juce::Colour lineStrong()    { return ds::hl(); }
+    inline juce::Colour lineSoft()      { return ds::hl().withAlpha(ds::hl().getFloatAlpha() * 0.55f); }
 
-    inline juce::Colour bg()            { return th().bg; }
-    inline juce::Colour panel()         { return th().panel; }
-    inline juce::Colour panel2()        { return th().panel2; }
-    inline juce::Colour elev()          { return th().elev; }
-    inline juce::Colour line()          { return th().line; }
-    inline juce::Colour lineStrong()    { return th().lineStrong; }
-    inline juce::Colour lineSoft()      { return th().lineSoft; }
+    inline juce::Colour text()          { return ds::tx(); }
+    inline juce::Colour text2()         { return ds::tx2(); }
+    inline juce::Colour text3()         { return ds::tx3(); }
 
-    inline juce::Colour text()          { return th().text; }
-    inline juce::Colour text2()         { return th().text2; }
-    inline juce::Colour text3()         { return th().text3; }
+    inline juce::Colour accent()        { return ds::acc(); }
+    inline juce::Colour accentInk()     { return juce::Colours::white; }
+    inline juce::Colour accentSoft()    { return ds::selsoft(); }
+    inline juce::Colour accentLine()    { return ds::acc().withAlpha(0.40f); }
+    inline juce::Colour accentBright()  { return ds::note(); }
 
-    inline juce::Colour accent()        { return ac().accent; }
-    inline juce::Colour accentInk()     { return ac().ink; }
-    inline juce::Colour accentSoft()    { return ac().soft; }
-    inline juce::Colour accentLine()    { return ac().line; }
-    inline juce::Colour accentBright()  { return ac().bright; }
+    inline juce::Colour rollBg()        { return ds::panel(); }
+    inline juce::Colour rollShade()     { return ds::laneb(); }
+    inline juce::Colour rollRowline()   { return ds::hl().withAlpha(ds::hl().getFloatAlpha() * 0.45f); }
+    inline juce::Colour rollNoteEdge()  { return ds::note().darker(0.25f); }
+    inline juce::Colour rollGhost()     { return ds::hl(); }
+    inline juce::Colour kbWhite()       { return ds::kw(); }
+    inline juce::Colour kbBlack()       { return ds::kb(); }
 
-    inline juce::Colour rollBg()        { return th().rollBg; }
-    inline juce::Colour rollShade()     { return th().rollShade; }
-    inline juce::Colour rollRowline()   { return th().rollRowline; }
-    inline juce::Colour rollNoteEdge()  { return th().rollNoteEdge; }
-    inline juce::Colour rollGhost()     { return th().rollGhost; }
-    inline juce::Colour kbWhite()       { return th().kbWhite; }
-    inline juce::Colour kbBlack()       { return th().kbBlack; }
+    inline juce::Colour toolbarTop()    { return ds::chrome(); }
+    inline juce::Colour toolbarBot()    { return ds::chrome(); }
+    inline juce::Colour sidebarTop()    { return ds::side(); }
+    inline juce::Colour sidebarBot()    { return ds::side(); }
+    inline juce::Colour tableAlt()      { return ds::rowalt(); }
+    inline juce::Colour desktopTop()    { return ds::bg(); }
+    inline juce::Colour desktopBot()    { return ds::bg(); }
+    inline juce::Colour windowBorder()  { return ds::winbrd(); }
 
-    inline juce::Colour toolbarTop()    { return th().toolbarTop; }
-    inline juce::Colour toolbarBot()    { return th().toolbarBot; }
-    inline juce::Colour sidebarTop()    { return th().sidebarTop; }
-    inline juce::Colour sidebarBot()    { return th().sidebarBot; }
-    inline juce::Colour tableAlt()      { return th().tableAlt; }
-    inline juce::Colour desktopTop()    { return th().desktopTop; }
-    inline juce::Colour desktopBot()    { return th().desktopBot; }
-    inline juce::Colour windowBorder()  { return th().windowBorder; }
+    /** Flagged: traffic-light red is allowed by §1 but not named in §2 — keep as system red. */
+    inline juce::Colour playhead()      { return ds::acc(); } // playhead uses accent per §1
 
-    inline juce::Colour playhead()      { return juce::Colour(0xffff5a52); }
-
-    // Legacy aliases
     inline juce::Colour bgLight()       { return panel2(); }
     inline juce::Colour bgLighter()     { return elev(); }
     inline juce::Colour panelBorder()   { return line(); }
@@ -197,30 +196,29 @@ namespace colours {
     inline juce::Colour textDim()       { return text2(); }
     inline juce::Colour textBright()    { return text(); }
     inline juce::Colour textMuted()     { return text3(); }
-    inline juce::Colour controlFill()   { return elev(); }
-    inline juce::Colour knobTrack()     { return usesDarkAppearance() ? juce::Colour(0xff48484a)
-                                                                      : juce::Colour(0xffd5d2cc); }
+    inline juce::Colour controlFill()   { return ds::ctl(); }
+    inline juce::Colour knobTrack()     { return ds::trk(); }
     inline juce::Colour compSelectionHighlight() { return accentSoft(); }
     inline juce::Colour pianoWhiteKey() { return kbWhite(); }
     inline juce::Colour pianoBlackKey() { return kbBlack(); }
     inline juce::Colour pianoGrid()     { return rollRowline(); }
-    inline juce::Colour noteBlock()     { return accent(); }
+    inline juce::Colour noteBlock()     { return ds::note(); }
     inline juce::Colour selection()     { return accentSoft(); }
     inline juce::Colour muteInactive()  { return controlFill(); }
-    inline juce::Colour muteYellow()    { return juce::Colour(0xffff9f0a); }
+    /** Flagged: traffic yellow/green (§1) — not in §2 table; derived as stron / kindKeys. */
+    inline juce::Colour muteYellow()    { return ds::stron(); }
     inline juce::Colour soloBlue()      { return accent(); }
-    inline juce::Colour recordRed()     { return playhead(); }
-    inline juce::Colour activeGreen()   { return juce::Colour(0xff30d158); }
+    inline juce::Colour recordRed()     { return ds::kindPerc(); } // closest warm signal in §2
+    inline juce::Colour activeGreen()   { return ds::kindKeys(); }
     inline juce::Colour muteRed()       { return muteYellow(); }
     inline juce::Colour soloGreen()     { return activeGreen(); }
 
-    // Kept for compile compatibility; Cupertino uses a single light grid.
     inline juce::Colour bpBg()          { return rollBg(); }
     inline juce::Colour bpBar()         { return lineStrong(); }
-    inline juce::Colour bpBeat()        { return lineSoft(); }
+    inline juce::Colour bpBeat()        { return ds::beat(); }
     inline juce::Colour bpRow()         { return rollShade(); }
-    inline juce::Colour bpNote()        { return accent(); }
-    inline juce::Colour bpEdge()        { return accentBright().withAlpha(0.55f); }
+    inline juce::Colour bpNote()        { return ds::note(); }
+    inline juce::Colour bpEdge()        { return rollNoteEdge(); }
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
@@ -243,25 +241,24 @@ namespace metrics {
     constexpr int grid              = 8;
     constexpr int pluginPad         = 16;
     constexpr int sectionHeaderH    = 24;
-    constexpr int toolbarH          = 46;
+    constexpr int toolbarH          = ds::region::toolbarH;
     constexpr int toolbarGap        = 8;
-    constexpr int previewH          = 168;
+    constexpr int previewH          = ds::region::previewH;
     constexpr int previewControlsH  = 32;
     constexpr int editorHeaderH     = 48;
     constexpr int iconButtonSize    = 28;
     constexpr int comboTextPadding  = 6;
 
-    // Logical (unscaled) layout widths — use the function forms for layout.
-    constexpr int browserWidth      = 300;
+    // Logical (unscaled) layout widths — §5 regions.
+    constexpr int browserWidth      = ds::region::fileListW;
     constexpr int browserMinWidth   = 260;
     constexpr int browserMaxWidth   = 420;
-    constexpr int sidebarW          = 212; // 3c source-list sidebar
+    constexpr int sidebarW          = ds::region::sidebarW;
     constexpr int sidebarRailW      = 44;
-    constexpr int sidebarExpandedW  = 212;
-    constexpr int fileTableW        = 300;
+    constexpr int sidebarExpandedW  = ds::region::sidebarW;
+    constexpr int fileTableW        = ds::region::fileListW;
     constexpr int editorPaneW       = 470;
-    /** Caps B2 canvas width — not content-scaled so density matches the mock. */
-    constexpr int effectsPaneW      = 248;
+    constexpr int effectsPaneW      = ds::region::toolkitW;
     constexpr int openRollW         = editorPaneW;
     constexpr int openRollMinW      = 360;
     constexpr int foldedWindowW     = sidebarRailW + fileTableW;
@@ -272,12 +269,11 @@ namespace metrics {
     constexpr int chromeIconGlyph   = 18;
 
     inline int transportH()       { return scaled(toolbarH); }
-    inline int listRowH()         { return scaled(currentDensity() == Density::Comfortable ? 28 : 24); }
-    /** Match Toolkit / piano-roll toolbars (~40px at Medium). */
-    inline int listHeaderH()      { return scaled(40); }
+    inline int listRowH()         { return scaled(ds::region::listRowH); }
+    inline int listHeaderH()      { return scaled(ds::region::listHeaderH); }
     inline int paneHeaderH()      { return scaled(40); }
     inline int padS()             { return scaled(currentDensity() == Density::Comfortable ? 12 : 8); }
-    inline int miniRollH()        { return scaled(112); }
+    inline int miniRollH()        { return scaled(ds::region::previewH); }
     /** Scale with Text & icons setting so chrome stays proportional. */
     inline int sidebarRailWidth() { return scaled(sidebarRailW); }
     inline int sidebarExpandedWidth() { return scaled(sidebarExpandedW); }
