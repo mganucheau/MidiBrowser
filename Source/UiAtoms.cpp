@@ -341,7 +341,7 @@ void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
         g.setColour(colours::elev().withAlpha(0.35f));
         g.fillRoundedRectangle(b, metrics::chipRadius);
     }
-    if (hasKeyboardFocus(true) && !ghost)
+    if (hasKeyboardFocus(true))
         drawFocusRing(g, b, metrics::chipRadius);
 }
 

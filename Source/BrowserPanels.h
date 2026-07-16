@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <vector>
 #include "EditModel.h"
 #include "UiAtoms.h"
 #include "EffectsInspectorWidgets.h"
@@ -32,6 +33,7 @@ struct SavedSearchEntry
 // Library rail: Open → current folder → FILTER → SEARCH → SAVED → Settings.
 
 class FavoritesSidebar : public juce::Component,
+                         public juce::SettableTooltipClient,
                          private juce::Timer
 {
 public:
@@ -45,6 +47,8 @@ public:
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
+    void focusGained(FocusChangeType) override;
+    void focusLost(FocusChangeType) override;
 
     void setSavedDirs(const juce::StringArray& paths, const juce::String& activePath);
     void setSavedSearches(const std::vector<SavedSearchEntry>& searches, int activeSearchIdx);
@@ -124,14 +128,31 @@ private:
     ChromeHit chromeHitAt(juce::Point<int> pos) const;
     juce::Rectangle<int> rowBounds(int rowIdx) const;
     void paintRow(juce::Graphics&, int rowIdx, const juce::Rectangle<int>& r,
-                  bool hovered, bool removeZone, bool heartZone, bool scanZone);
+                  bool hovered, bool removeZone, bool heartZone, bool scanZone,
+                  bool keyboardFocus);
     void paintSectionHeader(juce::Graphics&, const juce::String& title, bool open,
-                            juce::Rectangle<int> headerBounds);
+                            juce::Rectangle<int> headerBounds, bool keyboardFocus);
     int contentTopY() const;
     int contentBottomY() const;
     int footerPad() const;
     int footerHeight() const;
     bool isCurrentFolderFavorited() const;
+
+    /** Keyboard / tooltip navigation targets in visual order. */
+    enum class NavKind
+    {
+        Row, Heart, Scan, FilterHeader, SearchHeader, SavedHeader, Settings
+    };
+    struct NavItem
+    {
+        NavKind kind = NavKind::Row;
+        int rowIdx = -1;
+    };
+    void rebuildNavItems();
+    void activateNavItem(const NavItem&);
+    void moveNav(int delta);
+    void updateTooltipForPos(juce::Point<int> pos);
+    juce::Rectangle<int> navItemBounds(const NavItem&) const;
 
     enum class LayoutKind { Row, Section, FilterBody, Query, End };
     struct LayoutItem
@@ -159,6 +180,8 @@ private:
     bool hoverHeart = false;
     bool hoverScan = false;
     bool hoverSettings = false;
+    std::vector<NavItem> navItems;
+    int navIndex = -1;
     bool resizing = false;
     int resizeStartWidth = 0;
     int resizeStartX = 0;
@@ -185,10 +208,10 @@ private:
         void loadFrom(const BrowserSearch&);
         int idealHeight() const;
         std::function<void()> onCriteriaChanged;
-        static constexpr int kRowH = 26;
         static constexpr int kKeySelectW = 72;
     private:
         void syncRangeLabels();
+        int rowH() const;
         fx::FlatPopup keyPicker;
         fx::FlatRangeSliderRow bpmRange { "BPM", 40, 240, 40, 240 };
         fx::FlatRangeSliderRow barsRange { "Bars", 1, 64, 1, 64 };
@@ -212,8 +235,7 @@ private:
         void focusQuery();
         void blurQuery();
         bool isQueryFocused() const;
-        int idealHeight() const { return kQueryH; }
-        static constexpr int kQueryH = 26;
+        int idealHeight() const { return metrics::scaled(26); }
         std::function<void()> onActivate;
         std::function<void()> onClear;
         std::function<void()> onDeactivate;

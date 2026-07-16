@@ -152,7 +152,7 @@ public:
     FlatSwitch() : juce::Button({})
     {
         setClickingTogglesState(true);
-        setWantsKeyboardFocus(false);
+        setWantsKeyboardFocus(true);
     }
 
     void paintButton(juce::Graphics& g, bool, bool) override
@@ -171,6 +171,8 @@ public:
             g.setColour(t.controlHairline);
             g.drawEllipse(kx, track.getCentreY() - 6.0f, 12.0f, 12.0f, 0.5f);
         }
+        if (hasKeyboardFocus(true))
+            drawFocusRing(g, getLocalBounds().toFloat(), 4.0f);
     }
 
     int idealWidth() const { return 28; }
@@ -181,7 +183,7 @@ public:
 class FlatPopup : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    FlatPopup() { setWantsKeyboardFocus(false); }
+    FlatPopup() { setWantsKeyboardFocus(true); }
     std::function<void(int)> onChange;
 
     void setItems(const juce::StringArray& items, int selected)
@@ -196,7 +198,30 @@ public:
     void mouseDown(const juce::MouseEvent&) override
     {
         if (labels.isEmpty()) return;
+        if (!hasKeyboardFocus(true))
+            grabKeyboardFocus();
         showMenu();
+    }
+
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (labels.isEmpty()) return false;
+        if (key == juce::KeyPress::returnKey || key == juce::KeyPress::spaceKey)
+        {
+            showMenu();
+            return true;
+        }
+        if (key == juce::KeyPress::upKey || key == juce::KeyPress::leftKey)
+        {
+            setIndex(juce::jmax(0, index - 1), juce::sendNotification);
+            return true;
+        }
+        if (key == juce::KeyPress::downKey || key == juce::KeyPress::rightKey)
+        {
+            setIndex(juce::jmin(labels.size() - 1, index + 1), juce::sendNotification);
+            return true;
+        }
+        return false;
     }
 
     void setIndex(int i, juce::NotificationType notify)
@@ -223,7 +248,7 @@ public:
     {
         const auto& t = inspectorTokens();
         auto r = getLocalBounds().toFloat();
-        fillTallWell(g, r, isMouseOver());
+        fillTallWell(g, r, isMouseOver() || hasKeyboardFocus(true));
 
         auto textArea = r.reduced(8.0f, 0.0f);
         textArea.removeFromRight(14.0f);
@@ -234,6 +259,8 @@ public:
         g.drawText(val, textArea.toNearestInt(), juce::Justification::centredLeft, false);
 
         drawCaretUpDown(g, r.removeFromRight(14.0f), t.chevron);
+        if (hasKeyboardFocus(true))
+            drawFocusRing(g, getLocalBounds().toFloat(), kTallRadius);
     }
 
 private:
@@ -634,7 +661,7 @@ public:
     FlatRangeSliderRow(const juce::String& l, int mn, int mx, int defLo, int defHi)
         : label(l), minV(mn), maxV(mx), lo(defLo), hi(defHi), defLoV(defLo), defHiV(defHi)
     {
-        setWantsKeyboardFocus(false);
+        setWantsKeyboardFocus(true);
         setRepaintsOnMouseActivity(true);
     }
 
@@ -659,15 +686,47 @@ public:
     int getLo() const { return lo; }
     int getHi() const { return hi; }
 
-    void mouseDown(const juce::MouseEvent& e) override { dragThumb = hitThumb(e.position.x); setFromX(e.position.x); }
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (!hasKeyboardFocus(true))
+            grabKeyboardFocus();
+        dragThumb = hitThumb(e.position.x);
+        setFromX(e.position.x);
+    }
     void mouseDrag(const juce::MouseEvent& e) override { setFromX(e.position.x); }
     void mouseDoubleClick(const juce::MouseEvent&) override { setRange(defLoV, defHiV); }
+
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        const int step = key.getModifiers().isShiftDown() ? 5 : 1;
+        if (key == juce::KeyPress::leftKey)
+        {
+            setRange(lo - step, hi - step);
+            return true;
+        }
+        if (key == juce::KeyPress::rightKey)
+        {
+            setRange(lo + step, hi + step);
+            return true;
+        }
+        if (key == juce::KeyPress::downKey)
+        {
+            setRange(lo, hi - step);
+            return true;
+        }
+        if (key == juce::KeyPress::upKey)
+        {
+            setRange(lo, hi + step);
+            return true;
+        }
+        return false;
+    }
 
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
         auto r = getLocalBounds().toFloat();
-        const bool hot = isMouseOverOrDragging();
+        const bool hot = isMouseOverOrDragging() || hasKeyboardFocus(true);
         fillTallWell(g, r, false);
 
         const float span = (float) juce::jmax(1, maxV - minV);
@@ -683,6 +742,8 @@ public:
             g.setColour(t.accent);
             g.drawRoundedRectangle(r.reduced(0.5f), kTallRadius, 1.2f);
         }
+        if (hasKeyboardFocus(true))
+            drawFocusRing(g, r, kTallRadius);
 
         auto pad = r.reduced(accentFill ? 8.0f : kTallPadX, 0.0f).toNearestInt();
         // Library search filters use compact 11pt (Caps B2 FILTER_PT).

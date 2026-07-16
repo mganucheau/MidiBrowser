@@ -49,7 +49,7 @@ const ThemeTokens& themeTokens()
         rgba(0, 0, 0, 0.06f),       // lineSoft
         juce::Colour(0xff1d1d1f),   // text
         juce::Colour(0xff3a3a3c),   // text2 — stronger secondary for table meta
-        juce::Colour(0xff6e6e73),   // text3
+        juce::Colour(0xff59595e),   // text3 — ≥4.5:1 on bg/panel for 11–12pt AA
         juce::Colour(0xffeef0f4),   // rollBg — cool gray so blue notes read clearly
         juce::Colour(0xffe2e5eb),   // rollShade — black-key lanes
         juce::Colour(0xffd0d4dc),   // rollRowline
@@ -123,8 +123,8 @@ const InspectorTokens& inspectorTokens()
         juce::Colour(0xfff5f5f7),   // panelBg — match library sidebar + header
         juce::Colour(0xff599ce7),   // accent
         juce::Colour(0xff1d1d1f),   // headerText
-        juce::Colour(0xff6e6e73),   // rowLabel — muted (Photos param names)
-        juce::Colour(0xff8e8e93),   // valueText
+        juce::Colour(0xff3a3a3c),   // rowLabel — AA secondary on panel/well
+        juce::Colour(0xff59595e),   // valueText — AA tertiary / placeholders
         juce::Colour(0xffe5e2dd),   // divider
         juce::Colour(0xffd8d5cf),   // sliderTrack (legacy thin track)
         juce::Colours::white,       // sliderKnob
@@ -145,7 +145,7 @@ const InspectorTokens& inspectorTokens()
         juce::Colour(0xff599ce7),
         juce::Colour(0xfff5f5f7),   // headerText — near-white titles / values
         rgba(255, 255, 255, 0.55f), // rowLabel — muted param names
-        rgba(255, 255, 255, 0.40f), // valueText — tertiary annotations
+        rgba(255, 255, 255, 0.55f), // valueText — AA tertiary / placeholders
         rgba(255, 255, 255, 0.08f),
         rgba(255, 255, 255, 0.14f),
         juce::Colour(0xffd4d4d8),

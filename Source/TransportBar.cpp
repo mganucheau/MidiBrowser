@@ -101,7 +101,7 @@ TransportBar::TransportBar()
     {
         b.ghost = true;
         b.iconScale = kHeaderIconScale;
-        b.setWantsKeyboardFocus(false);
+        b.setWantsKeyboardFocus(true);
     };
 
     prep(btnPlay);
