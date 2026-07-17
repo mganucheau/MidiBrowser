@@ -59,7 +59,9 @@ const AccentTokens& accentTokens()
 {
     thread_local AccentTokens cached {};
     const auto& p = ds::palette();
-    cached = { p.acc, juce::Colours::white, p.selsoft, p.acc.withAlpha(0.40f), p.note };
+    cached = { p.acc,
+               usesDarkAppearance() ? p.bg : juce::Colours::white,
+               p.selsoft, p.acc.withAlpha(0.40f), p.note };
     return cached;
 }
 

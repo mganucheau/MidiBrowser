@@ -1210,7 +1210,11 @@ public:
         g.drawText(val, header, juce::Justification::centredRight, true);
 
         r.removeFromTop(toolkitRowGap());
-        auto hist = r.removeFromTop(kHistH).toFloat();
+        // Scale hist + track into whatever height the parent assigned (filter panel = 2 rows).
+        const int avail = juce::jmax(1, r.getHeight());
+        const int histH = juce::jmax(8, (avail - 4) * 2 / 5);
+        const int trackH = juce::jmax(8, avail - 4 - histH);
+        auto hist = r.removeFromTop(histH).toFloat();
         const int n = juce::jmax(1, (int) bins.size());
         int peak = 1;
         for (int c : bins) peak = juce::jmax(peak, c);
@@ -1232,7 +1236,8 @@ public:
         }
 
         r.removeFromTop(4);
-        auto track = r.removeFromTop(kTrackH).toFloat().reduced(0.0f, 6.0f);
+        const float trackPadY = juce::jmin(6.0f, (float) trackH * 0.25f);
+        auto track = r.removeFromTop(trackH).toFloat().reduced(0.0f, trackPadY);
         g.setColour(t.tallFill);
         g.fillRoundedRectangle(track, track.getHeight() * 0.5f);
         const float trackSpan = (float) juce::jmax(1, maxV - minV);
@@ -1241,8 +1246,8 @@ public:
         auto sel = juce::Rectangle<float>::leftTopRightBottom(xLo, track.getY(), xHi, track.getBottom());
         g.setColour(t.accent);
         g.fillRoundedRectangle(sel, track.getHeight() * 0.5f);
-        const float th = track.getHeight() + 6.0f;
-        g.setColour(juce::Colours::white);
+        const float th = juce::jmax(track.getHeight() + 4.0f, 10.0f);
+        g.setColour(colours::accentInk());
         g.fillEllipse(xLo - th * 0.5f, track.getCentreY() - th * 0.5f, th, th);
         g.fillEllipse(xHi - th * 0.5f, track.getCentreY() - th * 0.5f, th, th);
         g.setColour(t.controlHairline);
@@ -1747,12 +1752,19 @@ public:
         drawIcon(g, icons::undo, resetR, t.chevron, 1.4f);
         drawIcon(g, locked ? icons::lockClosed : icons::lockOpen, lockR,
                  locked ? t.accent : t.chevron, 1.4f);
+
+        if (showBottomDivider)
+        {
+            g.setColour(t.divider);
+            g.fillRect(0, getHeight() - 1, getWidth(), 1);
+        }
     }
 
     juce::String title;
     /** Expanded by default; when folded, dirty (changed) rows stay visible. */
     bool open = true;
     bool locked = false;
+    bool showBottomDivider = true;
     std::function<void()> onToggle;
     std::function<void()> onReset;
     std::function<void()> onLockToggle;
