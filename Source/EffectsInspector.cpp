@@ -752,12 +752,8 @@ void EffectsInspector::layoutSections()
 {
     const int w = juce::jmax(1, body.getWidth());
     int y = 0;
-    fx::Section* secs[] = { &playback, &timing, &performance, &pitchSec, &effectsSec };
-    const int n = (int) (sizeof(secs) / sizeof(secs[0]));
-    for (int i = 0; i < n; ++i)
+    for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
     {
-        auto* sec = secs[i];
-        sec->showBottomDivider = (i + 1 < n);
         const int h = sec->idealHeight();
         sec->setBounds(0, y, w, h);
         sec->resized();
@@ -766,25 +762,6 @@ void EffectsInspector::layoutSections()
     // Match header / section top pad so the last control isn't flush to the scroll edge.
     y += toolkitBodyPadB();
     body.setSize(w, juce::jmax(y, viewport.getMaximumVisibleHeight()));
-}
-
-bool EffectsInspector::anySectionOpen() const
-{
-    return playback.open || timing.open || performance.open
-        || pitchSec.open || effectsSec.open;
-}
-
-void EffectsInspector::foldAllSections()
-{
-    const bool open = !anySectionOpen();
-    for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
-    {
-        if (sec->open == open) continue;
-        sec->open = open;
-        sec->refreshDirtyRows();
-    }
-    layoutSections();
-    repaint();
 }
 
 void EffectsInspector::resized()
@@ -839,42 +816,18 @@ void EffectsInspector::paint(juce::Graphics& g)
     g.setColour(t.divider);
     g.fillRect(header.getX(), header.getBottom() - 1, header.getWidth(), 1);
 
-    auto titleArea = header.reduced(10, 0);
-    // Leave room for header icon buttons (reset + lock).
-    titleArea.removeFromRight(metrics::chromeIconButton() * 2 + 8);
-    toolkitFoldBounds = titleArea.removeFromLeft(16).withSizeKeepingCentre(14, 14);
-    titleArea.removeFromLeft(4);
-
-    auto chev = toolkitFoldBounds.toFloat().withSizeKeepingCentre(12.0f, 12.0f);
-    if (anySectionOpen())
-        drawCaretDown(g, chev, t.chevron);
-    else
-        drawCaretRight(g, chev, t.chevron);
-
     // Caps B2 cap bar — 11pt tracked, same language as LIBRARY.
     auto cap = uiFontFixed(11.0f, true);
     cap.setExtraKerningFactor(0.06f);
     g.setColour(t.valueText);
     g.setFont(cap);
-    g.drawText("TOOLKIT", titleArea, juce::Justification::centredLeft, false);
+    g.drawText("TOOLKIT", 14, 0, 120, header.getHeight(), juce::Justification::centredLeft);
 }
 
-void EffectsInspector::mouseDown(const juce::MouseEvent& e)
+void EffectsInspector::mouseDown(const juce::MouseEvent&)
 {
-    if (toolkitFoldBounds.expanded(4, 4).contains(e.getPosition()))
-    {
-        foldAllSections();
-        return;
-    }
     if (onActivated)
         onActivated();
-}
-
-void EffectsInspector::mouseMove(const juce::MouseEvent& e)
-{
-    const bool overFold = toolkitFoldBounds.expanded(4, 4).contains(e.getPosition());
-    setMouseCursor(overFold ? juce::MouseCursor::PointingHandCursor
-                            : juce::MouseCursor::NormalCursor);
 }
 
 } // namespace pflow

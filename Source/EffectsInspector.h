@@ -16,7 +16,6 @@ public:
     void resized() override;
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
-    void mouseMove(const juce::MouseEvent&) override;
 
     void setGroove(const GrooveParams&, juce::NotificationType notify = juce::dontSendNotification);
     GrooveParams getGroove() const { return groove; }
@@ -69,8 +68,6 @@ private:
     void setAllSectionsLocked(bool locked);
     void refreshHeaderLockButton();
     void resetUnlockedSections();
-    void foldAllSections();
-    bool anySectionOpen() const;
 
     GrooveParams groove;
     ClipEdit edit;
@@ -85,7 +82,6 @@ private:
 
     IconBtn btnReset { icons::undo, "Reset effects to defaults" };
     IconBtn btnEffectsLock { icons::lockOpen, "Lock effects while browsing" };
-    juce::Rectangle<int> toolkitFoldBounds;
 
     fx::Section playback { "Playback" };
     fx::Section timing { "Timing" };

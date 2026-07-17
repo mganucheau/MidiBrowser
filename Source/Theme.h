@@ -161,11 +161,7 @@ namespace colours {
     inline juce::Colour text3()         { return ds::tx3(); }
 
     inline juce::Colour accent()        { return ds::acc(); }
-    /** Text/icons drawn on accent fills — dark in dark mode for contrast on blue. */
-    inline juce::Colour accentInk()
-    {
-        return usesDarkAppearance() ? ds::bg() : juce::Colours::white;
-    }
+    inline juce::Colour accentInk()     { return juce::Colours::white; }
     inline juce::Colour accentSoft()    { return ds::selsoft(); }
     inline juce::Colour accentLine()    { return ds::acc().withAlpha(0.40f); }
     inline juce::Colour accentBright()  { return ds::note(); }
