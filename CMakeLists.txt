@@ -99,6 +99,9 @@ target_sources(MidiBrowser PRIVATE
     Source/LibraryStore.cpp
     "${PF_BUILDINFO_CPP}"
 )
+if(APPLE)
+    target_sources(MidiBrowser PRIVATE Source/NativeWindowChrome.mm)
+endif()
 add_dependencies(MidiBrowser MidiBrowserBuildInfo)
 
 target_compile_definitions(MidiBrowser PUBLIC

@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "BuildInfo.h"
+#include "NativeWindowChrome.h"
 #include <set>
 
 namespace pflow {
@@ -246,6 +247,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.onToggleEffects = [this] { toggleEffectsFold(); };
     transport.onDragToDaw = [this] { startDragExport(); };
     transport.onCopyToFolder = [this] { copyRenderedClipToFolder(); };
+    transport.onToggleTheme = [this] { toggleAppearanceTheme(); };
     transport.setSynced(processorRef.syncToHost.load());
     transport.setFreeBpm(processorRef.freeBpm.load());
     transport.setBpmMultiplier(processorRef.bpmMultiplier.load());
@@ -733,6 +735,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     startTimerHz(30);
     setWantsKeyboardFocus(true);
     updateMiniPreview();
+    applyNativeWindowChrome();
 }
 
 MidiBrowserEditor::~MidiBrowserEditor()
@@ -740,6 +743,35 @@ MidiBrowserEditor::~MidiBrowserEditor()
     juce::Desktop::getInstance().removeDarkModeSettingListener(this);
     stopTimer();
     setLookAndFeel(nullptr);
+}
+
+void MidiBrowserEditor::parentHierarchyChanged()
+{
+    applyNativeWindowChrome();
+}
+
+void MidiBrowserEditor::visibilityChanged()
+{
+    if (isShowing())
+        applyNativeWindowChrome();
+}
+
+void MidiBrowserEditor::applyNativeWindowChrome()
+{
+    if (processorRef.wrapperType != juce::AudioProcessor::wrapperType_Standalone)
+        return;
+    if (getPeer() == nullptr)
+        return;
+    nativeChrome::applyCupertinoTitlebar(*this);
+}
+
+void MidiBrowserEditor::toggleAppearanceTheme()
+{
+    const auto next = usesDarkAppearance() ? Appearance::Light : Appearance::Dark;
+    tweaks().appearance.store((int) next);
+    lnf.refreshColours();
+    sendLookAndFeelChange();
+    repaint();
 }
 
 void MidiBrowserEditor::darkModeSettingChanged()
@@ -1453,6 +1485,7 @@ void MidiBrowserEditor::selectIndex(int index)
     }
 
     transport.setClipBpm(clip.bpm);
+    transport.setClipName(clip.name);
     rollEditor.setClip(clip, edit, groove);
     applyTimeStretchFromMultiplier();
     syncEffectsInspector();
@@ -1646,10 +1679,12 @@ void MidiBrowserEditor::updateMiniPreview()
         miniRoll.setNotes({}, 4, GrooveParams{}, 0, {}, Mode::Ionian, 4, 0x0FFF);
         previewHeader.repaint();
         transport.setHasClip(false);
+        transport.setClipName({});
         return;
     }
 
     transport.setHasClip(true);
+    transport.setClipName(clip->name);
     const auto edit = selectedEdit();
     const auto groove = selectedGroove();
     const auto resolved = resolveClip(*clip, edit);

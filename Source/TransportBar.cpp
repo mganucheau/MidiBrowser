@@ -4,6 +4,8 @@ namespace pflow {
 
 namespace {
 constexpr float kHeaderIconScale = 1.0f;
+constexpr int kBtnW = 34;
+constexpr int kBtnH = 24;
 }
 
 // ── StatusPill ───────────────────────────────────────────────────────────────
@@ -17,17 +19,24 @@ void TransportBar::StatusPill::setText(const juce::String& t)
 
 void TransportBar::StatusPill::paint(juce::Graphics& g)
 {
-    // Caps B2 header A: square BPM well (not a capsule).
-    constexpr float kRadius = 4.0f;
+    constexpr float kRadius = 5.0f;
     auto r = getLocalBounds().toFloat();
-    g.setColour(colours::elev());
+    g.setColour(ds::ctl().withMultipliedAlpha(foregroundAlpha > 0.9f ? 1.0f : 0.85f));
     g.fillRoundedRectangle(r, kRadius);
+    g.setColour(ds::ctlb().withMultipliedAlpha(foregroundAlpha));
+    g.drawRoundedRectangle(r.reduced(0.5f), kRadius, 1.0f);
 
-    g.setColour(colours::text());
-    g.setFont(monoFont(12.0f, true));
-    g.drawFittedText(editing ? editBuffer + "|" : text,
-                     getLocalBounds().reduced(8, 0),
-                     juce::Justification::centred, 1);
+    auto inner = r.reduced(12.0f, 0.0f);
+    const auto value = editing ? editBuffer + "|"
+                               : text.upToFirstOccurrenceOf(" ", false, false);
+    const auto valueFont = ds::font(ds::Type::NumericDisplay);
+    g.setColour(ds::tx().withMultipliedAlpha(foregroundAlpha));
+    g.setFont(valueFont);
+    const float valueW = juce::GlyphArrangement::getStringWidth(valueFont, value) + 4.0f;
+    g.drawText(value, inner.removeFromLeft(valueW), juce::Justification::centredLeft, false);
+    g.setColour(ds::tx3().withMultipliedAlpha(foregroundAlpha));
+    g.setFont(ds::font(ds::Type::Caption).withHeight(9.0f).withExtraKerningFactor(0.08f));
+    g.drawText("BPM", inner, juce::Justification::centredLeft, false);
 }
 
 void TransportBar::StatusPill::mouseDown(const juce::MouseEvent&)
@@ -93,23 +102,67 @@ bool TransportBar::StatusPill::keyPressed(const juce::KeyPress& key)
     return false;
 }
 
+// ── DragChip ─────────────────────────────────────────────────────────────────
+
+int TransportBar::DragChip::idealWidth() const
+{
+    int w = 8 + 10 + 6 + 72 + 8; // pad + grip + gap + label + pad
+    if (clipName.isNotEmpty())
+        w += 6 + juce::jmin(140, clipName.length() * 7);
+    return juce::jlimit(120, 220, w);
+}
+
+void TransportBar::DragChip::paintButton(juce::Graphics& g, bool over, bool down)
+{
+    auto face = getLocalBounds().toFloat();
+    juce::Colour fill = ds::ctl();
+    if (down) fill = usesDarkAppearance() ? fill.brighter(0.06f) : fill.darker(0.06f);
+    else if (over) fill = usesDarkAppearance() ? fill.brighter(0.03f) : fill.darker(0.03f);
+    g.setColour(fill.withMultipliedAlpha(foregroundAlpha > 0.9f ? 1.0f : 0.85f));
+    g.fillRoundedRectangle(face, 6.0f);
+    g.setColour(ds::ctlb().withMultipliedAlpha(foregroundAlpha));
+    g.drawRoundedRectangle(face.reduced(0.5f), 6.0f, 1.0f);
+
+    auto inner = face.reduced(8.0f, 0.0f);
+    {
+        auto grip = inner.removeFromLeft(10.0f).withSizeKeepingCentre(8.0f, 12.0f);
+        g.setColour(ds::tx3().withMultipliedAlpha(foregroundAlpha));
+        for (int col = 0; col < 2; ++col)
+            for (int row = 0; row < 3; ++row)
+                g.fillEllipse(grip.getX() + (float) col * 4.0f,
+                              grip.getY() + (float) row * 4.0f,
+                              2.0f, 2.0f);
+    }
+    inner.removeFromLeft(6.0f);
+    g.setColour(ds::tx2().withMultipliedAlpha(foregroundAlpha));
+    g.setFont(ds::font(ds::Type::Metadata).withHeight(11.5f));
+    g.drawText("Drag to DAW", inner.removeFromLeft(72.0f), juce::Justification::centredLeft, false);
+    if (clipName.isNotEmpty())
+    {
+        inner.removeFromLeft(6.0f);
+        g.setColour(ds::tx3().withMultipliedAlpha(foregroundAlpha));
+        g.setFont(ds::font(ds::Type::Caption).withHeight(11.0f));
+        g.drawText(clipName, inner, juce::Justification::centredLeft, true);
+    }
+}
+
 // ── TransportBar ─────────────────────────────────────────────────────────────
 
 TransportBar::TransportBar()
 {
-    auto prep = [](IconBtn& b)
+    auto prep = [](IconBtn& b, bool ghost)
     {
-        b.ghost = true;
+        b.ghost = ghost;
         b.iconScale = kHeaderIconScale;
         b.setWantsKeyboardFocus(true);
     };
 
-    prep(btnPlay);
+    prep(btnPlay, true);
     btnPlay.setTooltip("Play / pause preview (Space)");
     btnPlay.onClick = [this] { if (onPlayPause) onPlayPause(); };
     addAndMakeVisible(btnPlay);
 
-    prep(btnStop);
+    prep(btnStop, true);
     btnStop.setTooltip("Stop preview");
     btnStop.onClick = [this] { if (onStop) onStop(); };
     addAndMakeVisible(btnStop);
@@ -122,7 +175,7 @@ TransportBar::TransportBar()
     };
     addAndMakeVisible(statusPill);
 
-    prep(btnSync);
+    prep(btnSync, false);
     btnSync.setTooltip("Sync to host tempo");
     btnSync.onClick = [this]
     {
@@ -134,24 +187,36 @@ TransportBar::TransportBar()
     addAndMakeVisible(btnSync);
 
     btnDragToDaw.accentText = false;
-    btnDragToDaw.cornerRadius = 4.0f;
+    btnDragToDaw.cornerRadius = 6.0f;
     btnDragToDaw.setTooltip("Drag edited clip onto a DAW track (or right-click to copy)");
     btnDragToDaw.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     btnDragToDaw.onDragStart = [this] { if (onDragToDaw) onDragToDaw(); };
     btnDragToDaw.onCopyToFolder = [this] { if (onCopyToFolder) onCopyToFolder(); };
     addAndMakeVisible(btnDragToDaw);
 
-    prep(btnEditor);
+    prep(btnEditor, false);
     btnEditor.setTooltip("Toggle editor\nShortcut: E");
     btnEditor.onClick = [this] { if (onToggleEditor) onToggleEditor(); };
     addAndMakeVisible(btnEditor);
 
-    prep(btnEffects);
+    prep(btnEffects, false);
     btnEffects.setTooltip("Toggle toolkit\nShortcut: F");
     btnEffects.onClick = [this] { if (onToggleEffects) onToggleEffects(); };
     addAndMakeVisible(btnEffects);
 
+    prep(btnTheme, false);
+    btnTheme.setTooltip("Toggle light / dark");
+    btnTheme.onClick = [this]
+    {
+        if (onToggleTheme) onToggleTheme();
+        refreshThemeIcon();
+    };
+    addAndMakeVisible(btnTheme);
+
+    setOpaque(true);
     refreshBpm();
+    refreshThemeIcon();
+    startTimerHz(8);
 }
 
 void TransportBar::setPlaying(bool p)
@@ -220,6 +285,14 @@ void TransportBar::setHasClip(bool has)
     resized();
 }
 
+void TransportBar::setClipName(const juce::String& name)
+{
+    if (btnDragToDaw.clipName == name) return;
+    btnDragToDaw.clipName = name;
+    resized();
+    btnDragToDaw.repaint();
+}
+
 void TransportBar::refreshBpm()
 {
     const double shown = synced ? hostBpm * multiplier : freeBpm;
@@ -232,64 +305,165 @@ void TransportBar::refreshBpm()
     btnSync.repaint();
 }
 
+void TransportBar::refreshThemeIcon()
+{
+    btnTheme.icon = usesDarkAppearance() ? icons::sun : icons::moon;
+    btnTheme.repaint();
+}
+
+void TransportBar::timerCallback()
+{
+    const bool active = nativeChrome::isWindowKey(*this);
+    if (active == windowActive) return;
+    windowActive = active;
+    const float a = windowActive ? 1.0f : 0.50f;
+    statusPill.foregroundAlpha = a;
+    btnDragToDaw.foregroundAlpha = a;
+    btnPlay.setAlpha(a);
+    btnStop.setAlpha(a);
+    btnSync.setAlpha(a);
+    btnEditor.setAlpha(a);
+    btnEffects.setAlpha(a);
+    btnTheme.setAlpha(a);
+    repaint();
+}
+
+bool TransportBar::hitInteractive(juce::Point<int> p) const
+{
+    auto covers = [p](const juce::Component& c)
+    {
+        return c.isVisible() && c.getBounds().contains(p);
+    };
+    return covers(btnPlay) || covers(btnStop) || covers(statusPill) || covers(btnSync)
+        || covers(btnDragToDaw) || covers(btnEditor) || covers(btnEffects) || covers(btnTheme);
+}
+
+void TransportBar::mouseDown(const juce::MouseEvent& e)
+{
+    if (hitInteractive(e.getPosition()))
+        return;
+#if JUCE_MAC
+    if (nativeChrome::performWindowDrag(*this))
+        return;
+#endif
+    if (auto* top = getTopLevelComponent())
+        windowDragger.startDraggingComponent(top, e.getEventRelativeTo(top));
+}
+
+void TransportBar::mouseDrag(const juce::MouseEvent& e)
+{
+    if (hitInteractive(e.getMouseDownPosition()))
+        return;
+#if JUCE_MAC
+    juce::ignoreUnused(e);
+#else
+    if (auto* top = getTopLevelComponent())
+        windowDragger.dragComponent(top, e.getEventRelativeTo(top), nullptr);
+#endif
+}
+
+void TransportBar::mouseDoubleClick(const juce::MouseEvent& e)
+{
+    if (hitInteractive(e.getPosition()))
+        return;
+#if JUCE_MAC
+    nativeChrome::zoomWindow(*this);
+#else
+    if (auto* dw = findParentComponentOfClass<juce::DocumentWindow>())
+        dw->maximiseButtonPressed();
+#endif
+}
+
 void TransportBar::resized()
 {
-    // Brand left · play/stop/bpm/sync centred · drag/editor/toolkit right
-    auto r = getLocalBounds().reduced(0, 10);
-    const int btn = metrics::chromeIconButton();
+    auto r = getLocalBounds();
+    const int h = r.getHeight();
+    const int y = (h - kBtnH) / 2;
     const int gap = 8;
-    const int brandPad = 12;
-    const int pillW = 88;
-    const int pillH = 26;
-    const int dragH = 22;
 
-    auto mid = [&](juce::Rectangle<int> a, int h)
-    {
-        return a.withSizeKeepingCentre(a.getWidth(), h);
-    };
+#if JUCE_MAC
+    lightsZoneW = 76;
+#else
+    lightsZoneW = 16;
+#endif
 
-    auto brand = r.removeFromLeft(120);
-    brand.removeFromLeft(brandPad);
-    titleBounds = brand;
+    // Left: traffic-light zone + app name
+    auto left = r.removeFromLeft(lightsZoneW + 14 + 110);
+    titleBounds = juce::Rectangle<int>(lightsZoneW + 14, 0, 110, h);
+    juce::ignoreUnused(left);
 
-    r.removeFromRight(brandPad);
+    // Right: theme · toolkit · piano roll · divider · drag chip
+    btnTheme.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
+    r.removeFromRight(4);
+    btnEffects.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
+    r.removeFromRight(4);
+    btnEditor.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
+    r.removeFromRight(8);
+    dividerBounds = r.removeFromRight(1).withY((h - 16) / 2).withHeight(16);
+    r.removeFromRight(8);
 
-    // Right: Drag Me · editor · toolkit
-    btnEffects.setBounds(mid(r.removeFromRight(btn), btn));
-    r.removeFromRight(gap);
-    btnEditor.setBounds(mid(r.removeFromRight(btn), btn));
-
+    const int chipH = 26;
     btnDragToDaw.setVisible((editorOpen || effectsOpen) && hasClip);
     if (btnDragToDaw.isVisible())
     {
-        r.removeFromRight(gap);
-        const int dragW = juce::jmax(64, btnDragToDaw.idealWidth() - 8);
-        btnDragToDaw.setBounds(mid(r.removeFromRight(dragW), dragH));
+        const int dragW = btnDragToDaw.idealWidth();
+        btnDragToDaw.setBounds(r.removeFromRight(dragW).withY((h - chipH) / 2).withHeight(chipH));
+        r.removeFromRight(8);
+    }
+    else
+    {
+        btnDragToDaw.setBounds({});
     }
 
-    // Centre transport in remaining space
-    const int transportW = btn + gap + btn + gap + pillW + gap + btn;
-    auto transport = r.withSizeKeepingCentre(transportW, r.getHeight());
-    btnPlay.setBounds(mid(transport.removeFromLeft(btn), btn));
-    transport.removeFromLeft(gap);
-    btnStop.setBounds(mid(transport.removeFromLeft(btn), btn));
-    transport.removeFromLeft(gap);
-    statusPill.setBounds(mid(transport.removeFromLeft(pillW), pillH));
-    transport.removeFromLeft(gap);
-    btnSync.setBounds(mid(transport.removeFromLeft(btn), btn));
+    // Centre: play|stop group + BPM + sync
+    const int groupW = kBtnW * 2;
+    const int pillW = 88;
+    const int centerW = groupW + gap + pillW + gap + kBtnW;
+    const int rightEdge = btnDragToDaw.isVisible() ? btnDragToDaw.getX()
+                                                   : dividerBounds.getX();
+    int centerX = titleBounds.getRight() + (rightEdge - titleBounds.getRight() - centerW) / 2;
+    centerX = juce::jmax(titleBounds.getRight() + 8, centerX);
+    if (centerX + centerW > rightEdge - 8)
+        centerX = juce::jmax(titleBounds.getRight() + 8, rightEdge - 8 - centerW);
+
+    transportGroupBounds = { centerX, y, groupW, kBtnH };
+    btnPlay.setBounds(transportGroupBounds.getX(), y, kBtnW, kBtnH);
+    btnStop.setBounds(transportGroupBounds.getX() + kBtnW, y, kBtnW, kBtnH);
+    statusPill.setBounds(transportGroupBounds.getRight() + gap, y, pillW, kBtnH);
+    btnSync.setBounds(statusPill.getRight() + gap, y, kBtnW, kBtnH);
 }
 
 void TransportBar::paint(juce::Graphics& g)
 {
     auto b = getLocalBounds().toFloat();
-    g.setColour(colours::bg());
+    g.setColour(ds::chrome());
     g.fillRect(b);
-    g.setColour(colours::line());
-    g.fillRect(0, getHeight() - 1, getWidth(), 1);
+    g.setColour(ds::hl());
+    g.fillRect(0.0f, (float) getHeight() - 1.0f, (float) getWidth(), 1.0f);
 
-    g.setColour(colours::text());
-    g.setFont(uiFont(13.0f, true));
+    const float fgAlpha = windowActive ? 1.0f : 0.50f;
+
+    g.setColour(ds::tx2().withMultipliedAlpha(fgAlpha));
+    g.setFont(ds::font(ds::Type::AppName));
     g.drawText("Midi Toolkit", titleBounds, juce::Justification::centredLeft, false);
+
+    // Grouped transport face (outer corners only — play/stop stay ghost)
+    if (!transportGroupBounds.isEmpty())
+    {
+        auto face = transportGroupBounds.toFloat();
+        g.setColour(ds::ctl().withMultipliedAlpha(windowActive ? 1.0f : 0.85f));
+        g.fillRoundedRectangle(face, 5.0f);
+        g.setColour(ds::ctlb().withMultipliedAlpha(fgAlpha));
+        g.drawRoundedRectangle(face.reduced(0.5f), 5.0f, 1.0f);
+        const float midX = face.getCentreX();
+        g.fillRect(midX - 0.5f, face.getY() + 4.0f, 1.0f, face.getHeight() - 8.0f);
+    }
+
+    if (dividerBounds.getWidth() > 0)
+    {
+        g.setColour(ds::hl().withMultipliedAlpha(fgAlpha));
+        g.fillRect(dividerBounds.toFloat());
+    }
 }
 
 } // namespace pflow

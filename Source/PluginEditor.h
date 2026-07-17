@@ -26,11 +26,15 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    void parentHierarchyChanged() override;
+    void visibilityChanged() override;
     void timerCallback() override;
     bool keyPressed(const juce::KeyPress&) override;
     void darkModeSettingChanged() override;
 
 private:
+    void applyNativeWindowChrome();
+    void toggleAppearanceTheme();
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);
     void rescanFolder(bool keepSelection);
     /** Load every MIDI file under the current folder tree (flat list). */

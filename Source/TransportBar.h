@@ -1,17 +1,22 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "UiAtoms.h"
+#include "NativeWindowChrome.h"
 
 namespace pflow {
 
-/** Toolbar: Midi Toolkit · play/stop · bpm · editor / toolkit. */
-class TransportBar : public juce::Component
+/** Cupertino 52px header: lights zone · app name · transport · drag chip · toggles. */
+class TransportBar : public juce::Component,
+                     private juce::Timer
 {
 public:
     TransportBar();
 
     void resized() override;
     void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
 
     void setPlaying(bool);
     void setSynced(bool, juce::NotificationType notify = juce::dontSendNotification);
@@ -22,11 +27,13 @@ public:
     void setEditorOpen(bool);
     void setEffectsOpen(bool);
     void setHasClip(bool has);
+    void setClipName(const juce::String& name);
 
     std::function<void()> onPlayPause;
     std::function<void()> onStop;
     std::function<void()> onToggleEditor;
     std::function<void()> onToggleEffects;
+    std::function<void()> onToggleTheme;
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
     std::function<void()> onDragToDaw;
@@ -34,6 +41,9 @@ public:
 
 private:
     void refreshBpm();
+    void refreshThemeIcon();
+    void timerCallback() override;
+    bool hitInteractive(juce::Point<int> p) const;
 
     class StatusPill : public juce::Component,
                        private juce::Timer
@@ -43,6 +53,7 @@ private:
         std::function<void(double)> onCommitBpm;
         bool synced = true;
         bool editable = false;
+        float foregroundAlpha = 1.0f;
 
         void setText(const juce::String& t);
         void paint(juce::Graphics&) override;
@@ -64,13 +75,21 @@ private:
         using ChipBtn::ChipBtn;
         std::function<void()> onDragStart;
         std::function<void()> onCopyToFolder;
+        juce::String clipName;
+        float foregroundAlpha = 1.0f;
+
+        void paintButton(juce::Graphics& g, bool over, bool down) override;
+        int idealWidth() const;
+
         void mouseDown(const juce::MouseEvent& e) override
         {
             if (e.mods.isPopupMenu())
             {
                 juce::PopupMenu m;
                 m.addItem(1, "Copy to Folder...", onCopyToFolder != nullptr);
-                m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+                m.showMenuAsync(juce::PopupMenu::Options()
+                                    .withTargetComponent(this)
+                                    .withDeletionCheck(*this),
                     [this](int result)
                     {
                         if (result == 1 && onCopyToFolder)
@@ -101,20 +120,24 @@ private:
     IconBtn btnStop { icons::stop, "Stop preview" };
     StatusPill statusPill;
     IconBtn btnSync { icons::sync, "Sync to host tempo" };
-    DragChip btnDragToDaw { "Drag Me" };
+    DragChip btnDragToDaw { "Drag to DAW" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
     IconBtn btnEffects { icons::sidebarRight, "Toggle toolkit" };
+    IconBtn btnTheme { icons::moon, "Toggle light / dark" };
 
-    juce::Rectangle<int> titleBounds;
+    juce::Rectangle<int> titleBounds, transportGroupBounds, dividerBounds;
 
     bool playing = false;
     bool synced = true;
     bool editorOpen = false;
     bool effectsOpen = false;
     bool hasClip = false;
+    bool windowActive = true;
     double hostBpm = 124.0;
     double freeBpm = 124.0;
     double multiplier = 1.0;
+    int lightsZoneW = 76;
+    juce::ComponentDragger windowDragger;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TransportBar)
 };
