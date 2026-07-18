@@ -31,11 +31,14 @@ EffectsInspector::EffectsInspector()
     , fitRow("Fit to Scale", fitSwitch)
     , mapRow("Map to Root", mapSwitch)
 {
-    addMouseListener(this, true);
-
     viewport.setViewedComponent(&body, false);
     viewport.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport);
+    // Listen only on the scroll body — never on this component itself.
+    // addMouseListener(this, true) double-fired header clicks (component + listener),
+    // so the Toolkit fold triangle toggled open→closed in one press (appeared broken),
+    // and nested events used child-local coords that falsely hit fold-all.
+    viewport.addMouseListener(this, true);
 
     btnReset.setComponentID("btnEffectsReset");
     btnReset.setWantsKeyboardFocus(false);
@@ -315,6 +318,16 @@ EffectsInspector::EffectsInspector()
     fitSwitch.onClick = [this]
     {
         edit.fitScale = fitSwitch.getToggleState();
+        // Key/Mode chips are always painted; keep edit in sync with what the
+        // user sees so Fit never no-ops with root still at -1.
+        if (edit.fitScale)
+        {
+            const int keyIdx = keyGrid.getSelectedIndex();
+            edit.root = keyIdx >= 0 ? keyIdx : 0;
+            const int modeIdx = modeGrid.getSelectedIndex();
+            if (modeIdx >= 0)
+                edit.mode = (Mode) modeIdx;
+        }
         refreshPitchAnnotation();
         notifyEdit();
     };
@@ -348,7 +361,7 @@ EffectsInspector::EffectsInspector()
     });
     performance.addRow(&dynamicsSl, kSliderRowH, [this] { return groove.dynamics != 0; });
     performance.addRow(&intensitySl, kSliderRowH, [this] { return groove.intensity != 100; });
-    performance.addRow(&velocityRangeSl, kSliderRowH, [this] {
+    performance.addRow(&velocityRangeSl, 22, [this] {
         return groove.velocityRangeLo > 1 || groove.velocityRangeHi < 127;
     });
     performance.addRow(&sustainRow, kRowMinH, [this] {
@@ -368,7 +381,7 @@ EffectsInspector::EffectsInspector()
     // Filter / Range / Filter Type sit at the bottom of Pitch & Scale.
     pitchSec.addRow(&noteFilter, [this] { return noteFilter.idealHeight(); },
                     [this] { return edit.hasNoteFilter(); });
-    pitchSec.addRow(&pitchRangeSl, kSliderRowH, [this] { return edit.hasPitchRange(); });
+    pitchSec.addRow(&pitchRangeSl, 22, [this] { return edit.hasPitchRange(); });
     pitchSec.addRow(&filterTypeRow, kRowMinH, [this] { return edit.hasNoteFilter(); });
 
     effectsSec.addRow(&complexitySl, kSliderRowH, [this] { return groove.complexityTarget >= 0; });
@@ -615,13 +628,13 @@ void EffectsInspector::setClipSourceOctave(int oct)
 
 void EffectsInspector::setClipScaleAnalysis(const ScaleAnalysis& analysis)
 {
+    // Candidates only — Key/Mode selection comes from ClipEdit via setEdit.
+    // Overwriting the chips here desynced the UI from edit.root/mode and made
+    // Fit-to-Scale look enabled for a key that was never applied.
     candidateKeyMask = analysis.keyMask;
     candidateModeMask = analysis.modeMask;
     keyGrid.setCandidateMask(candidateKeyMask);
     modeGrid.setCandidateMask(candidateModeMask);
-    if (analysis.primaryRoot >= 0)
-        keyGrid.setSelectedIndex(analysis.primaryRoot, juce::dontSendNotification);
-    modeGrid.setSelectedIndex((int) analysis.primaryMode, juce::dontSendNotification);
     syncNoteFilterScale();
     refreshPitchAnnotation();
     refreshDirtySections();
@@ -752,8 +765,12 @@ void EffectsInspector::layoutSections()
 {
     const int w = juce::jmax(1, body.getWidth());
     int y = 0;
-    for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
+    fx::Section* secs[] = { &playback, &timing, &performance, &pitchSec, &effectsSec };
+    const int n = (int) (sizeof(secs) / sizeof(secs[0]));
+    for (int i = 0; i < n; ++i)
     {
+        auto* sec = secs[i];
+        sec->showBottomDivider = true; // including Effects (last section)
         const int h = sec->idealHeight();
         sec->setBounds(0, y, w, h);
         sec->resized();
@@ -764,17 +781,45 @@ void EffectsInspector::layoutSections()
     body.setSize(w, juce::jmax(y, viewport.getMaximumVisibleHeight()));
 }
 
+bool EffectsInspector::anySectionOpen() const
+{
+    return playback.open || timing.open || performance.open
+        || pitchSec.open || effectsSec.open;
+}
+
+void EffectsInspector::foldAllSections()
+{
+    const bool expand = !anySectionOpen();
+    for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
+    {
+        if (expand)
+            sec->setOpen(true);
+        else
+            sec->setFullyCollapsed(true);
+    }
+    layoutSections();
+    repaint();
+}
+
+void EffectsInspector::updateToolkitFoldBounds()
+{
+    auto header = getLocalBounds().removeFromTop(metrics::paneHeaderH()).reduced(16, 0);
+    header.removeFromRight(metrics::chromeIconButton() * 2 + 12);
+    toolkitFoldBounds = header.removeFromLeft(18).withSizeKeepingCentre(16, 16);
+}
+
 void EffectsInspector::resized()
 {
     auto r = getLocalBounds();
     const int headerH = metrics::paneHeaderH();
-    auto header = r.removeFromTop(headerH).reduced(10, 4);
+    auto header = r.removeFromTop(headerH).reduced(16, 4);
     const int iconBtn = metrics::chromeIconButton();
     btnEffectsLock.iconScale = 0.9f;
     btnReset.iconScale = 0.9f;
     btnEffectsLock.setBounds(header.removeFromRight(iconBtn).withSizeKeepingCentre(iconBtn, iconBtn));
-    header.removeFromRight(2);
+    header.removeFromRight(4);
     btnReset.setBounds(header.removeFromRight(iconBtn).withSizeKeepingCentre(iconBtn, iconBtn));
+    updateToolkitFoldBounds();
 
     viewport.setBounds(r);
     body.setSize(juce::jmax(1, viewport.getMaximumVisibleWidth()), body.getHeight());
@@ -816,18 +861,50 @@ void EffectsInspector::paint(juce::Graphics& g)
     g.setColour(t.divider);
     g.fillRect(header.getX(), header.getBottom() - 1, header.getWidth(), 1);
 
-    // Caps B2 cap bar — 11pt tracked, same language as LIBRARY.
-    auto cap = uiFontFixed(11.0f, true);
-    cap.setExtraKerningFactor(0.06f);
-    g.setColour(t.valueText);
-    g.setFont(cap);
-    g.drawText("TOOLKIT", 14, 0, 120, header.getHeight(), juce::Justification::centredLeft);
+    updateToolkitFoldBounds();
+    auto titleArea = header.reduced(16, 0);
+    titleArea.removeFromRight(metrics::chromeIconButton() * 2 + 12);
+    titleArea.removeFromLeft(toolkitFoldBounds.getWidth() + 6);
+
+    auto chev = toolkitFoldBounds.toFloat().withSizeKeepingCentre(12.0f, 12.0f);
+    if (anySectionOpen())
+        drawCaretDown(g, chev, t.chevron);
+    else
+        drawCaretRight(g, chev, t.chevron);
+
+    // Pane title: former section-title size (14 / semibold).
+    g.setColour(t.headerText);
+    g.setFont(paneTitleFont());
+    g.drawText("Toolkit", titleArea, juce::Justification::centredLeft, false);
 }
 
-void EffectsInspector::mouseDown(const juce::MouseEvent&)
+void EffectsInspector::mouseDown(const juce::MouseEvent& e)
 {
+    // Listener events are relative to the nested source — map into our space.
+    const auto local = e.getEventRelativeTo(this).getPosition();
+    updateToolkitFoldBounds();
+
+    // Toolkit title chevron lives in the pane header (outside the viewport).
+    if (local.y < metrics::paneHeaderH()
+        && toolkitFoldBounds.expanded(8, 6).contains(local))
+    {
+        foldAllSections();
+        if (onActivated) onActivated();
+        return;
+    }
+
     if (onActivated)
         onActivated();
+}
+
+void EffectsInspector::mouseMove(const juce::MouseEvent& e)
+{
+    const auto local = e.getEventRelativeTo(this).getPosition();
+    updateToolkitFoldBounds();
+    const bool overFold = local.y < metrics::paneHeaderH()
+                       && toolkitFoldBounds.expanded(8, 6).contains(local);
+    setMouseCursor(overFold ? juce::MouseCursor::PointingHandCursor
+                            : juce::MouseCursor::NormalCursor);
 }
 
 } // namespace pflow

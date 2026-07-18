@@ -247,7 +247,6 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.onToggleEffects = [this] { toggleEffectsFold(); };
     transport.onDragToDaw = [this] { startDragExport(); };
     transport.onCopyToFolder = [this] { copyRenderedClipToFolder(); };
-    transport.onToggleTheme = [this] { toggleAppearanceTheme(); };
     transport.setSynced(processorRef.syncToHost.load());
     transport.setFreeBpm(processorRef.freeBpm.load());
     transport.setBpmMultiplier(processorRef.bpmMultiplier.load());
@@ -763,15 +762,6 @@ void MidiBrowserEditor::applyNativeWindowChrome()
     if (getPeer() == nullptr)
         return;
     nativeChrome::applyCupertinoTitlebar(*this);
-}
-
-void MidiBrowserEditor::toggleAppearanceTheme()
-{
-    const auto next = usesDarkAppearance() ? Appearance::Light : Appearance::Dark;
-    tweaks().appearance.store((int) next);
-    lnf.refreshColours();
-    sendLookAndFeelChange();
-    repaint();
 }
 
 void MidiBrowserEditor::darkModeSettingChanged()
@@ -1405,12 +1395,24 @@ void MidiBrowserEditor::selectIndex(int index)
 
     const auto locks = processorRef.sectionLocks;
 
-    // Unlocked pitch edits are ephemeral when leaving a file.
+    // Carry Fit/Map/Key/Mode across unlocked browse so audition stays in the
+    // chosen scale (still ephemeral — cleared when Pitch stays unlocked).
+    ClipEdit carriedScale;
+    bool haveCarriedScale = false;
     if (selectedIdx >= 0 && selectedIdx != index
         && (locks & toolkitLock::Pitch) == 0
         && juce::isPositiveAndBelow(selectedIdx, (int) clips.size()))
     {
         const auto& prev = clips[(size_t) selectedIdx];
+        const auto& prevEdit = processorRef.editFor(prev.filePath);
+        if (prevEdit.fitScale || prevEdit.mapToRoot)
+        {
+            carriedScale.fitScale = prevEdit.fitScale;
+            carriedScale.mapToRoot = prevEdit.mapToRoot;
+            carriedScale.root = prevEdit.root;
+            carriedScale.mode = prevEdit.mode;
+            haveCarriedScale = prevEdit.root >= 0;
+        }
         processorRef.clipEdits.erase(prev.filePath);
         refreshEntryMeta(selectedIdx);
     }
@@ -1458,6 +1460,13 @@ void MidiBrowserEditor::selectIndex(int index)
             e.octaveRange = analysis.octaveRange;
             e.root = analysis.primaryRoot;
             e.mode = analysis.primaryMode;
+        }
+        if (haveCarriedScale)
+        {
+            e.fitScale = carriedScale.fitScale;
+            e.mapToRoot = carriedScale.mapToRoot;
+            e.root = carriedScale.root;
+            e.mode = carriedScale.mode;
         }
     }
 
@@ -1526,7 +1535,10 @@ MidiClip MidiBrowserEditor::buildRenderedClip() const
     const auto edit = selectedEdit();
     const auto groove = selectedGroove();
     const auto resolved = resolveClip(*clip, edit);
-    const auto notes = applyGroove(resolved.notes, groove, clip->complexity);
+    auto notes = applyGroove(resolved.notes, groove, clip->complexity);
+    // Complexity morph can invent ±1/±2 ornaments — keep Fit to Scale honest.
+    if (edit.fitScale && edit.root >= 0)
+        refitNotesToScale(notes, edit.root, edit.mode);
     const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
 
     out.name = clip->name;
@@ -1691,7 +1703,10 @@ void MidiBrowserEditor::updateMiniPreview()
     // Frame from source notes so pitch/octave edits stay visible in the strip
     // (fitting to resolved notes would re-center and hide transposition).
     const int rootPc = edit.root >= 0 ? edit.root : (clip->root >= 0 ? clip->root : 0);
-    miniRoll.setNotes(applyGroove(resolved.notes, groove, clip->complexity), resolved.bars, groove,
+    auto grooved = applyGroove(resolved.notes, groove, clip->complexity);
+    if (edit.fitScale && edit.root >= 0)
+        refitNotesToScale(grooved, edit.root, edit.mode);
+    miniRoll.setNotes(grooved, resolved.bars, groove,
                       rootPc, clip->notes, edit.mode, 4, edit.noteFilterMask);
     const double stretch = 1.0 / juce::jlimit(0.25, 4.0, processorRef.bpmMultiplier.load());
     miniRoll.setTimeStretch(stretch);

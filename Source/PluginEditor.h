@@ -34,7 +34,6 @@ public:
 
 private:
     void applyNativeWindowChrome();
-    void toggleAppearanceTheme();
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);
     void rescanFolder(bool keepSelection);
     /** Load every MIDI file under the current folder tree (flat list). */

@@ -293,12 +293,23 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
     }
     else if (name == icons::gear)
     {
-        g.drawEllipse(cx - s * 0.35f, cy - s * 0.35f, s * 0.7f, s * 0.7f, px);
-        for (int i = 0; i < 8; ++i)
+        // Ring + hub + six teeth (reads as a gear, not a sun).
+        g.drawEllipse(cx - s * 0.42f, cy - s * 0.42f, s * 0.84f, s * 0.84f, px);
+        g.drawEllipse(cx - s * 0.18f, cy - s * 0.18f, s * 0.36f, s * 0.36f, px);
+        for (int i = 0; i < 6; ++i)
         {
-            const float a = juce::MathConstants<float>::twoPi * (float) i / 8.0f;
-            g.drawLine(cx + s * 0.6f * std::cos(a), cy + s * 0.6f * std::sin(a),
-                       cx + s * 0.95f * std::cos(a), cy + s * 0.95f * std::sin(a), px);
+            const float a = juce::MathConstants<float>::twoPi * (float) i / 6.0f;
+            const float c = std::cos(a), sn = std::sin(a);
+            const float x0 = cx + s * 0.55f * c, y0 = cy + s * 0.55f * sn;
+            const float x1 = cx + s * 0.95f * c, y1 = cy + s * 0.95f * sn;
+            const float nx = -sn * px * 1.1f, ny = c * px * 1.1f;
+            juce::Path tooth;
+            tooth.startNewSubPath(x0 - nx, y0 - ny);
+            tooth.lineTo(x1 - nx, y1 - ny);
+            tooth.lineTo(x1 + nx, y1 + ny);
+            tooth.lineTo(x0 + nx, y0 + ny);
+            tooth.closeSubPath();
+            g.fillPath(tooth);
         }
     }
     else if (name == icons::more)

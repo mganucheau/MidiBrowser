@@ -204,18 +204,8 @@ TransportBar::TransportBar()
     btnEffects.onClick = [this] { if (onToggleEffects) onToggleEffects(); };
     addAndMakeVisible(btnEffects);
 
-    prep(btnTheme, false);
-    btnTheme.setTooltip("Toggle light / dark");
-    btnTheme.onClick = [this]
-    {
-        if (onToggleTheme) onToggleTheme();
-        refreshThemeIcon();
-    };
-    addAndMakeVisible(btnTheme);
-
     setOpaque(true);
     refreshBpm();
-    refreshThemeIcon();
     startTimerHz(8);
 }
 
@@ -305,12 +295,6 @@ void TransportBar::refreshBpm()
     btnSync.repaint();
 }
 
-void TransportBar::refreshThemeIcon()
-{
-    btnTheme.icon = usesDarkAppearance() ? icons::sun : icons::moon;
-    btnTheme.repaint();
-}
-
 void TransportBar::timerCallback()
 {
     const bool active = nativeChrome::isWindowKey(*this);
@@ -324,7 +308,6 @@ void TransportBar::timerCallback()
     btnSync.setAlpha(a);
     btnEditor.setAlpha(a);
     btnEffects.setAlpha(a);
-    btnTheme.setAlpha(a);
     repaint();
 }
 
@@ -335,7 +318,7 @@ bool TransportBar::hitInteractive(juce::Point<int> p) const
         return c.isVisible() && c.getBounds().contains(p);
     };
     return covers(btnPlay) || covers(btnStop) || covers(statusPill) || covers(btnSync)
-        || covers(btnDragToDaw) || covers(btnEditor) || covers(btnEffects) || covers(btnTheme);
+        || covers(btnDragToDaw) || covers(btnEditor) || covers(btnEffects);
 }
 
 void TransportBar::mouseDown(const juce::MouseEvent& e)
@@ -392,15 +375,14 @@ void TransportBar::resized()
     titleBounds = juce::Rectangle<int>(lightsZoneW + 14, 0, 110, h);
     juce::ignoreUnused(left);
 
-    // Right: theme · toolkit · piano roll · divider · drag chip
-    btnTheme.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
-    r.removeFromRight(4);
+    // Right edge inset so view toggles aren't flush to the window border.
+    r.removeFromRight(14);
     btnEffects.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
-    r.removeFromRight(4);
+    r.removeFromRight(6);
     btnEditor.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
-    r.removeFromRight(8);
+    r.removeFromRight(10);
     dividerBounds = r.removeFromRight(1).withY((h - 16) / 2).withHeight(16);
-    r.removeFromRight(8);
+    r.removeFromRight(10);
 
     const int chipH = 26;
     btnDragToDaw.setVisible((editorOpen || effectsOpen) && hasClip);

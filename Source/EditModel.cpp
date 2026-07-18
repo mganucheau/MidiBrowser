@@ -47,6 +47,20 @@ const char* modeName(Mode m) { return kModeNames[(size_t) m]; }
 
 const std::array<int, 7>& modeIntervals(Mode m) { return kModeIntervals[(size_t) m]; }
 
+Mode auditionMode(Mode m)
+{
+    switch (m)
+    {
+        case Mode::Aeolian:
+        case Mode::Dorian:
+        case Mode::Phrygian:
+        case Mode::Locrian:
+            return Mode::Aeolian;
+        default:
+            return Mode::Ionian;
+    }
+}
+
 juce::String pitchName(int midi)
 {
     const int oct = (int) std::floor(midi / 12.0) - 1;   // MIDI 60 = C4
@@ -125,7 +139,10 @@ ScaleAnalysis analyseClipScale(const StepClip& clip)
             {
                 bestScore = score;
                 out.primaryRoot = root;
-                out.primaryMode = (Mode) mi;
+                // Seed Major/Minor so Fit-to-Scale auditions the common key,
+                // not a covering mode that preserves accidentals (e.g. Lydian
+                // keeping F# when the user expects C major).
+                out.primaryMode = auditionMode((Mode) mi);
             }
         }
     }
@@ -155,6 +172,14 @@ int noteNameIndex(const juce::String& name)
         if (name == kNoteNames[(size_t) i])
             return i;
     return -1;
+}
+
+void refitNotesToScale(std::vector<RollNote>& notes, int rootPc, Mode mode)
+{
+    if (rootPc < 0 || notes.empty())
+        return;
+    for (auto& n : notes)
+        n.pitch = juce::jlimit(0, 127, fitToScale(n.pitch, rootPc, mode));
 }
 
 int fitToScale(int midi, int rootPc, Mode mode)
@@ -378,6 +403,10 @@ ResolvedClip resolveClip(const StepClip& clip, const ClipEdit& e)
             }
         }
     }
+
+    // Octave Range remaps chromatically and can pull notes out of scale — re-snap.
+    if (e.fitScale && e.root >= 0)
+        refitNotesToScale(out.notes, e.root, e.mode);
 
     // Note Filter: Mute drops disabled pitch-classes; Fold remaps to nearest kept.
     if (e.hasNoteFilter() && !out.notes.empty())

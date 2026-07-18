@@ -147,7 +147,7 @@ private:
     int footerHeight() const;
     bool isCurrentFolderFavorited() const;
     int activeFilterGroupCount() const;
-    void showFilterPopover();
+    void toggleFilterPanel();
     int folderCardHeight() const;
     static int countMidiFilesQuick(const juce::File& dir);
 
@@ -178,7 +178,7 @@ private:
     void scheduleFilterApply();
     void timerCallback() override;
 
-    IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
+    IconBtn btnToggle { icons::more, "Show or hide sidebar" };
     IconBtn btnSettings { icons::gear, "Settings" };
     fx::FlatSwitch includeSwitch;
     juce::StringArray dirs;
@@ -202,6 +202,7 @@ private:
     bool searchOpen = true;
     bool includeSubdirs = false;
     bool scanning = false;
+    bool filterOpen = false;
     bool filterApplyPending = false;
     float scanAngle = 0.0f;
     int currentClipCount = 0;
@@ -230,6 +231,7 @@ private:
         std::function<void()> onCriteriaChanged;
     private:
         int rowH() const;
+        int rangeH() const;
         fx::ChipGrid keyGrid;
         fx::HistRangeSlider bpmRange { "TEMPO", 40, 240 };
         fx::HistRangeSlider barsRange { "BARS", 1, 64 };
@@ -299,7 +301,6 @@ private:
     FilterPanel filterPanel;
     SearchQueryPanel searchQuery;
     std::vector<StepClip> histogramClips;
-    juce::Component::SafePointer<juce::CallOutBox> filterCallout;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FavoritesSidebar)
 };

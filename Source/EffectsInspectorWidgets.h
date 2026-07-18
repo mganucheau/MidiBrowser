@@ -13,8 +13,9 @@ namespace fx {
 constexpr float kFontPt = 12.0f;
 constexpr float kAnnotPt = 11.0f;
 constexpr float kPopupFontPt = 12.0f;
-constexpr float kSectionTitlePt = 14.0f;
-constexpr int kSectionPadH = 12;       // shell horizontal pad (section header chrome)
+constexpr float kSectionTitlePt = 11.0f; // tracked caption (was TOOLKIT chrome)
+constexpr float kPaneTitlePt = 14.0f;    // pane header title (TOOLKIT)
+constexpr int kSectionPadH = 16;       // shell horizontal pad (section header chrome)
 constexpr int kRowMinH = 26;
 constexpr int kControlH = 26;
 constexpr int kSectionHeaderH = 30;
@@ -39,7 +40,8 @@ inline int toolkitSectionPadT()
 }
 inline int toolkitSectionPadB()
 {
-    return metrics::scaled(currentDensity() == Density::Comfortable ? 6 : 3);
+    // Match top pad so the last control isn't flush against the section divider.
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 8);
 }
 inline int toolkitTitleGap()
 {
@@ -54,7 +56,13 @@ inline int toolkitBodyPadB()
 inline juce::Font inspectorFont(bool semibold = false) { return uiFontFixed(kFontPt, semibold); }
 inline juce::Font inspectorMono(bool semibold = false) { return monoFontFixed(kFontPt, semibold); }
 inline juce::Font popupFont(bool semibold = false) { return uiFontFixed(kPopupFontPt, semibold); }
-inline juce::Font sectionTitleFont() { return uiFontFixed(kSectionTitlePt, true); }
+inline juce::Font sectionTitleFont()
+{
+    auto f = uiFontFixed(kSectionTitlePt, true);
+    f.setExtraKerningFactor(0.06f);
+    return f;
+}
+inline juce::Font paneTitleFont() { return uiFontFixed(kPaneTitlePt, true); }
 
 inline void fillTallWell(juce::Graphics& g, juce::Rectangle<float> r, bool hot)
 {
@@ -727,47 +735,58 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto r = getLocalBounds().toFloat();
+        auto bounds = getLocalBounds().toFloat();
         const bool hot = isMouseOverOrDragging() || hasKeyboardFocus(true);
-        fillTallWell(g, r, false);
 
-        const float span = (float) juce::jmax(1, maxV - minV);
-        const float xLo = r.getX() + r.getWidth() * ((float) (lo - minV) / span);
-        const float xHi = r.getX() + r.getWidth() * ((float) (hi - minV) / span);
-        auto fill = juce::Rectangle<float>::leftTopRightBottom(
-            xLo, r.getY(), xHi, r.getBottom());
-        g.setColour(t.accent);
-        g.fillRoundedRectangle(fill, kTallRadius);
+        constexpr float kThumbD = 11.0f;
+        constexpr float kTrackH = 5.0f;
+        constexpr float kLabelH = 13.0f;
+        const float inset = kThumbD * 0.5f + 1.0f;
 
-        if (hot)
-        {
-            g.setColour(t.accent);
-            g.drawRoundedRectangle(r.reduced(0.5f), kTallRadius, 1.2f);
-        }
-        if (hasKeyboardFocus(true))
-            drawFocusRing(g, r, kTallRadius);
-
-        auto pad = r.reduced(accentFill ? 8.0f : kTallPadX, 0.0f).toNearestInt();
-        // Library search filters use compact 11pt (Caps B2 FILTER_PT).
+        auto labelRow = bounds.removeFromTop(kLabelH).reduced(2.0f, 0.0f);
         const auto text = valueText.isNotEmpty() ? valueText
                       : (juce::String(lo) + "-" + juce::String(hi));
-        auto drawTexts = [&](juce::Colour labelCol, juce::Colour valueCol)
+        g.setFont(accentFill ? uiFontFixed(kAnnotPt) : inspectorFont());
+        g.setColour(hot ? t.headerText : t.rowLabel);
+        g.drawText(label, labelRow.toNearestInt(), juce::Justification::centredLeft, true);
+        g.setFont(accentFill ? monoFontFixed(kAnnotPt) : inspectorMono());
+        g.setColour(t.headerText);
+        g.drawText(text, labelRow.toNearestInt(), juce::Justification::centredRight, true);
+
+        // Compact track inset so end thumbs sit fully inside the component.
+        auto track = juce::Rectangle<float>(bounds.getX() + inset,
+                                            bounds.getCentreY() - kTrackH * 0.5f,
+                                            juce::jmax(1.0f, bounds.getWidth() - inset * 2.0f),
+                                            kTrackH);
+        g.setColour(t.tallFill);
+        g.fillRoundedRectangle(track, track.getHeight() * 0.5f);
+        g.setColour(t.controlHairline);
+        g.drawRoundedRectangle(track.reduced(0.5f), track.getHeight() * 0.5f, 1.0f);
+
+        const float span = (float) juce::jmax(1, maxV - minV);
+        const float xLo = track.getX() + track.getWidth() * ((float) (lo - minV) / span);
+        const float xHi = track.getX() + track.getWidth() * ((float) (hi - minV) / span);
+        auto fill = juce::Rectangle<float>::leftTopRightBottom(
+            xLo, track.getY(), xHi, track.getBottom());
+        g.setColour(t.accent);
+        g.fillRoundedRectangle(fill, track.getHeight() * 0.5f);
+
+        auto thumbAt = [&](float x)
         {
-            g.setFont(accentFill ? uiFontFixed(kAnnotPt) : inspectorFont());
-            g.setColour(labelCol);
-            g.drawText(label, pad, juce::Justification::centredLeft, true);
-            g.setFont(accentFill ? monoFontFixed(kAnnotPt) : inspectorMono());
-            g.setColour(valueCol);
-            g.drawText(text, pad, juce::Justification::centredRight, true);
+            return juce::Rectangle<float>(x - kThumbD * 0.5f,
+                                          track.getCentreY() - kThumbD * 0.5f,
+                                          kThumbD, kThumbD);
         };
-        // Black text on accent fill — higher contrast than white-on-blue.
-        drawTexts(hot ? t.headerText : t.rowLabel, t.headerText);
-        if (fill.getWidth() > 0.5f)
+        ds::shadow::thumb(g, thumbAt(xLo));
+        ds::shadow::thumb(g, thumbAt(xHi));
+        if (hot)
         {
-            juce::Graphics::ScopedSaveState state(g);
-            g.reduceClipRegion(fill.getSmallestIntegerContainer());
-            drawTexts(juce::Colours::black, juce::Colours::black);
+            g.setColour(t.accent.withAlpha(0.55f));
+            g.drawEllipse(thumbAt(xLo).reduced(0.5f), 1.0f);
+            g.drawEllipse(thumbAt(xHi).reduced(0.5f), 1.0f);
         }
+        if (hasKeyboardFocus(true))
+            drawFocusRing(g, getLocalBounds().toFloat(), kTallRadius);
     }
 
 private:
@@ -776,19 +795,19 @@ private:
 
     Thumb hitThumb(float x) const
     {
+        constexpr float kInset = 11.0f * 0.5f + 1.0f;
         const float span = (float) juce::jmax(1, maxV - minV);
-        const float w = (float) juce::jmax(1, getWidth());
-        const float xLo = w * ((float) (lo - minV) / span);
-        const float xHi = w * ((float) (hi - minV) / span);
-        const float dLo = std::abs(x - xLo);
-        const float dHi = std::abs(x - xHi);
-        if (dLo <= dHi) return Thumb::Lo;
-        return Thumb::Hi;
+        const float trackW = juce::jmax(1.0f, (float) getWidth() - kInset * 2.0f);
+        const float xLo = kInset + trackW * ((float) (lo - minV) / span);
+        const float xHi = kInset + trackW * ((float) (hi - minV) / span);
+        return std::abs(x - xLo) <= std::abs(x - xHi) ? Thumb::Lo : Thumb::Hi;
     }
 
     void setFromX(float x)
     {
-        const float t = juce::jlimit(0.0f, 1.0f, x / (float) juce::jmax(1, getWidth()));
+        constexpr float kInset = 11.0f * 0.5f + 1.0f;
+        const float trackW = juce::jmax(1.0f, (float) getWidth() - kInset * 2.0f);
+        const float t = juce::jlimit(0.0f, 1.0f, (x - kInset) / trackW);
         const int v = minV + (int) std::lround(t * (float) (maxV - minV));
         if (dragThumb == Thumb::Lo)
             setRange(juce::jmin(v, hi), hi);
@@ -810,6 +829,8 @@ public:
     int columns = 6;
     /** When true, chip width follows label text and rows wrap to available width. */
     bool fitContent = false;
+    /** Sidebar filter: match Include Subfolders / Favorites label styling. */
+    bool sidebarLabelStyle = false;
 
     void setItems(juce::StringArray labelsIn)
     {
@@ -905,11 +926,19 @@ public:
         rebuildChipBounds();
         const auto& t = inspectorTokens();
         auto header = getLocalBounds().removeFromTop(kLabelH);
-        g.setFont(inspectorFont(true));
-        g.setColour(t.rowLabel);
+        if (sidebarLabelStyle)
+        {
+            g.setFont(uiFontFixed(11.0f));
+            g.setColour(ds::tx2());
+        }
+        else
+        {
+            g.setFont(inspectorFont());
+            g.setColour(t.rowLabel);
+        }
         g.drawText(title, header.removeFromLeft(header.getWidth() / 2),
                    juce::Justification::centredLeft, true);
-        g.setFont(inspectorFont(true));
+        g.setFont(sidebarLabelStyle ? uiFontFixed(11.0f) : inspectorFont());
         g.setColour(t.accent);
         g.drawText(selectedSummary(), header, juce::Justification::centredRight, true);
 
@@ -1131,6 +1160,9 @@ private:
 class HistRangeSlider : public juce::Component, public juce::SettableTooltipClient
 {
 public:
+    /** Sidebar filter: match Include Subfolders / Favorites label styling. */
+    bool sidebarLabelStyle = false;
+
     HistRangeSlider(const juce::String& l, int mn, int mx)
         : label(l), minV(mn), maxV(mx), lo(mn), hi(mx), defLo(mn), defHi(mx)
     {
@@ -1199,18 +1231,30 @@ public:
         const auto& t = inspectorTokens();
         auto r = getLocalBounds();
         auto header = r.removeFromTop(kLabelH);
-        g.setFont(inspectorFont(true));
-        g.setColour(t.rowLabel);
+        if (sidebarLabelStyle)
+        {
+            g.setFont(uiFontFixed(11.0f));
+            g.setColour(ds::tx2());
+        }
+        else
+        {
+            g.setFont(inspectorFont());
+            g.setColour(t.rowLabel);
+        }
         g.drawText(label, header.removeFromLeft(header.getWidth() / 2),
                    juce::Justification::centredLeft, true);
         g.setColour(t.accent);
-        g.setFont(inspectorMono(true));
+        g.setFont(sidebarLabelStyle ? uiFontFixed(11.0f) : inspectorFont());
         const juce::String val = isFullRange() ? "Any"
             : (juce::String(lo) + juce::String::charToString((juce::juce_wchar) 0x2013) + juce::String(hi));
         g.drawText(val, header, juce::Justification::centredRight, true);
 
         r.removeFromTop(toolkitRowGap());
-        auto hist = r.removeFromTop(kHistH).toFloat();
+        // Scale hist + track into whatever height the parent assigned (filter panel = 2 rows).
+        const int avail = juce::jmax(1, r.getHeight());
+        const int histH = juce::jmax(8, (avail - 4) * 2 / 5);
+        const int trackH = juce::jmax(8, avail - 4 - histH);
+        auto hist = r.removeFromTop(histH).toFloat();
         const int n = juce::jmax(1, (int) bins.size());
         int peak = 1;
         for (int c : bins) peak = juce::jmax(peak, c);
@@ -1232,7 +1276,11 @@ public:
         }
 
         r.removeFromTop(4);
-        auto track = r.removeFromTop(kTrackH).toFloat().reduced(0.0f, 6.0f);
+        constexpr float kThumbD = 10.0f;
+        const float thumbInset = kThumbD * 0.5f + 0.5f;
+        const float trackPadY = juce::jmin(6.0f, (float) trackH * 0.25f);
+        auto trackArea = r.removeFromTop(trackH).toFloat();
+        auto track = trackArea.reduced(thumbInset, trackPadY);
         g.setColour(t.tallFill);
         g.fillRoundedRectangle(track, track.getHeight() * 0.5f);
         const float trackSpan = (float) juce::jmax(1, maxV - minV);
@@ -1241,13 +1289,15 @@ public:
         auto sel = juce::Rectangle<float>::leftTopRightBottom(xLo, track.getY(), xHi, track.getBottom());
         g.setColour(t.accent);
         g.fillRoundedRectangle(sel, track.getHeight() * 0.5f);
-        const float th = track.getHeight() + 6.0f;
-        g.setColour(juce::Colours::white);
-        g.fillEllipse(xLo - th * 0.5f, track.getCentreY() - th * 0.5f, th, th);
-        g.fillEllipse(xHi - th * 0.5f, track.getCentreY() - th * 0.5f, th, th);
-        g.setColour(t.controlHairline);
-        g.drawEllipse(xLo - th * 0.5f, track.getCentreY() - th * 0.5f, th, th, 0.8f);
-        g.drawEllipse(xHi - th * 0.5f, track.getCentreY() - th * 0.5f, th, th, 0.8f);
+        // Thumbs on top of track; inset keeps min/max from clipping.
+        auto thumbAt = [&](float x)
+        {
+            return juce::Rectangle<float>(x - kThumbD * 0.5f,
+                                          track.getCentreY() - kThumbD * 0.5f,
+                                          kThumbD, kThumbD);
+        };
+        ds::shadow::thumb(g, thumbAt(xLo));
+        ds::shadow::thumb(g, thumbAt(xHi));
     }
 
 private:
@@ -1259,16 +1309,19 @@ private:
 
     Thumb hitThumb(float x) const
     {
+        constexpr float kInset = 10.0f * 0.5f + 0.5f;
         const float span = (float) juce::jmax(1, maxV - minV);
-        const float w = (float) juce::jmax(1, getWidth());
-        const float xLo = w * ((float) (lo - minV) / span);
-        const float xHi = w * ((float) (hi - minV) / span);
+        const float trackW = juce::jmax(1.0f, (float) getWidth() - kInset * 2.0f);
+        const float xLo = kInset + trackW * ((float) (lo - minV) / span);
+        const float xHi = kInset + trackW * ((float) (hi - minV) / span);
         return std::abs(x - xLo) <= std::abs(x - xHi) ? Thumb::Lo : Thumb::Hi;
     }
 
     void setFromX(float x)
     {
-        const float t = juce::jlimit(0.0f, 1.0f, x / (float) juce::jmax(1, getWidth()));
+        constexpr float kInset = 10.0f * 0.5f + 0.5f;
+        const float trackW = juce::jmax(1.0f, (float) getWidth() - kInset * 2.0f);
+        const float t = juce::jlimit(0.0f, 1.0f, (x - kInset) / trackW);
         const int v = minV + (int) std::lround(t * (float) (maxV - minV));
         if (dragThumb == Thumb::Lo) setRange(juce::jmin(v, hi), hi);
         else setRange(lo, juce::jmax(v, lo));
@@ -1631,7 +1684,19 @@ public:
     {
         if (open == o) return;
         open = o;
+        forceCollapsed = false;
         refreshRowVisibility();
+        if (onToggle) onToggle();
+        repaint();
+    }
+
+    /** Header fold-all: hide every row (ignore dirty keep-visible). */
+    void setFullyCollapsed(bool collapsed)
+    {
+        forceCollapsed = collapsed;
+        open = !collapsed;
+        refreshRowVisibility();
+        resized();
         if (onToggle) onToggle();
         repaint();
     }
@@ -1704,10 +1769,9 @@ public:
         const int padT = toolkitSectionPadT();
         if (e.y > padT + kSectionHeaderH) return;
 
-        auto header = getLocalBounds().withTrimmedTop(padT).removeFromTop(kSectionHeaderH)
-                          .reduced(kSectionPadH, 0);
-        auto lockR = header.removeFromRight(kHeaderIconW);
-        auto resetR = header.removeFromRight(kHeaderIconW);
+        const auto lockR = lockBounds();
+        const auto resetR = resetBounds();
+        const auto chevR = chevronHitBounds();
 
         if (lockR.contains(e.getPosition()) && onLockToggle)
         {
@@ -1719,27 +1783,39 @@ public:
             onReset();
             return;
         }
-        setOpen(!open);
+        // Title / empty header chrome must not toggle — only the triangle.
+        if (chevR.contains(e.getPosition()))
+            setOpen(!open);
+    }
+
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        const int padT = toolkitSectionPadT();
+        const bool overChev = e.y <= padT + kSectionHeaderH
+                           && chevronHitBounds().contains(e.getPosition());
+        setMouseCursor(overChev ? juce::MouseCursor::PointingHandCursor
+                                : juce::MouseCursor::NormalCursor);
     }
 
     void paint(juce::Graphics& g) override
     {
         const auto& t = inspectorTokens();
-        auto header = getLocalBounds().withTrimmedTop(toolkitSectionPadT()).removeFromTop(kSectionHeaderH);
-        header = header.reduced(kSectionPadH, 0);
+        auto header = headerBounds();
 
-        auto lockR = header.removeFromRight(kHeaderIconW).toFloat()
-                         .withSizeKeepingCentre(16.0f, 16.0f);
-        auto resetR = header.removeFromRight(kHeaderIconW).toFloat()
-                          .withSizeKeepingCentre(16.0f, 16.0f);
+        auto lockR = lockBounds().toFloat().withSizeKeepingCentre(16.0f, 16.0f);
+        auto resetR = resetBounds().toFloat().withSizeKeepingCentre(16.0f, 16.0f);
+        auto chev = chevronBounds().toFloat().withSizeKeepingCentre(12.0f, 12.0f);
 
-        auto chev = header.removeFromLeft(14).toFloat().withSizeKeepingCentre(12.0f, 12.0f);
+        header.removeFromRight(kHeaderIconW * 2);
+        header.removeFromLeft(14);
         header.removeFromLeft(6);
+
         if (open)
             drawCaretDown(g, chev, t.chevron);
         else
             drawCaretRight(g, chev, t.chevron);
 
+        // Match former TOOLKIT chrome: 11pt semibold + tracking.
         g.setFont(sectionTitleFont());
         g.setColour(t.headerText);
         g.drawText(title, header, juce::Justification::centredLeft, true);
@@ -1747,12 +1823,19 @@ public:
         drawIcon(g, icons::undo, resetR, t.chevron, 1.4f);
         drawIcon(g, locked ? icons::lockClosed : icons::lockOpen, lockR,
                  locked ? t.accent : t.chevron, 1.4f);
+
+        if (showBottomDivider)
+        {
+            g.setColour(t.divider);
+            g.fillRect(0, getHeight() - 1, getWidth(), 1);
+        }
     }
 
     juce::String title;
     /** Expanded by default; when folded, dirty (changed) rows stay visible. */
     bool open = true;
     bool locked = false;
+    bool showBottomDivider = true;
     std::function<void()> onToggle;
     std::function<void()> onReset;
     std::function<void()> onLockToggle;
@@ -1768,8 +1851,42 @@ public:
     std::vector<Row> rows;
 
 private:
+    bool forceCollapsed = false;
+
+    juce::Rectangle<int> headerBounds() const
+    {
+        return getLocalBounds().withTrimmedTop(toolkitSectionPadT())
+            .removeFromTop(kSectionHeaderH)
+            .reduced(kSectionPadH, 0);
+    }
+
+    juce::Rectangle<int> lockBounds() const
+    {
+        return headerBounds().removeFromRight(kHeaderIconW);
+    }
+
+    juce::Rectangle<int> resetBounds() const
+    {
+        auto h = headerBounds();
+        h.removeFromRight(kHeaderIconW);
+        return h.removeFromRight(kHeaderIconW);
+    }
+
+    /** Drawn caret cell (matches paint). */
+    juce::Rectangle<int> chevronBounds() const
+    {
+        return headerBounds().removeFromLeft(14);
+    }
+
+    /** Generous hit target — triangle only, not the title. */
+    juce::Rectangle<int> chevronHitBounds() const
+    {
+        return chevronBounds().expanded(6, 6);
+    }
+
     bool isRowShowing(const Row& r) const
     {
+        if (forceCollapsed) return false;
         if (open) return true;
         return r.dirty && r.dirty();
     }

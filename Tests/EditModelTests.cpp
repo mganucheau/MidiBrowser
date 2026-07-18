@@ -75,11 +75,40 @@ TEST_CASE("analyseClipScale detects viable keys/modes and octave span", "[editmo
     CHECK((a.keyMask & (uint16_t) (1u << 0)) != 0); // C
     CHECK((a.modeMask & (uint16_t) (1u << (int) Mode::Ionian)) != 0);
     CHECK(a.primaryRoot == 0);
+    CHECK(a.primaryMode == Mode::Ionian);
     CHECK(a.octaveRange == 0); // single octave
 
     // Notes spanning C3..C5 → octaveRange at least 2.
     auto wide = makeClip({ { 0, 48, 0.0, 1.0 }, { 1, 72, 1.0, 1.0 } }, 1, 0);
     CHECK(analyseClipScale(wide).octaveRange >= 2);
+}
+
+TEST_CASE("analyseClipScale seeds Major when Lydian covers F#", "[editmodel]")
+{
+    // C Lydian content (C E F# G) — Lydian covers it, but audition defaults to
+    // Major so Fit-to-Scale in C snaps F# rather than treating it as in-key.
+    auto clip = makeClip({
+        { 0, 60, 0.0, 1.0 },  // C
+        { 1, 64, 1.0, 1.0 },  // E
+        { 2, 66, 2.0, 1.0 },  // F#
+        { 3, 67, 3.0, 1.0 },  // G
+    }, 1, 0);
+    const auto a = analyseClipScale(clip);
+    CHECK((a.modeMask & (uint16_t) (1u << (int) Mode::Lydian)) != 0);
+    CHECK(a.primaryRoot == 0);
+    CHECK(a.primaryMode == Mode::Ionian);
+    CHECK(auditionMode(Mode::Lydian) == Mode::Ionian);
+    CHECK(auditionMode(Mode::Dorian) == Mode::Aeolian);
+
+    ClipEdit e;
+    e.fitScale = true;
+    e.root = a.primaryRoot;
+    e.mode = a.primaryMode;
+    const auto r = resolveClip(clip, e);
+    REQUIRE(r.notes.size() == 4);
+    for (const auto& n : r.notes)
+        CHECK(pitchInScale(n.pitch, 0, Mode::Ionian));
+    CHECK(r.notes[2].pitch == 65); // F# -> F
 }
 
 TEST_CASE("editIsClean detects default edits", "[editmodel]")
@@ -187,6 +216,29 @@ TEST_CASE("resolveClip composes map-to-root then fit-to-scale", "[editmodel]")
     const auto r = resolveClip(clip, e);
     CHECK(r.notes[0].pitch == 60);  // D -> C, in scale
     CHECK(r.notes[1].pitch == 63);  // F# -> E -> D# (C minor third)
+}
+
+TEST_CASE("resolveClip fit-to-scale survives octave-range remap", "[editmodel]")
+{
+    // Wide chromatic span + Fit to F major must not leave out-of-scale pitches
+    // after octave-range compression (which remaps chromatically).
+    auto clip = makeClip({
+        { 0, 53, 0.0, 1.0 },  // F3
+        { 1, 54, 1.0, 1.0 },  // F#
+        { 2, 58, 2.0, 1.0 },  // Bb
+        { 3, 66, 3.0, 1.0 },  // F#
+        { 4, 77, 4.0, 1.0 },  // F5
+    }, 1);
+    ClipEdit e;
+    e.fitScale = true;
+    e.root = 5; // F
+    e.mode = Mode::Ionian;
+    e.octaveRange = 2;
+
+    const auto r = resolveClip(clip, e);
+    REQUIRE_FALSE(r.notes.empty());
+    for (const auto& n : r.notes)
+        CHECK(pitchInScale(n.pitch, 5, Mode::Ionian));
 }
 
 TEST_CASE("resolveClip trim shifts notes and shrinks bars", "[editmodel]")

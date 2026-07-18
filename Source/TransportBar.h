@@ -33,7 +33,6 @@ public:
     std::function<void()> onStop;
     std::function<void()> onToggleEditor;
     std::function<void()> onToggleEffects;
-    std::function<void()> onToggleTheme;
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
     std::function<void()> onDragToDaw;
@@ -41,7 +40,6 @@ public:
 
 private:
     void refreshBpm();
-    void refreshThemeIcon();
     void timerCallback() override;
     bool hitInteractive(juce::Point<int> p) const;
 
@@ -123,7 +121,6 @@ private:
     DragChip btnDragToDaw { "Drag to DAW" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
     IconBtn btnEffects { icons::sidebarRight, "Toggle toolkit" };
-    IconBtn btnTheme { icons::moon, "Toggle light / dark" };
 
     juce::Rectangle<int> titleBounds, transportGroupBounds, dividerBounds;
 

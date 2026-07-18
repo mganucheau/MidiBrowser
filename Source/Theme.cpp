@@ -59,7 +59,9 @@ const AccentTokens& accentTokens()
 {
     thread_local AccentTokens cached {};
     const auto& p = ds::palette();
-    cached = { p.acc, juce::Colours::white, p.selsoft, p.acc.withAlpha(0.40f), p.note };
+    cached = { p.acc,
+               usesDarkAppearance() ? p.bg : juce::Colours::white,
+               p.selsoft, p.acc.withAlpha(0.40f), p.note };
     return cached;
 }
 
@@ -673,7 +675,7 @@ void PatternFlowLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Re
         tick.startNewSubPath(x - 3.5f, y);
         tick.lineTo(x - 0.5f, y + 3.0f);
         tick.lineTo(x + 4.5f, y - 3.5f);
-        g.setColour(isHighlighted ? juce::Colours::white : colours::accent());
+        g.setColour(isHighlighted ? colours::accentInk() : colours::accent());
         g.strokePath(tick, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved,
                                                 juce::PathStrokeType::rounded));
     }
@@ -686,7 +688,7 @@ void PatternFlowLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Re
         p.addTriangle(chev.getX(), chev.getY(),
                       chev.getX(), chev.getBottom(),
                       chev.getRight(), chev.getCentreY());
-        g.setColour(isHighlighted ? juce::Colours::white : colours::text3());
+        g.setColour(isHighlighted ? colours::accentInk() : colours::text3());
         g.fillPath(p);
     }
 
@@ -694,7 +696,7 @@ void PatternFlowLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Re
     if (!isActive)
         col = colours::textDim();
     else if (isHighlighted)
-        col = juce::Colours::white;
+        col = colours::accentInk();
 
     g.setFont(uiFont(12.5f, false));
     g.setColour(col);

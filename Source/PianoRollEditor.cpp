@@ -397,14 +397,17 @@ void PianoRollEditor::rebuildResolved()
     if (!hasClip) return;
     resolved = resolveClip(clip, edit);
     grooved = applyGroove(resolved.notes, groove, clip.complexity);
+    if (edit.fitScale && edit.root >= 0)
+        refitNotesToScale(grooved, edit.root, edit.mode);
 
     ClipEdit noTrim = edit;
     noTrim.clearTrim();
     const auto preTrim = resolveClip(clip, noTrim);
     emptyBarIndices = emptyBars(preTrim.notes, clip.bars);
 
+    // Fold rows from the notes we actually paint/hear (post-groove, re-fitted).
     std::set<int> pitches;
-    for (const auto& n : resolved.notes)
+    for (const auto& n : grooved)
         pitches.insert(juce::jlimit(0, 127, n.pitch));
     foldPitches.assign(pitches.begin(), pitches.end());
 }

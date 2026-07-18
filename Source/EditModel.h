@@ -58,6 +58,11 @@ constexpr int kNumModes = 7;
 const char* modeName(Mode m);
 const std::array<int, 7>& modeIntervals(Mode m);
 
+/** Collapse a detected mode to Major/Minor for audition defaults.
+    Bright modes → Major; dark modes → Minor. Candidates still expose the
+    exact mode so the user can opt into Lydian/Dorian/etc. */
+Mode auditionMode(Mode m);
+
 juce::String pitchName(int midi);           // MIDI 60 = "C4"
 bool isBlackKeyPitch(int midi);
 
@@ -87,6 +92,9 @@ int  noteNameIndex(const juce::String& name);   // "C"..."B" -> 0..11, else -1
 /** Snap a pitch to the nearest tone of scale(root, mode), preserving register.
     Searches ±6 semitones; on distance ties the lower candidate wins. */
 int fitToScale(int midi, int rootPc, Mode mode);
+
+/** Re-snap every note into scale(root, mode). No-op when rootPc < 0. */
+void refitNotesToScale(std::vector<RollNote>& notes, int rootPc, Mode mode);
 
 /** Note Filter: Mute drops filtered pitch-classes; Fold remaps to nearest kept class. */
 enum class NoteFilterType { Mute = 0, Fold = 1 };
