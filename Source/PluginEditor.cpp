@@ -253,6 +253,8 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.setHostBpm(processorRef.hostBpm.load());
     transport.setEditorOpen(processorRef.editorOpen);
     transport.setEffectsOpen(processorRef.effectsOpen);
+    transport.setReserveTrafficLights(
+        processorRef.wrapperType == juce::AudioProcessor::wrapperType_Standalone);
     content.addAndMakeVisible(transport);
 
     // ── Sidebar ──

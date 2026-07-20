@@ -275,6 +275,13 @@ void TransportBar::setHasClip(bool has)
     resized();
 }
 
+void TransportBar::setReserveTrafficLights(bool reserve)
+{
+    if (reserveTrafficLights == reserve) return;
+    reserveTrafficLights = reserve;
+    resized();
+}
+
 void TransportBar::setClipName(const juce::String& name)
 {
     if (btnDragToDaw.clipName == name) return;
@@ -364,13 +371,10 @@ void TransportBar::resized()
     const int y = (h - kBtnH) / 2;
     const int gap = 8;
 
-#if JUCE_MAC
-    lightsZoneW = 76;
-#else
-    lightsZoneW = 16;
-#endif
+    // Only the standalone macOS window has floating traffic lights over the header.
+    lightsZoneW = reserveTrafficLights ? 76 : 16;
 
-    // Left: traffic-light zone + app name
+    // Left: optional traffic-light zone + app name
     auto left = r.removeFromLeft(lightsZoneW + 14 + 110);
     titleBounds = juce::Rectangle<int>(lightsZoneW + 14, 0, 110, h);
     juce::ignoreUnused(left);
@@ -384,8 +388,10 @@ void TransportBar::resized()
     dividerBounds = r.removeFromRight(1).withY((h - 16) / 2).withHeight(16);
     r.removeFromRight(10);
 
+    // Drag chip is a primary export affordance — show whenever a clip is selected,
+    // not only when the editor/toolkit panes are open (VST often starts with both closed).
     const int chipH = 26;
-    btnDragToDaw.setVisible((editorOpen || effectsOpen) && hasClip);
+    btnDragToDaw.setVisible(hasClip);
     if (btnDragToDaw.isVisible())
     {
         const int dragW = btnDragToDaw.idealWidth();

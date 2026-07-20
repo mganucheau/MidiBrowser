@@ -28,6 +28,8 @@ public:
     void setEffectsOpen(bool);
     void setHasClip(bool has);
     void setClipName(const juce::String& name);
+    /** Standalone macOS reserves a traffic-light gutter; plugins must not. */
+    void setReserveTrafficLights(bool reserve);
 
     std::function<void()> onPlayPause;
     std::function<void()> onStop;
@@ -130,10 +132,11 @@ private:
     bool effectsOpen = false;
     bool hasClip = false;
     bool windowActive = true;
+    bool reserveTrafficLights = false;
     double hostBpm = 124.0;
     double freeBpm = 124.0;
     double multiplier = 1.0;
-    int lightsZoneW = 76;
+    int lightsZoneW = 16;
     juce::ComponentDragger windowDragger;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TransportBar)
