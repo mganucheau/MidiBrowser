@@ -120,10 +120,24 @@ public:
     juce::StringArray starredFiles;   // favourites — mirrored from LibraryStore
     std::vector<SavedSearchEntry> savedSearches;
 
+    /** Browser UI session mirrored from the editor so it survives UI teardown
+        (hosts destroy the editor when you click another plugin) and host save. */
+    int browseMode = 0;                 // 0 folder, 1 starred, 2 search
+    bool starredFilter = false;
+    bool includeSubdirs = false;
+    BrowserSearch browserSessionSearch;
+    juce::String selectedClipPath;
+    int activeSavedSearchIdx = -1;
+    /** Paths for the current search result list (browseMode == 2). */
+    juce::StringArray browserResultPaths;
+
     void addSavedBrowserDir(const juce::String& path);
     void removeSavedBrowserDir(const juce::String& path);
     void addSavedSearch(const SavedSearchEntry& entry);
     void removeSavedSearch(int index);
+    /** Persist result paths onto an existing saved search (library + host state). */
+    void updateSavedSearchResults(int index, const juce::StringArray& resultPaths,
+                                  const juce::String& rootPath = {});
     bool isStarred(const juce::String& path) const { return starredFiles.contains(path); }
     void toggleStarred(const juce::String& path);
 

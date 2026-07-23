@@ -51,6 +51,19 @@ void MidiBrowserProcessor::removeSavedSearch(int index)
     savedSearches = library_.savedSearches;
 }
 
+void MidiBrowserProcessor::updateSavedSearchResults(int index,
+                                                    const juce::StringArray& resultPaths,
+                                                    const juce::String& rootPath)
+{
+    if (!juce::isPositiveAndBelow(index, (int) savedSearches.size()))
+        return;
+    auto& entry = savedSearches[(size_t) index];
+    entry.resultPaths = resultPaths;
+    if (rootPath.isNotEmpty())
+        entry.rootPath = rootPath;
+    syncLibraryFromMemory();
+}
+
 void MidiBrowserProcessor::prepareToPlay(double sr, int)
 {
     sampleRate_ = sr;
@@ -394,7 +407,7 @@ void MidiBrowserProcessor::removeSavedBrowserDir(const juce::String& path)
 void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
     juce::XmlElement xml("MidiBrowserState");
-    xml.setAttribute("version", 4);
+    xml.setAttribute("version", 5);
     xml.setAttribute("tweakDensity", tweaks().density.load());
     xml.setAttribute("tweakSize", tweaks().size.load());
     xml.setAttribute("tweakTextScalePct", tweaks().textScalePct.load());
@@ -411,6 +424,21 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("effectsOpen", effectsOpen ? 1 : 0);
     xml.setAttribute("previewOpen", previewOpen ? 1 : 0);
     xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
+    xml.setAttribute("browseMode", browseMode);
+    xml.setAttribute("starredFilter", starredFilter ? 1 : 0);
+    xml.setAttribute("includeSubdirs", includeSubdirs ? 1 : 0);
+    xml.setAttribute("selectedClipPath", selectedClipPath);
+    xml.setAttribute("activeSavedSearchIdx", activeSavedSearchIdx);
+    {
+        auto* session = xml.createNewChildElement("BrowserSession");
+        LibraryStore::browserSearchToXml(*session, browserSessionSearch);
+        for (const auto& path : browserResultPaths)
+        {
+            if (path.isEmpty()) continue;
+            auto* child = session->createNewChildElement("Result");
+            child->setAttribute("path", path);
+        }
+    }
     xml.setAttribute("colKey", columnVisibility.key ? 1 : 0);
     xml.setAttribute("colTempo", columnVisibility.tempo ? 1 : 0);
     xml.setAttribute("colBars", columnVisibility.bars ? 1 : 0);
@@ -487,17 +515,13 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
         child->setAttribute("name", ss.name);
         if (ss.rootPath.isNotEmpty())
             child->setAttribute("root", ss.rootPath);
-        child->setAttribute("query", ss.search.query);
-        child->setAttribute("bpmMin", ss.search.bpmMin);
-        child->setAttribute("bpmMax", ss.search.bpmMax);
-        child->setAttribute("key", ss.search.keyRoot);
-        child->setAttribute("keyMask", (int) ss.search.keyMask);
-        child->setAttribute("barsMin", ss.search.barsMin);
-        child->setAttribute("barsMax", ss.search.barsMax);
-        child->setAttribute("complexityMin", ss.search.complexityMin);
-        child->setAttribute("complexityMax", ss.search.complexityMax);
-        child->setAttribute("subdirs", ss.search.subdirs ? 1 : 0);
-        child->setAttribute("removeDuplicates", ss.search.removeDuplicates ? 1 : 0);
+        LibraryStore::browserSearchToXml(*child, ss.search);
+        for (const auto& p : ss.resultPaths)
+        {
+            if (p.isEmpty()) continue;
+            auto* pathEl = child->createNewChildElement("Path");
+            pathEl->setAttribute("value", p);
+        }
     }
 
     for (const auto& [path, edit] : clipEdits)
@@ -599,6 +623,13 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
     syncSessionBars.store(4);
     clipEdits.clear();
     clipGrooves.clear();
+    browseMode = 0;
+    starredFilter = false;
+    includeSubdirs = false;
+    browserSessionSearch = {};
+    selectedClipPath.clear();
+    activeSavedSearchIdx = -1;
+    browserResultPaths.clear();
     if (data == nullptr || sizeInBytes <= 0)
         return;
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
@@ -631,6 +662,23 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             effectsOpen = xml->getIntAttribute("effectsOpen", 0) != 0;
             previewOpen = xml->getIntAttribute("previewOpen", 1) != 0;
             sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
+            browseMode = juce::jlimit(0, 2, xml->getIntAttribute("browseMode", 0));
+            starredFilter = xml->getIntAttribute("starredFilter", 0) != 0;
+            includeSubdirs = xml->getIntAttribute("includeSubdirs", 0) != 0;
+            selectedClipPath = xml->getStringAttribute("selectedClipPath");
+            activeSavedSearchIdx = xml->getIntAttribute("activeSavedSearchIdx", -1);
+            if (auto* session = xml->getChildByName("BrowserSession"))
+            {
+                browserSessionSearch = LibraryStore::browserSearchFromXml(*session);
+                browserResultPaths.clear();
+                for (auto* child : session->getChildIterator())
+                {
+                    if (!child->hasTagName("Result")) continue;
+                    const auto path = child->getStringAttribute("path");
+                    if (path.isNotEmpty())
+                        browserResultPaths.add(path);
+                }
+            }
             columnVisibility.key = xml->getIntAttribute("colKey", 1) != 0;
             columnVisibility.tempo = xml->getIntAttribute("colTempo", 1) != 0;
             columnVisibility.bars = xml->getIntAttribute("colBars", 1) != 0;
@@ -752,39 +800,18 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     SavedSearchEntry entry;
                     entry.name = child->getStringAttribute("name");
                     entry.rootPath = child->getStringAttribute("root");
-                    entry.search.query = child->getStringAttribute("query");
-                    if (child->hasAttribute("bpmMin") || child->hasAttribute("bpmMax"))
-                    {
-                        entry.search.bpmMin = child->getDoubleAttribute("bpmMin", 0.0);
-                        entry.search.bpmMax = child->getDoubleAttribute("bpmMax", 0.0);
-                    }
-                    else
-                    {
-                        const double bpm = child->getDoubleAttribute("bpm", 0.0);
-                        entry.search.bpmMin = bpm;
-                        entry.search.bpmMax = bpm;
-                    }
-                    entry.search.keyRoot = juce::jlimit(-1, 11, child->getIntAttribute("key", -1));
-                    entry.search.keyMask = (uint16_t) juce::jlimit(0, 0x0FFF, child->getIntAttribute("keyMask", 0));
-                    if (entry.search.keyMask == 0 && entry.search.keyRoot >= 0)
-                        entry.search.keyMask = (uint16_t) (1u << entry.search.keyRoot);
-                    if (child->hasAttribute("barsMin") || child->hasAttribute("barsMax"))
-                    {
-                        entry.search.barsMin = juce::jmax(0, child->getIntAttribute("barsMin", 0));
-                        entry.search.barsMax = juce::jmax(0, child->getIntAttribute("barsMax", 0));
-                    }
-                    else
-                    {
-                        const int bars = juce::jmax(0, child->getIntAttribute("bars", 0));
-                        entry.search.barsMin = bars;
-                        entry.search.barsMax = bars;
-                    }
-                    entry.search.complexityMin = juce::jmax(0, child->getIntAttribute("complexityMin", 0));
-                    entry.search.complexityMax = juce::jmax(0, child->getIntAttribute("complexityMax", 0));
-                    entry.search.subdirs = child->getIntAttribute("subdirs", 1) != 0;
-                    entry.search.removeDuplicates = child->getIntAttribute("removeDuplicates", 1) != 0;
+                    entry.search = LibraryStore::browserSearchFromXml(*child);
+                    for (auto* pathEl : child->getChildIterator())
+                        if (pathEl->hasTagName("Path") || pathEl->hasTagName("Result"))
+                        {
+                            const auto p = pathEl->hasAttribute("value")
+                                ? pathEl->getStringAttribute("value")
+                                : pathEl->getStringAttribute("path");
+                            if (p.isNotEmpty())
+                                entry.resultPaths.add(p);
+                        }
                     if (entry.name.isNotEmpty())
-                        savedSearches.push_back(entry);
+                        savedSearches.push_back(std::move(entry));
                 }
                 else if (child->hasTagName("ClipEdit"))
                 {

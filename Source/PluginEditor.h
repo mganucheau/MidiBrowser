@@ -35,7 +35,7 @@ public:
 private:
     void applyNativeWindowChrome();
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);
-    void rescanFolder(bool keepSelection);
+    void rescanFolder(bool keepSelection, bool autoSelect = true);
     /** Load every MIDI file under the current folder tree (flat list). */
     void scanAllFolders();
     void chooseFolder();
@@ -65,7 +65,12 @@ private:
     void refreshSidebar();
     void syncEffectsInspector();
     void setBrowseMode(int mode);
-    void loadStarredClips();
+    void loadStarredClips(bool autoSelect = true);
+    /** Mirror browser UI into the processor (survives editor teardown / host save). */
+    void persistBrowserSession();
+    /** Rebuild folder/search/filters/selection from processor session state. */
+    void restoreBrowserSession();
+    void selectPathOrFirst(const juce::String& path);
     void runSearch(const BrowserSearch& criteria);
     /** savedIdx >= 0 keeps that saved-search selection and stores/restores its result snapshot. */
     void runSearchAsync(const BrowserSearch& criteria, int savedIdx = -1,

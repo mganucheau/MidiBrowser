@@ -28,6 +28,8 @@ TEST_CASE("LibraryStore persists stars and search cache to disk", "[Library][qa]
         entry.name = "groove 120";
         entry.search = s;
         entry.rootPath = "/tmp/midi";
+        entry.resultPaths.add("/tmp/midi/a.mid");
+        entry.resultPaths.add("/tmp/midi/b.mid");
         store.addSavedSearch(entry);
     }
 
@@ -39,6 +41,9 @@ TEST_CASE("LibraryStore persists stars and search cache to disk", "[Library][qa]
         REQUIRE(loaded.savedSearches.size() == 1);
         REQUIRE(loaded.savedSearches[0].name == "groove 120");
         REQUIRE(loaded.savedSearches[0].rootPath == "/tmp/midi");
+        REQUIRE(loaded.savedSearches[0].resultPaths.size() == 2);
+        REQUIRE(loaded.savedSearches[0].resultPaths[0] == "/tmp/midi/a.mid");
+        REQUIRE(loaded.savedSearches[0].resultPaths[1] == "/tmp/midi/b.mid");
 
         BrowserSearch s;
         s.query = "groove";

@@ -311,6 +311,16 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     original.syncLockFlagsFromSections();
     original.lockedGroove.swing = 42;
     original.lockedGroove.pocket = -20;
+    original.browseMode = 2;
+    original.includeSubdirs = true;
+    original.selectedClipPath = "/tmp/midi-lib/groove.mid";
+    original.activeSavedSearchIdx = 0;
+    original.browserSessionSearch.query = "house";
+    original.browserSessionSearch.bpmMin = 120.0;
+    original.browserSessionSearch.bpmMax = 130.0;
+    original.browserSessionSearch.keyMask = (uint16_t) (1u << 0);
+    original.browserResultPaths.add("/tmp/midi-lib/a.mid");
+    original.browserResultPaths.add("/tmp/midi-lib/b.mid");
     tweaks().density.store((int) Density::Comfortable);
     tweaks().size.store((int) ContentSize::Large);
     original.addSavedBrowserDir(juce::File::getSpecialLocation(juce::File::tempDirectory).getFullPathName());
@@ -321,6 +331,8 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     saved.search.bpmMin = 128.0;
     saved.search.bpmMax = 128.0;
     saved.rootPath = "/tmp/midi-lib";
+    saved.resultPaths.add("/tmp/midi-lib/a.mid");
+    saved.resultPaths.add("/tmp/midi-lib/b.mid");
     original.addSavedSearch(saved);
 
     juce::MemoryBlock state;
@@ -340,6 +352,16 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     REQUIRE(restored.effectsLock);
     REQUIRE(restored.lockedGroove.swing == 42);
     REQUIRE(restored.lockedGroove.pocket == -20);
+    REQUIRE(restored.browseMode == 2);
+    REQUIRE(restored.includeSubdirs);
+    REQUIRE(restored.selectedClipPath == "/tmp/midi-lib/groove.mid");
+    REQUIRE(restored.activeSavedSearchIdx == 0);
+    REQUIRE(restored.browserSessionSearch.query == "house");
+    REQUIRE(restored.browserSessionSearch.bpmMin == Catch::Approx(120.0));
+    REQUIRE(restored.browserSessionSearch.bpmMax == Catch::Approx(130.0));
+    REQUIRE(restored.browserSessionSearch.keyMask == (uint16_t) (1u << 0));
+    REQUIRE(restored.browserResultPaths.size() == 2);
+    REQUIRE(restored.browserResultPaths[0] == "/tmp/midi-lib/a.mid");
     REQUIRE(tweaks().density.load() == (int) Density::Comfortable);
     REQUIRE(tweaks().size.load() == (int) ContentSize::Large);
     REQUIRE(restored.savedBrowserDirs.size() == original.savedBrowserDirs.size());
@@ -347,7 +369,10 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     REQUIRE(std::any_of(restored.savedSearches.begin(), restored.savedSearches.end(),
                         [](const SavedSearchEntry& e)
                         {
-                            return e.name == "house 128" && e.rootPath == "/tmp/midi-lib";
+                            return e.name == "house 128"
+                                && e.rootPath == "/tmp/midi-lib"
+                                && e.resultPaths.size() == 2
+                                && e.resultPaths[0] == "/tmp/midi-lib/a.mid";
                         }));
 
     tweaks().density.store((int) Density::Compact);

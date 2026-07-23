@@ -50,6 +50,10 @@ public:
 
     static bool searchesEqual(const BrowserSearch& a, const BrowserSearch& b);
 
+    /** Shared XML helpers for host state + library file. */
+    static BrowserSearch browserSearchFromXml(const juce::XmlElement& el);
+    static void browserSearchToXml(juce::XmlElement& el, const BrowserSearch& s);
+
 private:
     static constexpr int kMaxSavedSearches = 48;
     static constexpr int kMaxSearchCache = 32;

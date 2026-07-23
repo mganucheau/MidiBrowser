@@ -26,9 +26,7 @@ bool LibraryStore::searchesEqual(const BrowserSearch& a, const BrowserSearch& b)
         && a.removeDuplicates == b.removeDuplicates;
 }
 
-namespace {
-
-BrowserSearch readBrowserSearch(const juce::XmlElement& el)
+BrowserSearch LibraryStore::browserSearchFromXml(const juce::XmlElement& el)
 {
     BrowserSearch s;
     s.query = el.getStringAttribute("query");
@@ -70,7 +68,7 @@ BrowserSearch readBrowserSearch(const juce::XmlElement& el)
     return s;
 }
 
-void writeBrowserSearch(juce::XmlElement& el, const BrowserSearch& s)
+void LibraryStore::browserSearchToXml(juce::XmlElement& el, const BrowserSearch& s)
 {
     el.setAttribute("query", s.query);
     el.setAttribute("bpmMin", s.bpmMin);
@@ -84,8 +82,6 @@ void writeBrowserSearch(juce::XmlElement& el, const BrowserSearch& s)
     el.setAttribute("subdirs", s.subdirs ? 1 : 0);
     el.setAttribute("removeDuplicates", s.removeDuplicates ? 1 : 0);
 }
-
-} // namespace
 
 void LibraryStore::load()
 {
@@ -114,16 +110,25 @@ void LibraryStore::load()
             {
                 SavedSearchEntry entry;
                 entry.name = child->getStringAttribute("name");
-                entry.search = readBrowserSearch(*child);
+                entry.search = browserSearchFromXml(*child);
                 entry.rootPath = child->getStringAttribute("root");
+                for (auto* pathEl : child->getChildIterator())
+                    if (pathEl->hasTagName("Path") || pathEl->hasTagName("Result"))
+                    {
+                        const auto p = pathEl->hasAttribute("value")
+                            ? pathEl->getStringAttribute("value")
+                            : pathEl->getStringAttribute("path");
+                        if (p.isNotEmpty())
+                            entry.resultPaths.add(p);
+                    }
                 if (entry.name.isNotEmpty())
-                    savedSearches.push_back(entry);
+                    savedSearches.push_back(std::move(entry));
             }
             else if (child->hasTagName("SearchCache"))
             {
                 CachedSearch c;
                 c.rootPath = child->getStringAttribute("root");
-                c.criteria = readBrowserSearch(*child);
+                c.criteria = browserSearchFromXml(*child);
                 c.scannedAtMs = (juce::int64) child->getStringAttribute("scannedAt").getLargeIntValue();
                 for (auto* pathEl : child->getChildIterator())
                     if (pathEl->hasTagName("Path"))
@@ -158,7 +163,13 @@ void LibraryStore::save() const
         child->setAttribute("name", ss.name);
         if (ss.rootPath.isNotEmpty())
             child->setAttribute("root", ss.rootPath);
-        writeBrowserSearch(*child, ss.search);
+        browserSearchToXml(*child, ss.search);
+        for (const auto& p : ss.resultPaths)
+        {
+            if (p.isEmpty()) continue;
+            auto* pathEl = child->createNewChildElement("Path");
+            pathEl->setAttribute("value", p);
+        }
     }
 
     for (const auto& c : searchCache)
@@ -166,7 +177,7 @@ void LibraryStore::save() const
         if (c.rootPath.isEmpty()) continue;
         auto* child = xml.createNewChildElement("SearchCache");
         child->setAttribute("root", c.rootPath);
-        writeBrowserSearch(*child, c.criteria);
+        browserSearchToXml(*child, c.criteria);
         child->setAttribute("scannedAt", juce::String(c.scannedAtMs));
         for (const auto& p : c.resultPaths)
         {
@@ -237,10 +248,18 @@ void LibraryStore::mergeFromPluginState(const juce::StringArray& stars,
     {
         if (ss.name.isEmpty()) continue;
         bool exists = false;
-        for (const auto& have : savedSearches)
+        for (auto& have : savedSearches)
             if (have.name == ss.name && searchesEqual(have.search, ss.search))
             {
                 exists = true;
+                // Prefer the copy that still carries result paths.
+                if (have.resultPaths.isEmpty() && ss.resultPaths.size() > 0)
+                {
+                    have.resultPaths = ss.resultPaths;
+                    if (have.rootPath.isEmpty())
+                        have.rootPath = ss.rootPath;
+                    dirty = true;
+                }
                 break;
             }
         if (!exists)

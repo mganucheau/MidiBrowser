@@ -30,6 +30,9 @@ struct SavedSearchEntry
     BrowserSearch search;
     /** Folder the search was run against — used to restore the path cache. */
     juce::String rootPath;
+    /** Matching file paths captured when the search was saved / last run.
+        Lets saved searches reopen instantly across sessions without rescanning. */
+    juce::StringArray resultPaths;
 };
 
 // 3c source-list: Open Folder → folder card → LIBRARY → SEARCH → SAVED SEARCHES.

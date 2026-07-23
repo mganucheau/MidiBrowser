@@ -385,6 +385,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         rescanFolder(true);
         refreshSidebar();
         fileList.grabBrowseFocus();
+        persistBrowserSession();
     };
     sidebar.onRemoveDir = [this](const juce::String& path)
     {
@@ -474,6 +475,27 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
                 refreshSidebar();
                 return;
             }
+        }
+
+        // Persisted result paths on the saved search itself (cross-session).
+        if (entry.resultPaths.size() > 0)
+        {
+            std::vector<StepClip> found;
+            found.reserve((size_t) entry.resultPaths.size());
+            for (const auto& path : entry.resultPaths)
+            {
+                const juce::File f(path);
+                if (f.existsAsFile())
+                    found.push_back(makeStepClip(parseMidiFile(f)));
+            }
+            if (!found.empty())
+            {
+                applySearchSnapshot(std::move(found), {}, entry.search, idx,
+                                    entry.rootPath, false);
+                refreshSidebar();
+                return;
+            }
+            // All cached files are gone — fall through to a fresh scan.
         }
 
         juce::File searchRoot(entry.rootPath);
@@ -723,12 +745,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     effectsInspector.onActivated = [this] { claimKeyNav(KeyNavTarget::Effects); };
     content.addAndMakeVisible(effectsInspector);
 
-    if (processorRef.lastBrowserDir.isNotEmpty())
-    {
-        const juce::File dir(processorRef.lastBrowserDir);
-        if (dir.isDirectory())
-            setRootDirectory(dir);
-    }
+    restoreBrowserSession();
     refreshSidebar();
 
     setResizable(true, true);
@@ -741,6 +758,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
 
 MidiBrowserEditor::~MidiBrowserEditor()
 {
+    persistBrowserSession();
     juce::Desktop::getInstance().removeDarkModeSettingListener(this);
     stopTimer();
     setLookAndFeel(nullptr);
@@ -789,9 +807,148 @@ void MidiBrowserEditor::setRootDirectory(const juce::File& dir, bool keepSelecti
     rescanFolder(keepSelection);
     refreshSidebar();
     fileList.grabBrowseFocus();
+    persistBrowserSession();
 }
 
-void MidiBrowserEditor::rescanFolder(bool keepSelection)
+void MidiBrowserEditor::persistBrowserSession()
+{
+    processorRef.browseMode = browseMode;
+    processorRef.starredFilter = starredFilter;
+    processorRef.includeSubdirs = sidebar.getIncludeSubdirs();
+    // Live sidebar criteria (query + filters) — not a stale search snapshot.
+    processorRef.browserSessionSearch = sidebar.getCriteria();
+    if (browseMode == 2)
+        activeSearch = processorRef.browserSessionSearch;
+    processorRef.activeSavedSearchIdx = activeSavedSearchIdx;
+    if (rootDir.isDirectory())
+        processorRef.lastBrowserDir = rootDir.getFullPathName();
+
+    if (juce::isPositiveAndBelow(selectedIdx, (int) clips.size()))
+        processorRef.selectedClipPath = clips[(size_t) selectedIdx].filePath;
+    else
+        processorRef.selectedClipPath.clear();
+
+    processorRef.browserResultPaths.clear();
+    if (browseMode == 2)
+    {
+        processorRef.browserResultPaths.ensureStorageAllocated((int) clips.size());
+        for (const auto& c : clips)
+            if (c.filePath.isNotEmpty())
+                processorRef.browserResultPaths.add(c.filePath);
+    }
+}
+
+void MidiBrowserEditor::selectPathOrFirst(const juce::String& path)
+{
+    int nextSel = -1;
+    if (path.isNotEmpty())
+    {
+        for (int i = 0; i < (int) clips.size(); ++i)
+        {
+            if (clips[(size_t) i].filePath == path && displayForClip(i) >= 0)
+            {
+                nextSel = i;
+                break;
+            }
+        }
+    }
+    if (nextSel < 0)
+    {
+        for (const auto& row : displayRows)
+            if (!row.isDirectory)
+            {
+                nextSel = row.clipIndex;
+                break;
+            }
+    }
+
+    selectedIdx = -1;
+    if (nextSel >= 0)
+        selectIndex(nextSel);
+    else
+    {
+        rollEditor.clearClip();
+        syncEffectsInspector();
+        processorRef.setPreviewState({}, false, false, false);
+        transport.setHasClip(false);
+        transport.setClipName({});
+    }
+}
+
+void MidiBrowserEditor::restoreBrowserSession()
+{
+    // Restore sidebar chrome before any rescan so filters / include-subdirs apply.
+    sidebar.setIncludeSubdirs(processorRef.includeSubdirs);
+    sidebar.setCriteria(processorRef.browserSessionSearch);
+
+    if (processorRef.lastBrowserDir.isNotEmpty())
+    {
+        const juce::File dir(processorRef.lastBrowserDir);
+        if (dir.isDirectory())
+            rootDir = dir;
+    }
+
+    browseMode = juce::jlimit(0, 2, processorRef.browseMode);
+    starredFilter = processorRef.starredFilter;
+    activeSavedSearchIdx = processorRef.activeSavedSearchIdx;
+    activeSearch = processorRef.browserSessionSearch;
+    recursiveBrowse = processorRef.includeSubdirs;
+    sidebar.setBrowseMode(browseMode);
+    sidebar.setStarredFilter(starredFilter);
+
+    const juce::String wantPath = processorRef.selectedClipPath;
+
+    if (browseMode == 1)
+    {
+        loadStarredClips(false);
+        selectPathOrFirst(wantPath);
+        fileList.grabBrowseFocus();
+    }
+    else if (browseMode == 2)
+    {
+        std::vector<StepClip> found;
+        found.reserve((size_t) processorRef.browserResultPaths.size());
+        for (const auto& path : processorRef.browserResultPaths)
+        {
+            const juce::File f(path);
+            if (f.existsAsFile())
+                found.push_back(makeStepClip(parseMidiFile(f)));
+        }
+
+        if (!found.empty())
+        {
+            // Apply list without the snapshot helper's default first-row select.
+            activeSearch = processorRef.browserSessionSearch;
+            recursiveBrowse = false;
+            setBrowseMode(2);
+            clips = std::move(found);
+            juce::String title = "Search";
+            if (activeSearch.query.isNotEmpty())
+                title = activeSearch.query;
+            fileList.setFolderName(title);
+            rebuildEntries();
+            selectPathOrFirst(wantPath);
+            fileList.grabBrowseFocus();
+        }
+        else
+        {
+            // Fall back to a live search (may hit LibraryStore path cache).
+            runSearchAsync(activeSearch, activeSavedSearchIdx);
+        }
+    }
+    else if (rootDir.isDirectory())
+    {
+        // Folder mode — rescan without wiping the restored filter criteria.
+        searchDuplicateLocations.clear();
+        rescanFolder(false, false);
+        selectPathOrFirst(wantPath);
+        fileList.grabBrowseFocus();
+    }
+
+    persistBrowserSession();
+}
+
+void MidiBrowserEditor::rescanFolder(bool keepSelection, bool autoSelect)
 {
     const juce::String previousPath =
         (keepSelection && selectedIdx >= 0 && selectedIdx < (int) clips.size())
@@ -829,6 +986,9 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection)
     }
 
     rebuildEntries();
+
+    if (!autoSelect)
+        return;
 
     int nextSel = clips.empty() ? -1 : 0;
     if (previousPath.isNotEmpty())
@@ -908,15 +1068,17 @@ void MidiBrowserEditor::applyBrowserFilter()
         syncEffectsInspector();
         processorRef.setPreviewState({}, false, false, false);
     }
+    persistBrowserSession();
 }
 
 void MidiBrowserEditor::setBrowseMode(int mode)
 {
     browseMode = juce::jlimit(0, 2, mode);
     sidebar.setBrowseMode(browseMode);
+    persistBrowserSession();
 }
 
-void MidiBrowserEditor::loadStarredClips()
+void MidiBrowserEditor::loadStarredClips(bool autoSelect)
 {
     const juce::String previousPath =
         (selectedIdx >= 0 && selectedIdx < (int) clips.size())
@@ -932,6 +1094,9 @@ void MidiBrowserEditor::loadStarredClips()
 
     fileList.setFolderName("Favorites");
     rebuildEntries();
+
+    if (!autoSelect)
+        return;
 
     int nextSel = clips.empty() ? -1 : 0;
     if (previousPath.isNotEmpty())
@@ -1072,6 +1237,7 @@ void MidiBrowserEditor::applySearchSnapshot(std::vector<StepClip> found,
         rollEditor.clearClip();
         syncEffectsInspector();
         processorRef.setPreviewState({}, false, false, false);
+        persistBrowserSession();
     }
     fileList.grabBrowseFocus();
 }
@@ -1126,6 +1292,9 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria, int savedI
 
         if (!missing)
         {
+            if (savedIdx >= 0)
+                processorRef.updateSavedSearchResults(savedIdx, cached->resultPaths,
+                                                      searchRoot.getFullPathName());
             applySearchSnapshot(std::move(found), {}, criteria, savedIdx,
                                 searchRoot.getFullPathName(), false);
             return;
@@ -1164,6 +1333,9 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria, int savedI
                 return;
 
             safe->processorRef.library().putSearchCache(searchRoot, cacheKey, paths);
+            if (savedIdx >= 0)
+                safe->processorRef.updateSavedSearchResults(savedIdx, paths,
+                                                            searchRoot.getFullPathName());
             safe->applySearchSnapshot(std::move(results), {}, criteria, savedIdx,
                                       searchRoot.getFullPathName(), false);
         });
@@ -1194,6 +1366,23 @@ void MidiBrowserEditor::saveCurrentSearch()
     else
         entry.rootPath = processorRef.lastBrowserDir;
 
+    // Capture result paths so the saved search reopens instantly next session.
+    if (LibraryStore::searchesEqual(lastSearchSnapshot.criteria, criteria)
+        && !lastSearchSnapshot.clips.empty())
+    {
+        entry.resultPaths.ensureStorageAllocated((int) lastSearchSnapshot.clips.size());
+        for (const auto& c : lastSearchSnapshot.clips)
+            if (c.filePath.isNotEmpty())
+                entry.resultPaths.add(c.filePath);
+    }
+    else if (browseMode == 2 && !clips.empty())
+    {
+        entry.resultPaths.ensureStorageAllocated((int) clips.size());
+        for (const auto& c : clips)
+            if (c.filePath.isNotEmpty())
+                entry.resultPaths.add(c.filePath);
+    }
+
     juce::StringArray parts;
     if (criteria.query.isNotEmpty())
         parts.add(criteria.query);
@@ -1223,7 +1412,14 @@ void MidiBrowserEditor::saveCurrentSearch()
     if (LibraryStore::searchesEqual(lastSearchSnapshot.criteria, criteria))
         savedSearchSnapshots[activeSavedSearchIdx] = lastSearchSnapshot;
 
+    // Keep the generic search cache warm for the same criteria.
+    if (entry.resultPaths.size() > 0 && entry.rootPath.isNotEmpty())
+        processorRef.library().putSearchCache(juce::File(entry.rootPath),
+                                              searchScanKey(criteria),
+                                              entry.resultPaths);
+
     refreshSidebar();
+    persistBrowserSession();
 }
 
 void MidiBrowserEditor::rebuildEntries()
@@ -1506,6 +1702,7 @@ void MidiBrowserEditor::selectIndex(int index)
 
     pushPreviewToProcessor();
     updateMiniPreview();
+    persistBrowserSession();
 }
 
 void MidiBrowserEditor::refreshEntryMeta(int index)
