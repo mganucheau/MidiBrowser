@@ -15,6 +15,13 @@ MidiBrowserProcessor::MidiBrowserProcessor()
     applyLibraryToMemory();
 }
 
+MidiBrowserProcessor::~MidiBrowserProcessor()
+{
+    // Favorites live in Application Support — flush before the instance dies.
+    syncLibraryFromMemory();
+    library_.flush();
+}
+
 void MidiBrowserProcessor::applyLibraryToMemory()
 {
     starredFiles = library_.starredFiles;
@@ -23,9 +30,14 @@ void MidiBrowserProcessor::applyLibraryToMemory()
 
 void MidiBrowserProcessor::syncLibraryFromMemory()
 {
-    library_.starredFiles = starredFiles;
+    // Union memory stars into the library (never replace — disk accrues).
+    library_.mergeStarsFromDisk();
+    for (const auto& s : starredFiles)
+        if (s.isNotEmpty() && !library_.starredFiles.contains(s))
+            library_.starredFiles.add(s);
     library_.savedSearches = savedSearches;
     library_.save();
+    starredFiles = library_.starredFiles;
 }
 
 void MidiBrowserProcessor::saveLibrary()
@@ -447,6 +459,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("colDifNotes", columnVisibility.difNotes ? 1 : 0);
     xml.setAttribute("colTimeSig", columnVisibility.timeSig ? 1 : 0);
     xml.setAttribute("colNotes", columnVisibility.notes ? 1 : 0);
+    xml.setAttribute("nameColumnWidth", nameColumnWidth);
     syncLockFlagsFromSections();
     xml.setAttribute("sectionLocks", (int) sectionLocks);
     xml.setAttribute("editLock", editLock ? 1 : 0);
@@ -617,8 +630,10 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
 {
     lastBrowserDir.clear();
     savedBrowserDirs.clear();
-    starredFiles.clear();
-    savedSearches.clear();
+    // Favorites/searches accrue in Application Support — do not clear them here.
+    // Host state is merged into the library at the end of this load.
+    juce::StringArray hostStars;
+    std::vector<SavedSearchEntry> hostSearches;
     trimEmptyMeasuresPreview = false;
     syncSessionBars.store(4);
     clipEdits.clear();
@@ -631,7 +646,11 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
     activeSavedSearchIdx = -1;
     browserResultPaths.clear();
     if (data == nullptr || sizeInBytes <= 0)
+    {
+        library_.mergeStarsFromDisk();
+        applyLibraryToMemory();
         return;
+    }
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
     {
         if (xml->hasTagName("MidiBrowserState") || xml->hasTagName("PatternFlowState"))
@@ -687,6 +706,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             columnVisibility.difNotes = xml->getIntAttribute("colDifNotes", 0) != 0;
             columnVisibility.timeSig = xml->getIntAttribute("colTimeSig", 0) != 0;
             columnVisibility.notes = xml->getIntAttribute("colNotes", 0) != 0;
+            nameColumnWidth = juce::jlimit(120, 520, xml->getIntAttribute("nameColumnWidth", 240));
             editLock = xml->getIntAttribute("editLock", 0) != 0;
             effectsLock = xml->getIntAttribute("effectsLock", 0) != 0;
             if (xml->hasAttribute("sectionLocks"))
@@ -792,8 +812,8 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 else if (child->hasTagName("StarredFile"))
                 {
                     const auto path = child->getStringAttribute("path");
-                    if (path.isNotEmpty() && !starredFiles.contains(path))
-                        starredFiles.add(path);
+                    if (path.isNotEmpty() && !hostStars.contains(path))
+                        hostStars.add(path);
                 }
                 else if (child->hasTagName("SavedSearch"))
                 {
@@ -811,7 +831,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                                 entry.resultPaths.add(p);
                         }
                     if (entry.name.isNotEmpty())
-                        savedSearches.push_back(std::move(entry));
+                        hostSearches.push_back(std::move(entry));
                 }
                 else if (child->hasTagName("ClipEdit"))
                 {
@@ -936,9 +956,10 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
         }
     }
 
-    // Host/project state may carry older stars/searches — merge into the
-    // app library so favorites survive upgrades and stay shared across formats.
-    library_.mergeFromPluginState(starredFiles, savedSearches);
+    // App library (Application Support) is the accruing source of truth.
+    // Pull disk + host/project stars together so favorites keep growing.
+    library_.mergeStarsFromDisk();
+    library_.mergeFromPluginState(hostStars, hostSearches);
     applyLibraryToMemory();
 }
 

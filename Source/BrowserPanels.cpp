@@ -1972,7 +1972,7 @@ bool FileListPanel::isColumnVisible(SortColumn col) const
 
 int FileListPanel::totalContentWidth() const
 {
-    int w = metrics::scaled(8) * 2 + metrics::scaled(kNameW) + metrics::scaled(14);
+    int w = metrics::scaled(8) * 2 + metrics::scaled(nameColumnW) + metrics::scaled(14);
     if (columnsVisible.key)        w += metrics::scaled(kKeyW);
     if (columnsVisible.tempo)      w += metrics::scaled(kTempoW);
     if (columnsVisible.bars)       w += metrics::scaled(kBarsW);
@@ -1982,6 +1982,17 @@ int FileListPanel::totalContentWidth() const
     if (columnsVisible.timeSig)    w += metrics::scaled(kTimeSigW);
     if (columnsVisible.notes)      w += metrics::scaled(kNotesW);
     return w;
+}
+
+void FileListPanel::setNameColumnWidth(int logicalW)
+{
+    const int next = juce::jlimit(kNameWMin, kNameWMax, logicalW);
+    if (next == nameColumnW)
+        return;
+    nameColumnW = next;
+    updateContentSize();
+    content.repaint();
+    repaint();
 }
 
 void FileListPanel::setColumnVisibility(const BrowserColumnVisibility& v)
@@ -1996,6 +2007,18 @@ void FileListPanel::setColumnVisibility(const BrowserColumnVisibility& v)
     updateContentSize();
     content.repaint();
     repaint();
+}
+
+int FileListPanel::nameResizeHandleX() const
+{
+    return headerColumnBounds(SortColumn::Name).getRight();
+}
+
+bool FileListPanel::hitNameResizeHandle(juce::Point<int> pos) const
+{
+    if (pos.y < 0 || pos.y >= metrics::listHeaderH())
+        return false;
+    return std::abs(pos.x - nameResizeHandleX()) <= kResizeHitSlop;
 }
 
 void FileListPanel::showColumnVisibilityMenu()
@@ -2063,7 +2086,7 @@ FileListPanel::ColumnRects FileListPanel::splitRowColumns(juce::Rectangle<int> r
 {
     ColumnRects cols;
     row = row.reduced(metrics::scaled(8), 0);
-    cols.name = row.removeFromLeft(metrics::scaled(kNameW));
+    cols.name = row.removeFromLeft(metrics::scaled(nameColumnW));
     // Extra gap so the name never crowds the first meta column.
     row.removeFromLeft(metrics::scaled(14));
     if (columnsVisible.key)
@@ -2156,6 +2179,15 @@ void FileListPanel::mouseDown(const juce::MouseEvent& e)
         return;
     }
 
+    if (hitNameResizeHandle(e.getPosition()))
+    {
+        resizingNameColumn = true;
+        nameResizeStartX = e.x;
+        nameResizeStartW = nameColumnW;
+        setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+        return;
+    }
+
     const SortColumn allCols[] = {
         SortColumn::Name, SortColumn::Key, SortColumn::Tempo, SortColumn::Bars,
         SortColumn::Kind, SortColumn::Complexity, SortColumn::DifNotes,
@@ -2180,6 +2212,43 @@ void FileListPanel::mouseDown(const juce::MouseEvent& e)
             return;
         }
     }
+}
+
+void FileListPanel::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!resizingNameColumn)
+        return;
+
+    const float scale = juce::jmax(0.25f, contentScale());
+    const int deltaLogical = juce::roundToInt((float) (e.x - nameResizeStartX) / scale);
+    setNameColumnWidth(nameResizeStartW + deltaLogical);
+}
+
+void FileListPanel::mouseUp(const juce::MouseEvent&)
+{
+    if (!resizingNameColumn)
+        return;
+    resizingNameColumn = false;
+    setMouseCursor(hitNameResizeHandle(getMouseXYRelative())
+                       ? juce::MouseCursor::LeftRightResizeCursor
+                       : juce::MouseCursor::NormalCursor);
+    if (onNameColumnWidthChanged)
+        onNameColumnWidthChanged(nameColumnW);
+}
+
+void FileListPanel::mouseMove(const juce::MouseEvent& e)
+{
+    if (resizingNameColumn)
+        return;
+    setMouseCursor(hitNameResizeHandle(e.getPosition())
+                       ? juce::MouseCursor::LeftRightResizeCursor
+                       : juce::MouseCursor::NormalCursor);
+}
+
+void FileListPanel::mouseExit(const juce::MouseEvent&)
+{
+    if (!resizingNameColumn)
+        setMouseCursor(juce::MouseCursor::NormalCursor);
 }
 
 void FileListPanel::paintColumnHeader(juce::Graphics& g)

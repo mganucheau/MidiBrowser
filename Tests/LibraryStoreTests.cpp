@@ -76,11 +76,64 @@ TEST_CASE("Processor loads library stars on construction", "[Library][qa]")
     {
         LibraryStore store;
         store.toggleStarred("/tmp/starred-clip.mid");
-        store.save(); // flush async write before processor construction
+        store.save();
     }
 
     MidiBrowserProcessor processor;
     REQUIRE(processor.isStarred("/tmp/starred-clip.mid"));
+
+    file.deleteFile();
+    if (backup.existsAsFile())
+        backup.moveFileTo(file);
+}
+
+TEST_CASE("Favorites accrue across sessions and host state loads", "[Library][qa]")
+{
+    const auto file = LibraryStore::libraryFile();
+    const auto backup = file.getSiblingFile("library.xml.bak-test3");
+    if (file.existsAsFile())
+        file.copyFileTo(backup);
+    file.deleteFile();
+
+    {
+        LibraryStore store;
+        store.toggleStarred("/tmp/fav-a.mid");
+        store.toggleStarred("/tmp/fav-b.mid");
+        REQUIRE(store.starredFiles.size() == 2);
+    }
+
+    // New store (new session) keeps both, then adds a third.
+    {
+        LibraryStore store;
+        store.load();
+        REQUIRE(store.isStarred("/tmp/fav-a.mid"));
+        REQUIRE(store.isStarred("/tmp/fav-b.mid"));
+        store.toggleStarred("/tmp/fav-c.mid");
+        REQUIRE(store.starredFiles.size() == 3);
+    }
+
+    // Host state with a subset must not wipe the accrued library.
+    {
+        MidiBrowserProcessor processor;
+        REQUIRE(processor.isStarred("/tmp/fav-a.mid"));
+        REQUIRE(processor.isStarred("/tmp/fav-b.mid"));
+        REQUIRE(processor.isStarred("/tmp/fav-c.mid"));
+
+        juce::MemoryBlock state;
+        // Simulate a project that only remembered one favorite.
+        {
+            juce::XmlElement xml("MidiBrowserState");
+            auto* star = xml.createNewChildElement("StarredFile");
+            star->setAttribute("path", "/tmp/fav-a.mid");
+            juce::AudioProcessor::copyXmlToBinary(xml, state);
+        }
+        // Use public setStateInformation path.
+        processor.setStateInformation(state.getData(), (int) state.getSize());
+        REQUIRE(processor.isStarred("/tmp/fav-a.mid"));
+        REQUIRE(processor.isStarred("/tmp/fav-b.mid"));
+        REQUIRE(processor.isStarred("/tmp/fav-c.mid"));
+        REQUIRE(processor.starredFiles.size() >= 3);
+    }
 
     file.deleteFile();
     if (backup.existsAsFile())

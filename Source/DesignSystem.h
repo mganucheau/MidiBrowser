@@ -110,7 +110,7 @@ juce::Colour colour (Type t);
 namespace region {
     constexpr int toolbarH     = 52;
     constexpr int sidebarW     = 212;
-    constexpr int fileListW    = 340;
+    constexpr int fileListW    = 420;
     constexpr int toolkitW     = 252;
     constexpr int rollMinW     = 320;
     constexpr int velocityH    = 100;

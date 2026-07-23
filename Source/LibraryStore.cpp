@@ -144,6 +144,29 @@ void LibraryStore::load()
     }
 }
 
+juce::StringArray LibraryStore::readStarsFromDisk()
+{
+    juce::StringArray stars;
+    const auto file = libraryFile();
+    if (!file.existsAsFile())
+        return stars;
+
+    if (auto xml = juce::XmlDocument::parse(file))
+    {
+        if (!xml->hasTagName("MidiBrowserLibrary"))
+            return stars;
+        for (auto* child : xml->getChildIterator())
+        {
+            if (!child->hasTagName("StarredFile"))
+                continue;
+            const auto path = child->getStringAttribute("path");
+            if (path.isNotEmpty() && !stars.contains(path))
+                stars.add(path);
+        }
+    }
+    return stars;
+}
+
 void LibraryStore::writeLibraryFile(juce::StringArray stars,
                                     std::vector<SavedSearchEntry> searches,
                                     std::vector<CachedSearch> cache)
@@ -191,39 +214,75 @@ void LibraryStore::writeLibraryFile(juce::StringArray stars,
 
     const auto file = libraryFile();
     file.getParentDirectory().createDirectory();
-    xml.writeTo(file);
+    // Atomic-ish replace so a crash mid-write doesn't wipe the library.
+    const auto tmp = file.getSiblingFile("library.xml.tmp");
+    tmp.deleteFile();
+    if (xml.writeTo(tmp))
+        tmp.moveFileTo(file);
 }
 
 void LibraryStore::save() const
 {
+    const auto gen = ++saveGeneration_;
     writeLibraryFile(starredFiles, savedSearches, searchCache);
+    saveCompleted_.store(gen);
 }
 
 void LibraryStore::saveAsync() const
 {
+    const auto gen = ++saveGeneration_;
     // Copy state on the caller thread, then write off the message thread.
-    juce::Thread::launch([stars = starredFiles,
+    // Generation atomics are read only to drop superseded snapshots — never
+    // touch `this` after the store may have been destroyed on shutdown.
+    auto* genAtom = &saveGeneration_;
+    auto* doneAtom = &saveCompleted_;
+    juce::Thread::launch([gen, genAtom, doneAtom,
+                          stars = starredFiles,
                           searches = savedSearches,
                           cache = searchCache]
     {
+        // A newer save superseded this snapshot — skip the stale write.
+        if (gen != genAtom->load())
+            return;
         writeLibraryFile(std::move(stars), std::move(searches), std::move(cache));
+        if (gen == genAtom->load())
+            doneAtom->store(gen);
     });
+}
+
+void LibraryStore::flush() const
+{
+    // Always persist current memory — favorites must not depend on in-flight jobs.
+    save();
+}
+
+void LibraryStore::mergeStarsFromDisk()
+{
+    for (const auto& s : readStarsFromDisk())
+        if (s.isNotEmpty() && !starredFiles.contains(s))
+            starredFiles.add(s);
 }
 
 void LibraryStore::toggleStarred(const juce::String& path)
 {
     if (path.isEmpty()) return;
+    // Accrue against disk so other plugin instances / prior sessions stick.
+    mergeStarsFromDisk();
     if (!starredFiles.contains(path))
         starredFiles.add(path);
     else
         starredFiles.removeString(path);
-    saveAsync();
+    // Sync write — favorites must survive host quit / crash.
+    save();
 }
 
 void LibraryStore::setStarredFiles(const juce::StringArray& paths)
 {
-    starredFiles = paths;
-    saveAsync();
+    starredFiles.clear();
+    for (const auto& p : paths)
+        if (p.isNotEmpty() && !starredFiles.contains(p))
+            starredFiles.add(p);
+    save();
 }
 
 void LibraryStore::addSavedSearch(const SavedSearchEntry& entry)
@@ -293,7 +352,7 @@ void LibraryStore::mergeFromPluginState(const juce::StringArray& stars,
     }
 
     if (dirty)
-        saveAsync();
+        save(); // sync — keep accrued favorites durable across host state loads
 }
 
 const CachedSearch* LibraryStore::findSearchCache(const juce::File& root,

@@ -372,6 +372,23 @@ TEST_CASE("editBadges lists only non-default transforms", "[editmodel]")
     }
 }
 
+TEST_CASE("locked absolute octave retargets clips across native registers", "[editmodel]")
+{
+    // Clip in octave 5 (C5=72) with locked octave 4 → pitches drop one octave.
+    auto clip = makeClip({ { 0, 72, 0.0, 2.0 }, { 1, 76, 2.0, 2.0 } }, 1);
+    CHECK(clipReferenceOctave(clip) == 5);
+
+    ClipEdit locked;
+    locked.octave = 4;
+    ClipEdit target;
+    applyPitchLock(locked, target);
+
+    const auto r = resolveClip(clip, target);
+    REQUIRE(r.notes.size() == 2);
+    CHECK(r.notes[0].pitch == 60);
+    CHECK(r.notes[1].pitch == 64);
+}
+
 TEST_CASE("applyPitchLock copies pitch fields, preserves moves and trim", "[editmodel]")
 {
     ClipEdit locked;

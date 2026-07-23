@@ -236,7 +236,9 @@ EffectsInspector::EffectsInspector()
     {
         // Absolute octave on the keyboard (file C4 + select 1 → C1).
         edit.octave = juce::jlimit(0, 6, idx);
-        if (edit.octave == clipSourceOctave)
+        // While Pitch is locked, keep the absolute value so browse retargets
+        // every clip to this octave (native/-1 would follow each file).
+        if ((sectionLocks & toolkitLock::Pitch) == 0 && edit.octave == clipSourceOctave)
             edit.octave = -1; // native = clean
         refreshPitchAnnotation();
         notifyEdit();

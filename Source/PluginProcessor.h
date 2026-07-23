@@ -15,7 +15,7 @@ class MidiBrowserProcessor : public juce::AudioProcessor
 {
 public:
     MidiBrowserProcessor();
-    ~MidiBrowserProcessor() override = default;
+    ~MidiBrowserProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -113,6 +113,8 @@ public:
     bool previewOpen = true;
     bool sidebarCollapsed = true;
     BrowserColumnVisibility columnVisibility;
+    /** Logical (unscaled) Name column width in the file table. */
+    int nameColumnWidth = 240;
 
     juce::String lastBrowserDir;
     bool trimEmptyMeasuresPreview = false;

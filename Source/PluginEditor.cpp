@@ -88,6 +88,16 @@ BrowserSearch searchScanKey(const BrowserSearch& s)
     return k;
 }
 
+/** Pitch-lock template must store an absolute octave so browse retargets every
+    clip to that register. Native (-1) would leave each file in its own octave. */
+void capturePitchLockTemplate(const ClipEdit& src, const StepClip* clip, ClipEdit& lockedOut)
+{
+    ClipEdit absolute = src;
+    if (absolute.octave < 0 && clip != nullptr)
+        absolute.octave = clipReferenceOctave(*clip);
+    applyPitchLock(absolute, lockedOut);
+}
+
 /** Non-mutating dedupe: returns primary path -> all locations; hiddenPaths are non-primaries.
     Uses name+size+mtime only — never reads file bytes on the message thread. */
 std::map<juce::String, juce::StringArray>
@@ -480,6 +490,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             loadStarredClips(); // drop unstarred from the global list
         else
             rebuildEntries();
+        refreshSidebar();
         if (const int d = displayForClip(selectedIdx); d >= 0)
             fileList.setSelectedIndex(d, juce::dontSendNotification);
     };
@@ -495,9 +506,15 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     fileList.onRevealFile = [](const juce::File& f) { f.revealToUser(); };
     fileList.onCopyFileToFolder = [this](const juce::File& f) { copyFileToFolder(f); };
     fileList.setColumnVisibility(processorRef.columnVisibility);
+    fileList.setNameColumnWidth(processorRef.nameColumnWidth);
     fileList.onColumnVisibilityChanged = [this](const BrowserColumnVisibility& v)
     {
         processorRef.columnVisibility = v;
+        applyLayoutState();
+    };
+    fileList.onNameColumnWidthChanged = [this](int logicalW)
+    {
+        processorRef.nameColumnWidth = logicalW;
         applyLayoutState();
     };
     content.addAndMakeVisible(fileList);
@@ -513,7 +530,10 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             processorRef.editFor(clip->filePath) = e;
             if ((processorRef.sectionLocks & (toolkitLock::Pitch | toolkitLock::Playback)) != 0)
             {
-                applyPitchLock(e, processorRef.lockedEdit);
+                if ((processorRef.sectionLocks & toolkitLock::Pitch) != 0)
+                    capturePitchLockTemplate(e, clip, processorRef.lockedEdit);
+                else
+                    applyPitchLock(e, processorRef.lockedEdit);
                 if ((processorRef.sectionLocks & toolkitLock::Playback) != 0)
                     processorRef.lockedEdit.extendMult = e.extendMult;
                 processorRef.lockAutoTrim = e.hasTrim();
@@ -568,7 +588,10 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             processorRef.editFor(clip->filePath) = e;
             if ((processorRef.sectionLocks & (toolkitLock::Pitch | toolkitLock::Playback)) != 0)
             {
-                applyPitchLock(e, processorRef.lockedEdit);
+                if ((processorRef.sectionLocks & toolkitLock::Pitch) != 0)
+                    capturePitchLockTemplate(e, clip, processorRef.lockedEdit);
+                else
+                    applyPitchLock(e, processorRef.lockedEdit);
                 if ((processorRef.sectionLocks & toolkitLock::Playback) != 0)
                     processorRef.lockedEdit.extendMult = e.extendMult;
                 processorRef.lockAutoTrim = e.hasTrim();
@@ -588,7 +611,11 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             captureGrooveSectionLock(selectedGroove(), processorRef.lockedGroove, locks);
             if ((locks & (toolkitLock::Pitch | toolkitLock::Playback)) != 0)
             {
-                applyPitchLock(selectedEdit(), processorRef.lockedEdit);
+                if ((locks & toolkitLock::Pitch) != 0)
+                    capturePitchLockTemplate(selectedEdit(), selectedClip(),
+                                            processorRef.lockedEdit);
+                else
+                    applyPitchLock(selectedEdit(), processorRef.lockedEdit);
                 processorRef.lockedEdit.extendMult = selectedEdit().extendMult;
                 processorRef.lockAutoTrim = selectedEdit().hasTrim();
             }
