@@ -16,11 +16,42 @@ struct CachedSearch
 };
 
 /**
+ * Last-used browser/UI workspace shared by every plugin instance.
+ * Survives new tracks, new projects, and app relaunches.
+ */
+struct SharedUiSession
+{
+    juce::String lastBrowserDir;
+    juce::StringArray savedBrowserDirs;
+
+    int browseMode = 0; // 0 folder, 1 starred, 2 search
+    bool starredFilter = false;
+    bool includeSubdirs = false;
+    BrowserSearch browserSessionSearch;
+    juce::String selectedClipPath;
+    int activeSavedSearchIdx = -1;
+    juce::StringArray browserResultPaths;
+
+    BrowserColumnVisibility columnVisibility;
+    int nameColumnWidth = 280;
+
+    bool editorOpen = false;
+    bool effectsOpen = false;
+    bool previewOpen = true;
+    bool sidebarCollapsed = true;
+
+    int tweakDensity = 1;       // Density::Comfortable
+    int tweakSize = 1;          // ContentSize::Medium
+    int tweakTextScalePct = 100;
+    int tweakAppearance = 2;    // Appearance::Dark
+    int tweakShowTooltips = 1;
+};
+
+/**
  * App-owned library file (Application Support), independent of DAW project state.
  * Survives plugin upgrades and is shared by Standalone / AU / VST3.
  *
- * Stores: starred file paths, saved search terms, and search result path caches.
- * Favorites accrue across sessions and plugin instances — disk is the source of truth.
+ * Stores: starred files, saved searches, search caches, and the last UI session.
  */
 class LibraryStore
 {
@@ -37,6 +68,9 @@ public:
     juce::StringArray starredFiles;
     std::vector<SavedSearchEntry> savedSearches;
     std::vector<CachedSearch> searchCache;
+    SharedUiSession uiSession;
+    /** True after a UiSession block was loaded or written at least once. */
+    bool hasUiSession = false;
 
     bool isStarred(const juce::String& path) const { return starredFiles.contains(path); }
 
@@ -45,6 +79,9 @@ public:
     void addSavedSearch(const SavedSearchEntry& entry);
     void removeSavedSearch(int index);
     void setSavedSearches(std::vector<SavedSearchEntry> entries);
+
+    /** Replace the shared UI session and persist (async). */
+    void putUiSession(const SharedUiSession& session);
 
     /** Union stars/searches from host plugin state into the app library. */
     void mergeFromPluginState(const juce::StringArray& stars,
@@ -63,14 +100,20 @@ public:
     static BrowserSearch browserSearchFromXml(const juce::XmlElement& el);
     static void browserSearchToXml(juce::XmlElement& el, const BrowserSearch& s);
 
+    static SharedUiSession uiSessionFromXml(const juce::XmlElement& el);
+    static void uiSessionToXml(juce::XmlElement& el, const SharedUiSession& s);
+
 private:
     static constexpr int kMaxSavedSearches = 48;
     static constexpr int kMaxSearchCache = 32;
+    static constexpr int kMaxBrowserResultPaths = 5000;
 
     static juce::StringArray readStarsFromDisk();
     static void writeLibraryFile(juce::StringArray stars,
                                  std::vector<SavedSearchEntry> searches,
-                                 std::vector<CachedSearch> cache);
+                                 std::vector<CachedSearch> cache,
+                                 SharedUiSession session,
+                                 bool writeSession);
 
     /** Bumped on every save request; writers bail if a newer request superseded them. */
     mutable std::atomic<uint64_t> saveGeneration_ { 0 };

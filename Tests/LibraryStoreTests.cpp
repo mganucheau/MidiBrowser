@@ -1,8 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include "LibraryStore.h"
 #include "PluginProcessor.h"
+#include "Theme.h"
 
 using namespace pflow;
+using Catch::Approx;
 
 TEST_CASE("LibraryStore persists stars and search cache to disk", "[Library][qa]")
 {
@@ -81,6 +84,54 @@ TEST_CASE("Processor loads library stars on construction", "[Library][qa]")
 
     MidiBrowserProcessor processor;
     REQUIRE(processor.isStarred("/tmp/starred-clip.mid"));
+
+    file.deleteFile();
+    if (backup.existsAsFile())
+        backup.moveFileTo(file);
+}
+
+TEST_CASE("Shared UI session reloads on a new processor instance", "[Library][qa]")
+{
+    const auto file = LibraryStore::libraryFile();
+    const auto backup = file.getSiblingFile("library.xml.bak-session");
+    if (file.existsAsFile())
+        file.copyFileTo(backup);
+    file.deleteFile();
+
+    {
+        MidiBrowserProcessor a;
+        a.lastBrowserDir = "/tmp/shared-midi-lib";
+        a.browseMode = 2;
+        a.includeSubdirs = true;
+        a.browserSessionSearch.query = "groove";
+        a.browserSessionSearch.bpmMin = 120.0;
+        a.browserSessionSearch.bpmMax = 128.0;
+        a.selectedClipPath = "/tmp/shared-midi-lib/a.mid";
+        a.editorOpen = true;
+        a.previewOpen = false;
+        a.nameColumnWidth = 360;
+        a.columnVisibility.complexity = true;
+        tweaks().appearance.store((int) Appearance::Light);
+        a.persistSharedUiSession();
+        a.library().flush();
+    }
+
+    {
+        MidiBrowserProcessor b;
+        // No host state — must still restore workspace from the app library.
+        b.setStateInformation(nullptr, 0);
+        REQUIRE(b.lastBrowserDir == "/tmp/shared-midi-lib");
+        REQUIRE(b.browseMode == 2);
+        REQUIRE(b.includeSubdirs);
+        REQUIRE(b.browserSessionSearch.query == "groove");
+        REQUIRE(b.browserSessionSearch.bpmMin == Approx(120.0));
+        REQUIRE(b.selectedClipPath == "/tmp/shared-midi-lib/a.mid");
+        REQUIRE(b.editorOpen);
+        REQUIRE_FALSE(b.previewOpen);
+        REQUIRE(b.nameColumnWidth == 360);
+        REQUIRE(b.columnVisibility.complexity);
+        REQUIRE(tweaks().appearance.load() == (int) Appearance::Light);
+    }
 
     file.deleteFile();
     if (backup.existsAsFile())

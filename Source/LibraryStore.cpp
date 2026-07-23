@@ -83,11 +83,104 @@ void LibraryStore::browserSearchToXml(juce::XmlElement& el, const BrowserSearch&
     el.setAttribute("removeDuplicates", s.removeDuplicates ? 1 : 0);
 }
 
+SharedUiSession LibraryStore::uiSessionFromXml(const juce::XmlElement& el)
+{
+    SharedUiSession s;
+    s.lastBrowserDir = el.getStringAttribute("lastBrowserDir");
+    s.browseMode = juce::jlimit(0, 2, el.getIntAttribute("browseMode", 0));
+    s.starredFilter = el.getIntAttribute("starredFilter", 0) != 0;
+    s.includeSubdirs = el.getIntAttribute("includeSubdirs", 0) != 0;
+    s.selectedClipPath = el.getStringAttribute("selectedClipPath");
+    s.activeSavedSearchIdx = el.getIntAttribute("activeSavedSearchIdx", -1);
+    s.nameColumnWidth = juce::jlimit(120, 2400, el.getIntAttribute("nameColumnWidth", 280));
+    s.editorOpen = el.getIntAttribute("editorOpen", 0) != 0;
+    s.effectsOpen = el.getIntAttribute("effectsOpen", 0) != 0;
+    s.previewOpen = el.getIntAttribute("previewOpen", 1) != 0;
+    s.sidebarCollapsed = el.getIntAttribute("sidebarCollapsed", 1) != 0;
+    s.columnVisibility.key = el.getIntAttribute("colKey", 1) != 0;
+    s.columnVisibility.tempo = el.getIntAttribute("colTempo", 1) != 0;
+    s.columnVisibility.bars = el.getIntAttribute("colBars", 1) != 0;
+    s.columnVisibility.kind = el.getIntAttribute("colKind", 1) != 0;
+    s.columnVisibility.complexity = el.getIntAttribute("colComplexity", 0) != 0;
+    s.columnVisibility.difNotes = el.getIntAttribute("colDifNotes", 0) != 0;
+    s.columnVisibility.timeSig = el.getIntAttribute("colTimeSig", 0) != 0;
+    s.columnVisibility.notes = el.getIntAttribute("colNotes", 0) != 0;
+    s.tweakDensity = juce::jlimit(0, 1, el.getIntAttribute("tweakDensity", 1));
+    s.tweakSize = juce::jlimit(0, 2, el.getIntAttribute("tweakSize", 1));
+    s.tweakTextScalePct = juce::jlimit(60, 150, el.getIntAttribute("tweakTextScalePct", 100));
+    s.tweakAppearance = juce::jlimit(0, 2, el.getIntAttribute("tweakAppearance", 2));
+    s.tweakShowTooltips = el.getIntAttribute("tweakShowTooltips", 1) != 0 ? 1 : 0;
+    s.browserSessionSearch = browserSearchFromXml(el);
+
+    for (auto* child : el.getChildIterator())
+    {
+        if (child->hasTagName("SavedFolder"))
+        {
+            const auto path = child->getStringAttribute("path");
+            if (path.isNotEmpty() && !s.savedBrowserDirs.contains(path))
+                s.savedBrowserDirs.add(path);
+        }
+        else if (child->hasTagName("Result"))
+        {
+            const auto path = child->getStringAttribute("path");
+            if (path.isNotEmpty() && s.browserResultPaths.size() < kMaxBrowserResultPaths)
+                s.browserResultPaths.add(path);
+        }
+    }
+    return s;
+}
+
+void LibraryStore::uiSessionToXml(juce::XmlElement& el, const SharedUiSession& s)
+{
+    el.setAttribute("lastBrowserDir", s.lastBrowserDir);
+    el.setAttribute("browseMode", s.browseMode);
+    el.setAttribute("starredFilter", s.starredFilter ? 1 : 0);
+    el.setAttribute("includeSubdirs", s.includeSubdirs ? 1 : 0);
+    el.setAttribute("selectedClipPath", s.selectedClipPath);
+    el.setAttribute("activeSavedSearchIdx", s.activeSavedSearchIdx);
+    el.setAttribute("nameColumnWidth", s.nameColumnWidth);
+    el.setAttribute("editorOpen", s.editorOpen ? 1 : 0);
+    el.setAttribute("effectsOpen", s.effectsOpen ? 1 : 0);
+    el.setAttribute("previewOpen", s.previewOpen ? 1 : 0);
+    el.setAttribute("sidebarCollapsed", s.sidebarCollapsed ? 1 : 0);
+    el.setAttribute("colKey", s.columnVisibility.key ? 1 : 0);
+    el.setAttribute("colTempo", s.columnVisibility.tempo ? 1 : 0);
+    el.setAttribute("colBars", s.columnVisibility.bars ? 1 : 0);
+    el.setAttribute("colKind", s.columnVisibility.kind ? 1 : 0);
+    el.setAttribute("colComplexity", s.columnVisibility.complexity ? 1 : 0);
+    el.setAttribute("colDifNotes", s.columnVisibility.difNotes ? 1 : 0);
+    el.setAttribute("colTimeSig", s.columnVisibility.timeSig ? 1 : 0);
+    el.setAttribute("colNotes", s.columnVisibility.notes ? 1 : 0);
+    el.setAttribute("tweakDensity", s.tweakDensity);
+    el.setAttribute("tweakSize", s.tweakSize);
+    el.setAttribute("tweakTextScalePct", s.tweakTextScalePct);
+    el.setAttribute("tweakAppearance", s.tweakAppearance);
+    el.setAttribute("tweakShowTooltips", s.tweakShowTooltips);
+    browserSearchToXml(el, s.browserSessionSearch);
+
+    for (const auto& folder : s.savedBrowserDirs)
+    {
+        if (folder.isEmpty()) continue;
+        auto* child = el.createNewChildElement("SavedFolder");
+        child->setAttribute("path", folder);
+    }
+    int n = 0;
+    for (const auto& path : s.browserResultPaths)
+    {
+        if (path.isEmpty()) continue;
+        if (++n > kMaxBrowserResultPaths) break;
+        auto* child = el.createNewChildElement("Result");
+        child->setAttribute("path", path);
+    }
+}
+
 void LibraryStore::load()
 {
     starredFiles.clear();
     savedSearches.clear();
     searchCache.clear();
+    uiSession = {};
+    hasUiSession = false;
 
     const auto file = libraryFile();
     if (!file.existsAsFile())
@@ -140,6 +233,11 @@ void LibraryStore::load()
                 if (c.rootPath.isNotEmpty())
                     searchCache.push_back(std::move(c));
             }
+            else if (child->hasTagName("UiSession"))
+            {
+                uiSession = uiSessionFromXml(*child);
+                hasUiSession = true;
+            }
         }
     }
 }
@@ -169,10 +267,12 @@ juce::StringArray LibraryStore::readStarsFromDisk()
 
 void LibraryStore::writeLibraryFile(juce::StringArray stars,
                                     std::vector<SavedSearchEntry> searches,
-                                    std::vector<CachedSearch> cache)
+                                    std::vector<CachedSearch> cache,
+                                    SharedUiSession session,
+                                    bool writeSession)
 {
     juce::XmlElement xml("MidiBrowserLibrary");
-    xml.setAttribute("version", 1);
+    xml.setAttribute("version", 2);
 
     for (const auto& star : stars)
     {
@@ -212,6 +312,12 @@ void LibraryStore::writeLibraryFile(juce::StringArray stars,
         }
     }
 
+    if (writeSession)
+    {
+        auto* sessionEl = xml.createNewChildElement("UiSession");
+        uiSessionToXml(*sessionEl, session);
+    }
+
     const auto file = libraryFile();
     file.getParentDirectory().createDirectory();
     // Atomic-ish replace so a crash mid-write doesn't wipe the library.
@@ -224,30 +330,36 @@ void LibraryStore::writeLibraryFile(juce::StringArray stars,
 void LibraryStore::save() const
 {
     const auto gen = ++saveGeneration_;
-    writeLibraryFile(starredFiles, savedSearches, searchCache);
+    writeLibraryFile(starredFiles, savedSearches, searchCache, uiSession, hasUiSession);
     saveCompleted_.store(gen);
 }
 
 void LibraryStore::saveAsync() const
 {
     const auto gen = ++saveGeneration_;
-    // Copy state on the caller thread, then write off the message thread.
-    // Generation atomics are read only to drop superseded snapshots — never
-    // touch `this` after the store may have been destroyed on shutdown.
     auto* genAtom = &saveGeneration_;
     auto* doneAtom = &saveCompleted_;
     juce::Thread::launch([gen, genAtom, doneAtom,
                           stars = starredFiles,
                           searches = savedSearches,
-                          cache = searchCache]
+                          cache = searchCache,
+                          session = uiSession,
+                          writeSession = hasUiSession]
     {
-        // A newer save superseded this snapshot — skip the stale write.
         if (gen != genAtom->load())
             return;
-        writeLibraryFile(std::move(stars), std::move(searches), std::move(cache));
+        writeLibraryFile(std::move(stars), std::move(searches), std::move(cache),
+                        std::move(session), writeSession);
         if (gen == genAtom->load())
             doneAtom->store(gen);
     });
+}
+
+void LibraryStore::putUiSession(const SharedUiSession& session)
+{
+    uiSession = session;
+    hasUiSession = true;
+    saveAsync();
 }
 
 void LibraryStore::flush() const

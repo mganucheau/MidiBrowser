@@ -13,11 +13,13 @@ MidiBrowserProcessor::MidiBrowserProcessor()
 {
     library_.load();
     applyLibraryToMemory();
+    applySharedUiSessionFromLibrary();
 }
 
 MidiBrowserProcessor::~MidiBrowserProcessor()
 {
-    // Favorites live in Application Support — flush before the instance dies.
+    // Favorites + last workspace live in Application Support — flush on teardown.
+    persistSharedUiSession();
     syncLibraryFromMemory();
     library_.flush();
 }
@@ -28,6 +30,61 @@ void MidiBrowserProcessor::applyLibraryToMemory()
     savedSearches = library_.savedSearches;
 }
 
+void MidiBrowserProcessor::applySharedUiSessionFromLibrary()
+{
+    if (!library_.hasUiSession)
+        return;
+
+    const auto& s = library_.uiSession;
+    lastBrowserDir = s.lastBrowserDir;
+    savedBrowserDirs = s.savedBrowserDirs;
+    browseMode = juce::jlimit(0, 2, s.browseMode);
+    starredFilter = s.starredFilter;
+    includeSubdirs = s.includeSubdirs;
+    browserSessionSearch = s.browserSessionSearch;
+    selectedClipPath = s.selectedClipPath;
+    activeSavedSearchIdx = s.activeSavedSearchIdx;
+    browserResultPaths = s.browserResultPaths;
+    columnVisibility = s.columnVisibility;
+    nameColumnWidth = juce::jlimit(120, 2400, s.nameColumnWidth);
+    editorOpen = s.editorOpen;
+    effectsOpen = s.effectsOpen;
+    previewOpen = s.previewOpen;
+    sidebarCollapsed = s.sidebarCollapsed;
+
+    tweaks().density.store(juce::jlimit(0, 1, s.tweakDensity));
+    tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1, s.tweakSize));
+    tweaks().textScalePct.store(juce::jlimit(60, 150, s.tweakTextScalePct));
+    tweaks().appearance.store(juce::jlimit(0, kNumAppearances - 1, s.tweakAppearance));
+    tweaks().showTooltips.store(s.tweakShowTooltips != 0 ? 1 : 0);
+}
+
+void MidiBrowserProcessor::persistSharedUiSession()
+{
+    SharedUiSession s;
+    s.lastBrowserDir = lastBrowserDir;
+    s.savedBrowserDirs = savedBrowserDirs;
+    s.browseMode = juce::jlimit(0, 2, browseMode);
+    s.starredFilter = starredFilter;
+    s.includeSubdirs = includeSubdirs;
+    s.browserSessionSearch = browserSessionSearch;
+    s.selectedClipPath = selectedClipPath;
+    s.activeSavedSearchIdx = activeSavedSearchIdx;
+    s.browserResultPaths = browserResultPaths;
+    s.columnVisibility = columnVisibility;
+    s.nameColumnWidth = juce::jlimit(120, 2400, nameColumnWidth);
+    s.editorOpen = editorOpen;
+    s.effectsOpen = effectsOpen;
+    s.previewOpen = previewOpen;
+    s.sidebarCollapsed = sidebarCollapsed;
+    s.tweakDensity = tweaks().density.load();
+    s.tweakSize = tweaks().size.load();
+    s.tweakTextScalePct = tweaks().textScalePct.load();
+    s.tweakAppearance = tweaks().appearance.load();
+    s.tweakShowTooltips = tweaks().showTooltips.load();
+    library_.putUiSession(s);
+}
+
 void MidiBrowserProcessor::syncLibraryFromMemory()
 {
     // Union memory stars into the library (never replace — disk accrues).
@@ -36,6 +93,32 @@ void MidiBrowserProcessor::syncLibraryFromMemory()
         if (s.isNotEmpty() && !library_.starredFiles.contains(s))
             library_.starredFiles.add(s);
     library_.savedSearches = savedSearches;
+    // Keep the shared workspace snapshot current whenever we flush the library.
+    {
+        SharedUiSession s;
+        s.lastBrowserDir = lastBrowserDir;
+        s.savedBrowserDirs = savedBrowserDirs;
+        s.browseMode = juce::jlimit(0, 2, browseMode);
+        s.starredFilter = starredFilter;
+        s.includeSubdirs = includeSubdirs;
+        s.browserSessionSearch = browserSessionSearch;
+        s.selectedClipPath = selectedClipPath;
+        s.activeSavedSearchIdx = activeSavedSearchIdx;
+        s.browserResultPaths = browserResultPaths;
+        s.columnVisibility = columnVisibility;
+        s.nameColumnWidth = juce::jlimit(120, 2400, nameColumnWidth);
+        s.editorOpen = editorOpen;
+        s.effectsOpen = effectsOpen;
+        s.previewOpen = previewOpen;
+        s.sidebarCollapsed = sidebarCollapsed;
+        s.tweakDensity = tweaks().density.load();
+        s.tweakSize = tweaks().size.load();
+        s.tweakTextScalePct = tweaks().textScalePct.load();
+        s.tweakAppearance = tweaks().appearance.load();
+        s.tweakShowTooltips = tweaks().showTooltips.load();
+        library_.uiSession = s;
+        library_.hasUiSession = true;
+    }
     library_.save();
     starredFiles = library_.starredFiles;
 }
@@ -409,11 +492,13 @@ void MidiBrowserProcessor::addSavedBrowserDir(const juce::String& path)
     savedBrowserDirs.insert(0, fullPath);
     while (savedBrowserDirs.size() > 24)
         savedBrowserDirs.remove(savedBrowserDirs.size() - 1);
+    persistSharedUiSession();
 }
 
 void MidiBrowserProcessor::removeSavedBrowserDir(const juce::String& path)
 {
     savedBrowserDirs.removeString(path);
+    persistSharedUiSession();
 }
 
 void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
@@ -649,6 +734,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
     {
         library_.mergeStarsFromDisk();
         applyLibraryToMemory();
+        applySharedUiSessionFromLibrary();
         return;
     }
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
@@ -706,7 +792,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             columnVisibility.difNotes = xml->getIntAttribute("colDifNotes", 0) != 0;
             columnVisibility.timeSig = xml->getIntAttribute("colTimeSig", 0) != 0;
             columnVisibility.notes = xml->getIntAttribute("colNotes", 0) != 0;
-            nameColumnWidth = juce::jlimit(120, 520, xml->getIntAttribute("nameColumnWidth", 240));
+            nameColumnWidth = juce::jlimit(120, 2400, xml->getIntAttribute("nameColumnWidth", 280));
             editLock = xml->getIntAttribute("editLock", 0) != 0;
             effectsLock = xml->getIntAttribute("effectsLock", 0) != 0;
             if (xml->hasAttribute("sectionLocks"))
@@ -961,6 +1047,18 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
     library_.mergeStarsFromDisk();
     library_.mergeFromPluginState(hostStars, hostSearches);
     applyLibraryToMemory();
+
+    // Folder / search / layout / tweaks are shared across every instance and
+    // project — always prefer the last-used workspace from the app library.
+    // (Host XML still carries them for older builds / portability.)
+    if (library_.hasUiSession)
+        applySharedUiSessionFromLibrary();
+    else
+    {
+        // First run after upgrade: seed the library from whatever host state
+        // (or defaults) we just loaded so the next instance inherits it.
+        persistSharedUiSession();
+    }
 }
 
 juce::AudioProcessorEditor* MidiBrowserProcessor::createEditor()

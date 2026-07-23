@@ -114,7 +114,7 @@ public:
     bool sidebarCollapsed = true;
     BrowserColumnVisibility columnVisibility;
     /** Logical (unscaled) Name column width in the file table. */
-    int nameColumnWidth = 240;
+    int nameColumnWidth = 280;
 
     juce::String lastBrowserDir;
     bool trimEmptyMeasuresPreview = false;
@@ -149,6 +149,11 @@ public:
 
     /** Persist library to disk now (e.g. after search cache update). */
     void saveLibrary();
+
+    /** Push current folder/search/layout/tweaks into the shared app library. */
+    void persistSharedUiSession();
+    /** Pull last-used workspace from the shared app library into this instance. */
+    void applySharedUiSessionFromLibrary();
 
     /** softUpdate: replace the sounding clip without flushing held notes (live slider tweaks). */
     void setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed,

@@ -378,6 +378,8 @@ public:
     /** Logical (unscaled) Name column width. */
     void setNameColumnWidth(int logicalW);
     int getNameColumnWidth() const { return nameColumnW; }
+    /** Size the Name column so every current filename fits (no ellipsis). */
+    void fitNameColumnToContents();
     /** Pixel width needed to show every visible column without horizontal scroll. */
     int idealContentWidth() const { return totalContentWidth(); }
     std::function<void(const BrowserColumnVisibility&)> onColumnVisibilityChanged;
@@ -426,9 +428,9 @@ private:
         juce::Rectangle<int> name, key, tempo, bars, kind, complexity, difNotes, timeSig, notes;
     };
 
-    static constexpr int kNameWDefault = 240;
+    static constexpr int kNameWDefault = 280;
     static constexpr int kNameWMin = 120;
-    static constexpr int kNameWMax = 520;
+    static constexpr int kNameWMax = 2400;
     static constexpr int kKeyW = 44;
     static constexpr int kTempoW = 52;
     static constexpr int kBarsW = 44;
@@ -439,10 +441,16 @@ private:
     static constexpr int kNotesW = 48;
     static constexpr int kSortArrowW = 12;
     static constexpr int kIconW = 23;
-    static constexpr int kResizeHitSlop = 5;
+    static constexpr int kResizeHitSlop = 8;
 
     int nameResizeHandleX() const;
+    int nameColumnRightContentX() const;
     bool hitNameResizeHandle(juce::Point<int> pos) const;
+    bool hitNameResizeHandleContent(juce::Point<int> pos) const;
+    void beginNameColumnResize(int screenX);
+    void dragNameColumnResize(int screenX);
+    void endNameColumnResize();
+    void paintNameColumnDivider(juce::Graphics& g, int x, int y, int h) const;
 
     void timerCallback() override;
     void ensureRowVisible(int index);
@@ -467,7 +475,7 @@ private:
     BrowserColumnVisibility columnsVisible;
     int nameColumnW = kNameWDefault;
     bool resizingNameColumn = false;
-    int nameResizeStartX = 0;
+    int nameResizeStartScreenX = 0;
     int nameResizeStartW = kNameWDefault;
     int selected = -1;
     bool playing = false;

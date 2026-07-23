@@ -1,5 +1,6 @@
 #include "BrowserPanels.h"
 #include <algorithm>
+#include <cmath>
 #include <map>
 
 namespace pflow {
@@ -1753,6 +1754,7 @@ void FileListPanel::setEntries(std::vector<FileListEntry> e)
     selected = juce::jlimit(-1, (int) entries.size() - 1, selected);
     content.clearDragState();
     rebuildSortOrder();
+    fitNameColumnToContents();
     updateContentSize();
     content.repaint();
     repaint();
@@ -1995,6 +1997,31 @@ void FileListPanel::setNameColumnWidth(int logicalW)
     repaint();
 }
 
+void FileListPanel::fitNameColumnToContents()
+{
+    const float scale = juce::jmax(0.25f, contentScale());
+    const auto font = ds::font(ds::Type::Body);
+    float maxText = juce::GlyphArrangement::getStringWidth(font, "Name");
+    for (const auto& e : entries)
+        if (e.name.isNotEmpty())
+            maxText = juce::jmax(maxText,
+                                 juce::GlyphArrangement::getStringWidth(font, e.name));
+
+    // Star/folder icon (18) + gap (6) + trailing pad so glyphs aren't clipped.
+    const int pixelW = 18 + 6 + (int) std::ceil(maxText) + 16;
+    const int logical = juce::jlimit(kNameWMin, kNameWMax,
+                                     juce::roundToInt((float) pixelW / scale));
+    if (logical == nameColumnW)
+        return;
+
+    nameColumnW = logical;
+    updateContentSize();
+    content.repaint();
+    repaint();
+    if (onNameColumnWidthChanged)
+        onNameColumnWidthChanged(nameColumnW);
+}
+
 void FileListPanel::setColumnVisibility(const BrowserColumnVisibility& v)
 {
     columnsVisible = v;
@@ -2014,11 +2041,65 @@ int FileListPanel::nameResizeHandleX() const
     return headerColumnBounds(SortColumn::Name).getRight();
 }
 
+int FileListPanel::nameColumnRightContentX() const
+{
+    const auto cols = splitRowColumns({ 0, 0, juce::jmax(getWidth(), totalContentWidth()), 1 });
+    return cols.name.getRight();
+}
+
 bool FileListPanel::hitNameResizeHandle(juce::Point<int> pos) const
 {
-    if (pos.y < 0 || pos.y >= metrics::listHeaderH())
+    if (pos.y < 0 || pos.y >= getHeight())
         return false;
     return std::abs(pos.x - nameResizeHandleX()) <= kResizeHitSlop;
+}
+
+bool FileListPanel::hitNameResizeHandleContent(juce::Point<int> pos) const
+{
+    return std::abs(pos.x - nameColumnRightContentX()) <= kResizeHitSlop;
+}
+
+void FileListPanel::beginNameColumnResize(int screenX)
+{
+    resizingNameColumn = true;
+    nameResizeStartScreenX = screenX;
+    nameResizeStartW = nameColumnW;
+    setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+    content.setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+    repaint();
+}
+
+void FileListPanel::dragNameColumnResize(int screenX)
+{
+    if (!resizingNameColumn)
+        return;
+    const float scale = juce::jmax(0.25f, contentScale());
+    const int deltaLogical = juce::roundToInt((float) (screenX - nameResizeStartScreenX) / scale);
+    setNameColumnWidth(nameResizeStartW + deltaLogical);
+}
+
+void FileListPanel::endNameColumnResize()
+{
+    if (!resizingNameColumn)
+        return;
+    resizingNameColumn = false;
+    setMouseCursor(juce::MouseCursor::NormalCursor);
+    content.setMouseCursor(juce::MouseCursor::NormalCursor);
+    repaint();
+    if (onNameColumnWidthChanged)
+        onNameColumnWidthChanged(nameColumnW);
+}
+
+void FileListPanel::paintNameColumnDivider(juce::Graphics& g, int x, int y, int h) const
+{
+    g.setColour(resizingNameColumn ? ds::acc().withAlpha(0.65f) : ds::ctlb());
+    g.fillRect(x, y, 1, h);
+    // Wider invisible-feeling rail so the edge reads as a splitter.
+    if (resizingNameColumn)
+    {
+        g.setColour(ds::acc().withAlpha(0.12f));
+        g.fillRect(x - 2, y, 5, h);
+    }
 }
 
 void FileListPanel::showColumnVisibilityMenu()
@@ -2181,10 +2262,7 @@ void FileListPanel::mouseDown(const juce::MouseEvent& e)
 
     if (hitNameResizeHandle(e.getPosition()))
     {
-        resizingNameColumn = true;
-        nameResizeStartX = e.x;
-        nameResizeStartW = nameColumnW;
-        setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+        beginNameColumnResize(e.getScreenX());
         return;
     }
 
@@ -2216,24 +2294,12 @@ void FileListPanel::mouseDown(const juce::MouseEvent& e)
 
 void FileListPanel::mouseDrag(const juce::MouseEvent& e)
 {
-    if (!resizingNameColumn)
-        return;
-
-    const float scale = juce::jmax(0.25f, contentScale());
-    const int deltaLogical = juce::roundToInt((float) (e.x - nameResizeStartX) / scale);
-    setNameColumnWidth(nameResizeStartW + deltaLogical);
+    dragNameColumnResize(e.getScreenX());
 }
 
 void FileListPanel::mouseUp(const juce::MouseEvent&)
 {
-    if (!resizingNameColumn)
-        return;
-    resizingNameColumn = false;
-    setMouseCursor(hitNameResizeHandle(getMouseXYRelative())
-                       ? juce::MouseCursor::LeftRightResizeCursor
-                       : juce::MouseCursor::NormalCursor);
-    if (onNameColumnWidthChanged)
-        onNameColumnWidthChanged(nameColumnW);
+    endNameColumnResize();
 }
 
 void FileListPanel::mouseMove(const juce::MouseEvent& e)
@@ -2302,6 +2368,11 @@ void FileListPanel::paintColumnHeader(juce::Graphics& g)
     drawCol(SortColumn::DifNotes, "DifNotes");
     drawCol(SortColumn::TimeSig, "TimeSig");
     drawCol(SortColumn::Notes, "Notes");
+
+    // Name-column resize rail (content coordinates; transform already applied).
+    const int divX = splitRowColumns({ 0, 0, juce::jmax(getWidth(), totalContentWidth()),
+                                       metrics::listHeaderH() }).name.getRight();
+    paintNameColumnDivider(g, divX, 0, metrics::listHeaderH());
     g.restoreState();
 }
 
@@ -2425,13 +2496,29 @@ void FileListPanel::ListContent::paint(juce::Graphics& g)
     for (int i = first; i <= last; ++i)
         owner.paintRow(g, i, { 0, i * rowH, getWidth(), rowH }, i == hoverRow,
                        i == hoverRow && hoverStar);
+
+    owner.paintNameColumnDivider(g, owner.nameColumnRightContentX(), 0, getHeight());
 }
 
 void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
 {
+    const auto local = getLocalPoint(nullptr, e.getScreenPosition());
+    if (owner.hitNameResizeHandleContent(local))
+    {
+        setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+        if (hoverRow >= 0 || hoverStar)
+        {
+            hoverRow = -1;
+            hoverStar = false;
+            repaint();
+        }
+        return;
+    }
+    setMouseCursor(juce::MouseCursor::NormalCursor);
+
     const int rowH = metrics::listRowH();
     // Screen→local avoids AffineTransform/content-scale drift in nested Viewport coords.
-    const int y = getLocalPoint(nullptr, e.getScreenPosition()).y;
+    const int y = local.y;
     const int disp = rowH > 0 ? y / rowH : -1;
     const bool valid = juce::isPositiveAndBelow(disp, (int) owner.sortOrder.size());
     const int entryIdx = valid ? owner.displayToEntry(disp) : -1;
@@ -2439,7 +2526,7 @@ void FileListPanel::ListContent::mouseMove(const juce::MouseEvent& e)
     // Star sits in the leading icon slot of the name column.
     const auto cols = owner.splitRowColumns({ 0, 0, getWidth(), rowH });
     const int starLeft = cols.name.getX();
-    const int x = getLocalPoint(nullptr, e.getScreenPosition()).x;
+    const int x = local.x;
     const int starHit = metrics::chromeIconGlyphSize() + 6;
     const bool newHoverStar = valid && !isDir && x >= starLeft && x < starLeft + starHit;
 
@@ -2455,6 +2542,8 @@ void FileListPanel::ListContent::mouseExit(const juce::MouseEvent&)
 {
     hoverRow = -1;
     hoverStar = false;
+    if (!owner.resizingNameColumn)
+        setMouseCursor(juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -2464,6 +2553,13 @@ void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
     if (owner.onActivated)
         owner.onActivated();
 
+    const auto local = getLocalPoint(nullptr, e.getScreenPosition());
+    if (owner.hitNameResizeHandleContent(local))
+    {
+        owner.beginNameColumnResize(e.getScreenX());
+        return;
+    }
+
     if (owner.entries.empty())
     {
         if (owner.onEmptyOpenFolder)
@@ -2472,7 +2568,6 @@ void FileListPanel::ListContent::mouseDown(const juce::MouseEvent& e)
     }
 
     // Column header clicks are handled by the parent panel.
-    const auto local = getLocalPoint(nullptr, e.getScreenPosition());
     if (local.y < 0) return;
 
     const int rowH = metrics::listRowH();
@@ -2547,11 +2642,22 @@ void FileListPanel::ListContent::clearDragState()
 
 void FileListPanel::ListContent::mouseUp(const juce::MouseEvent&)
 {
+    if (owner.resizingNameColumn)
+    {
+        owner.endNameColumnResize();
+        return;
+    }
     clearDragState();
 }
 
 void FileListPanel::ListContent::mouseDrag(const juce::MouseEvent& e)
 {
+    if (owner.resizingNameColumn)
+    {
+        owner.dragNameColumnResize(e.getScreenX());
+        return;
+    }
+
     if (dragSourcePath.isEmpty() || e.getDistanceFromDragStart() < 8)
         return;
 

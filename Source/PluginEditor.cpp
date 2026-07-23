@@ -449,6 +449,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     sidebar.onCollapsedChanged = [this]
     {
         processorRef.sidebarCollapsed = sidebar.isCollapsed();
+        persistBrowserSession();
         applyLayoutState();
     };
     sidebar.onWidthChanged = [this]
@@ -510,12 +511,16 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     fileList.onColumnVisibilityChanged = [this](const BrowserColumnVisibility& v)
     {
         processorRef.columnVisibility = v;
+        persistBrowserSession();
         applyLayoutState();
     };
     fileList.onNameColumnWidthChanged = [this](int logicalW)
     {
         processorRef.nameColumnWidth = logicalW;
+        persistBrowserSession();
+        // Grow/shrink the browser column so fitted names stay visible.
         applyLayoutState();
+        resized();
     };
     content.addAndMakeVisible(fileList);
 
@@ -832,6 +837,13 @@ void MidiBrowserEditor::persistBrowserSession()
             if (c.filePath.isNotEmpty())
                 processorRef.browserResultPaths.add(c.filePath);
     }
+
+    processorRef.sidebarCollapsed = sidebar.isCollapsed();
+    processorRef.columnVisibility = fileList.getColumnVisibility();
+    processorRef.nameColumnWidth = fileList.getNameColumnWidth();
+
+    // Shared Application Support workspace — next instance / project inherits this.
+    processorRef.persistSharedUiSession();
 }
 
 void MidiBrowserEditor::selectPathOrFirst(const juce::String& path)
@@ -1932,6 +1944,7 @@ void MidiBrowserEditor::PreviewHeader::paint(juce::Graphics& g)
 void MidiBrowserEditor::PreviewHeader::mouseDown(const juce::MouseEvent&)
 {
     owner.processorRef.previewOpen = !owner.processorRef.previewOpen;
+    owner.persistBrowserSession();
     owner.applyLayoutState();
     owner.repaint();
 }
@@ -1941,12 +1954,14 @@ void MidiBrowserEditor::PreviewHeader::mouseDown(const juce::MouseEvent&)
 void MidiBrowserEditor::toggleEditorFold()
 {
     processorRef.editorOpen = !processorRef.editorOpen;
+    persistBrowserSession();
     applyLayoutState();
 }
 
 void MidiBrowserEditor::toggleEffectsFold()
 {
     processorRef.effectsOpen = !processorRef.effectsOpen;
+    persistBrowserSession();
     applyLayoutState();
 }
 
@@ -2310,6 +2325,7 @@ void MidiBrowserEditor::showTweaksMenu()
     overlay->setComponentID("settingsOverlay");
     overlay->panel.onChanged = [this]
     {
+        persistBrowserSession();
         lnf.refreshColours();
         sendLookAndFeelChange();
         applyLayoutState();
