@@ -49,15 +49,16 @@ const std::array<int, 7>& modeIntervals(Mode m) { return kModeIntervals[(size_t)
 
 Mode auditionMode(Mode m)
 {
+    // Only flatten "bright major-ish" modes that preserve accidentals users
+    // usually want Fit-to-Scale to remove (#4 in Lydian, b7 in Mixolydian).
+    // Leave Dorian/Phrygian/etc. alone — same-root Minor would be a different scale.
     switch (m)
     {
-        case Mode::Aeolian:
-        case Mode::Dorian:
-        case Mode::Phrygian:
-        case Mode::Locrian:
-            return Mode::Aeolian;
-        default:
+        case Mode::Lydian:
+        case Mode::Mixolydian:
             return Mode::Ionian;
+        default:
+            return m;
     }
 }
 

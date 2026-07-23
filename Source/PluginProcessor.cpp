@@ -724,7 +724,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             lockedEdit.mapToRoot = xml->getIntAttribute("lockMapToRoot", 0) != 0;
             lockedEdit.root = juce::jlimit(-1, 11, xml->getIntAttribute("lockRoot", -1));
             lockedEdit.mode = (Mode) juce::jlimit(0, kNumModes - 1,
-                xml->getIntAttribute("lockMode", (int) Mode::Dorian));
+                xml->getIntAttribute("lockMode", (int) Mode::Ionian));
             {
                 const int mask = xml->getIntAttribute("lockNoteFilterMask", 0x0FFF);
                 lockedEdit.noteFilterMask = (uint16_t) juce::jlimit(1, 0x0FFF, mask & 0x0FFF);
@@ -839,7 +839,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                     e.mapToRoot = child->getIntAttribute("mapToRoot", 0) != 0;
                     e.root = juce::jlimit(-1, 11, child->getIntAttribute("root", -1));
                     e.mode = (Mode) juce::jlimit(0, kNumModes - 1,
-                                                 child->getIntAttribute("mode", (int) Mode::Dorian));
+                                                 child->getIntAttribute("mode", (int) Mode::Ionian));
                     {
                         const int mask = child->getIntAttribute("noteFilterMask", 0x0FFF);
                         e.noteFilterMask = (uint16_t) juce::jlimit(1, 0x0FFF, mask & 0x0FFF);

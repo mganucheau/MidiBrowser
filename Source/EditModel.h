@@ -58,9 +58,10 @@ constexpr int kNumModes = 7;
 const char* modeName(Mode m);
 const std::array<int, 7>& modeIntervals(Mode m);
 
-/** Collapse a detected mode to Major/Minor for audition defaults.
-    Bright modes → Major; dark modes → Minor. Candidates still expose the
-    exact mode so the user can opt into Lydian/Dorian/etc. */
+/** Soften a detected mode for audition defaults without breaking relatives.
+    Lydian/Mixolydian → Major at the same root (so Fit snaps #4 / b7).
+    Dorian/Phrygian/Aeolian/Locrian stay as detected — collapsing Dorian to
+    Minor at the same root is wrong (D Dorian ≠ D minor). */
 Mode auditionMode(Mode m);
 
 juce::String pitchName(int midi);           // MIDI 60 = "C4"

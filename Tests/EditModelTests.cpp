@@ -98,7 +98,9 @@ TEST_CASE("analyseClipScale seeds Major when Lydian covers F#", "[editmodel]")
     CHECK(a.primaryRoot == 0);
     CHECK(a.primaryMode == Mode::Ionian);
     CHECK(auditionMode(Mode::Lydian) == Mode::Ionian);
-    CHECK(auditionMode(Mode::Dorian) == Mode::Aeolian);
+    CHECK(auditionMode(Mode::Mixolydian) == Mode::Ionian);
+    CHECK(auditionMode(Mode::Dorian) == Mode::Dorian);
+    CHECK(auditionMode(Mode::Aeolian) == Mode::Aeolian);
 
     ClipEdit e;
     e.fitScale = true;
@@ -109,6 +111,40 @@ TEST_CASE("analyseClipScale seeds Major when Lydian covers F#", "[editmodel]")
     for (const auto& n : r.notes)
         CHECK(pitchInScale(n.pitch, 0, Mode::Ionian));
     CHECK(r.notes[2].pitch == 65); // F# -> F
+}
+
+TEST_CASE("analyseClipScale does not collapse Dorian to same-root Minor", "[editmodel]")
+{
+    // D Dorian (D E F G A B C) with clip.root=D. Must not seed D Aeolian
+    // (which has Bb) — that would snap B→Bb under Fit.
+    auto clip = makeClip({
+        { 0, 62, 0.0, 1.0 },  // D
+        { 1, 64, 1.0, 1.0 },  // E
+        { 2, 65, 2.0, 1.0 },  // F
+        { 3, 67, 3.0, 1.0 },  // G
+        { 4, 69, 4.0, 1.0 },  // A
+        { 5, 71, 5.0, 1.0 },  // B
+        { 6, 60, 6.0, 1.0 },  // C
+    }, 1, 2);
+    const auto a = analyseClipScale(clip);
+    // Prefer relative Major when it wins; never D Aeolian for this set.
+    CHECK_FALSE((a.primaryRoot == 2 && a.primaryMode == Mode::Aeolian));
+    if (a.primaryRoot == 2)
+        CHECK(a.primaryMode == Mode::Dorian);
+
+    ClipEdit e;
+    e.fitScale = true;
+    e.root = 2;
+    e.mode = Mode::Dorian;
+    const auto r = resolveClip(clip, e);
+    for (const auto& n : r.notes)
+        CHECK(pitchInScale(n.pitch, 2, Mode::Dorian));
+    // B must remain B, not Bb.
+    bool hasB = false;
+    for (const auto& n : r.notes)
+        if ((n.pitch % 12 + 12) % 12 == 11)
+            hasB = true;
+    CHECK(hasB);
 }
 
 TEST_CASE("editIsClean detects default edits", "[editmodel]")
