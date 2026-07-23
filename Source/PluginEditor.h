@@ -1,7 +1,9 @@
 #pragma once
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <map>
+#include <vector>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "PluginProcessor.h"
@@ -35,7 +37,8 @@ public:
 private:
     void applyNativeWindowChrome();
     void setRootDirectory(const juce::File& dir, bool keepSelection = false);
-    void rescanFolder(bool keepSelection, bool autoSelect = true);
+    /** Async folder scan — never parses MIDI on the message thread. */
+    void rescanFolder(bool keepSelection, const juce::String& preferredPath = {});
     /** Load every MIDI file under the current folder tree (flat list). */
     void scanAllFolders();
     void chooseFolder();
@@ -65,16 +68,21 @@ private:
     void refreshSidebar();
     void syncEffectsInspector();
     void setBrowseMode(int mode);
-    void loadStarredClips(bool autoSelect = true);
+    void loadStarredClips(const juce::String& preferredPath = {});
     /** Mirror browser UI into the processor (survives editor teardown / host save). */
     void persistBrowserSession();
     /** Rebuild folder/search/filters/selection from processor session state. */
     void restoreBrowserSession();
     void selectPathOrFirst(const juce::String& path);
+    /** Cancel in-flight scans and show the searching affordance. */
+    int beginBackgroundClipLoad();
+    /** Parse MIDI paths on a worker thread; apply callback on the message thread. */
+    void loadClipsFromPathsAsync(juce::StringArray paths,
+                                 std::function<void(std::vector<StepClip>&&)> onDone);
     void runSearch(const BrowserSearch& criteria);
     /** savedIdx >= 0 keeps that saved-search selection and stores/restores its result snapshot. */
     void runSearchAsync(const BrowserSearch& criteria, int savedIdx = -1,
-                        juce::File searchRoot = {});
+                        juce::File searchRoot = {}, bool allowCache = true);
     void saveCurrentSearch();
     bool clipMatchesSearch(const StepClip& clip, const juce::File& file,
                            const BrowserSearch& criteria) const;

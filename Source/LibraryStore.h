@@ -27,6 +27,8 @@ public:
 
     void load();
     void save() const;
+    /** Snapshot + write on a background thread so the host UI never waits on disk. */
+    void saveAsync() const;
 
     juce::StringArray starredFiles;
     std::vector<SavedSearchEntry> savedSearches;
@@ -57,6 +59,9 @@ public:
 private:
     static constexpr int kMaxSavedSearches = 48;
     static constexpr int kMaxSearchCache = 32;
+    static void writeLibraryFile(juce::StringArray stars,
+                                 std::vector<SavedSearchEntry> searches,
+                                 std::vector<CachedSearch> cache);
 };
 
 } // namespace pflow

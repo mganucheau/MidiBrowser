@@ -84,7 +84,7 @@ struct Tweaks
     std::atomic<int> size    { (int) ContentSize::Medium };
     /** Type + icon glyph scale as percent; 100% = former 115% size. Independent of UI size. */
     std::atomic<int> textScalePct { 100 };
-    std::atomic<int> appearance { (int) Appearance::System };
+    std::atomic<int> appearance { (int) Appearance::Dark };
     std::atomic<int> showTooltips { 1 }; // 1 = on
 };
 

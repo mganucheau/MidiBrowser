@@ -31,6 +31,7 @@ TEST_CASE("LibraryStore persists stars and search cache to disk", "[Library][qa]
         entry.resultPaths.add("/tmp/midi/a.mid");
         entry.resultPaths.add("/tmp/midi/b.mid");
         store.addSavedSearch(entry);
+        store.save(); // flush async writes before reloading
     }
 
     {
@@ -75,6 +76,7 @@ TEST_CASE("Processor loads library stars on construction", "[Library][qa]")
     {
         LibraryStore store;
         store.toggleStarred("/tmp/starred-clip.mid");
+        store.save(); // flush async write before processor construction
     }
 
     MidiBrowserProcessor processor;

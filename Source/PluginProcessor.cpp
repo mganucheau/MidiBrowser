@@ -649,7 +649,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 tweaks().textScalePct.store(juce::jlimit(60, 150, pct));
             }
             tweaks().appearance.store(juce::jlimit(0, kNumAppearances - 1,
-                xml->getIntAttribute("tweakAppearance", (int) Appearance::System)));
+                xml->getIntAttribute("tweakAppearance", (int) Appearance::Dark)));
             tweaks().showTooltips.store(xml->getIntAttribute("tweakShowTooltips", 1) != 0 ? 1 : 0);
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));

@@ -144,19 +144,21 @@ void LibraryStore::load()
     }
 }
 
-void LibraryStore::save() const
+void LibraryStore::writeLibraryFile(juce::StringArray stars,
+                                    std::vector<SavedSearchEntry> searches,
+                                    std::vector<CachedSearch> cache)
 {
     juce::XmlElement xml("MidiBrowserLibrary");
     xml.setAttribute("version", 1);
 
-    for (const auto& star : starredFiles)
+    for (const auto& star : stars)
     {
         if (star.isEmpty()) continue;
         auto* child = xml.createNewChildElement("StarredFile");
         child->setAttribute("path", star);
     }
 
-    for (const auto& ss : savedSearches)
+    for (const auto& ss : searches)
     {
         if (ss.name.isEmpty()) continue;
         auto* child = xml.createNewChildElement("SavedSearch");
@@ -172,7 +174,7 @@ void LibraryStore::save() const
         }
     }
 
-    for (const auto& c : searchCache)
+    for (const auto& c : cache)
     {
         if (c.rootPath.isEmpty()) continue;
         auto* child = xml.createNewChildElement("SearchCache");
@@ -192,6 +194,22 @@ void LibraryStore::save() const
     xml.writeTo(file);
 }
 
+void LibraryStore::save() const
+{
+    writeLibraryFile(starredFiles, savedSearches, searchCache);
+}
+
+void LibraryStore::saveAsync() const
+{
+    // Copy state on the caller thread, then write off the message thread.
+    juce::Thread::launch([stars = starredFiles,
+                          searches = savedSearches,
+                          cache = searchCache]
+    {
+        writeLibraryFile(std::move(stars), std::move(searches), std::move(cache));
+    });
+}
+
 void LibraryStore::toggleStarred(const juce::String& path)
 {
     if (path.isEmpty()) return;
@@ -199,13 +217,13 @@ void LibraryStore::toggleStarred(const juce::String& path)
         starredFiles.add(path);
     else
         starredFiles.removeString(path);
-    save();
+    saveAsync();
 }
 
 void LibraryStore::setStarredFiles(const juce::StringArray& paths)
 {
     starredFiles = paths;
-    save();
+    saveAsync();
 }
 
 void LibraryStore::addSavedSearch(const SavedSearchEntry& entry)
@@ -214,7 +232,7 @@ void LibraryStore::addSavedSearch(const SavedSearchEntry& entry)
     savedSearches.push_back(entry);
     while ((int) savedSearches.size() > kMaxSavedSearches)
         savedSearches.erase(savedSearches.begin());
-    save();
+    saveAsync();
 }
 
 void LibraryStore::removeSavedSearch(int index)
@@ -222,7 +240,7 @@ void LibraryStore::removeSavedSearch(int index)
     if (!juce::isPositiveAndBelow(index, (int) savedSearches.size()))
         return;
     savedSearches.erase(savedSearches.begin() + index);
-    save();
+    saveAsync();
 }
 
 void LibraryStore::setSavedSearches(std::vector<SavedSearchEntry> entries)
@@ -230,7 +248,7 @@ void LibraryStore::setSavedSearches(std::vector<SavedSearchEntry> entries)
     savedSearches = std::move(entries);
     while ((int) savedSearches.size() > kMaxSavedSearches)
         savedSearches.erase(savedSearches.begin());
-    save();
+    saveAsync();
 }
 
 void LibraryStore::mergeFromPluginState(const juce::StringArray& stars,
@@ -275,7 +293,7 @@ void LibraryStore::mergeFromPluginState(const juce::StringArray& stars,
     }
 
     if (dirty)
-        save();
+        saveAsync();
 }
 
 const CachedSearch* LibraryStore::findSearchCache(const juce::File& root,
@@ -310,7 +328,7 @@ void LibraryStore::putSearchCache(const juce::File& root, const BrowserSearch& s
     while ((int) searchCache.size() > kMaxSearchCache)
         searchCache.erase(searchCache.begin());
 
-    save();
+    saveAsync();
 }
 
 } // namespace pflow

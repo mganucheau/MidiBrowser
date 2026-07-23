@@ -1,5 +1,6 @@
 #include "BrowserPanels.h"
 #include <algorithm>
+#include <map>
 
 namespace pflow {
 
@@ -626,7 +627,16 @@ int FavoritesSidebar::activeFilterGroupCount() const
 int FavoritesSidebar::countMidiFilesQuick(const juce::File& dir)
 {
     if (!dir.isDirectory()) return 0;
-    return dir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi").size();
+    // Cache per path so paint doesn't re-stat huge folders every frame.
+    struct CacheEntry { juce::int64 modMs = 0; int count = 0; };
+    static std::map<juce::String, CacheEntry> cache;
+    const auto path = dir.getFullPathName();
+    const auto modMs = dir.getLastModificationTime().toMilliseconds();
+    if (auto it = cache.find(path); it != cache.end() && it->second.modMs == modMs)
+        return it->second.count;
+    const int n = dir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi").size();
+    cache[path] = { modMs, n };
+    return n;
 }
 
 int FavoritesSidebar::folderCardHeight() const
