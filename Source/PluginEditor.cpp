@@ -699,6 +699,9 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     refreshSidebar();
 
     setResizable(true, true);
+    // Default workspace size; applyLayoutState may grow width for columns.
+    lastWindowH = 850;
+    setSize(700, 850);
     applyLayoutState();
     startTimerHz(30);
     setWantsKeyboardFocus(true);
@@ -2012,9 +2015,10 @@ void MidiBrowserEditor::applyLayoutState()
     const int maxW = sideBudget + tableMax + panes;
     updateWindowLimits();
 
-    // Always reserve the Preview title row; add mini-roll height when expanded.
-    const int previewExtra = metrics::scaled(26)
-        + (processorRef.previewOpen ? metrics::miniRollH() : 0);
+    // Reserve the Preview title row in the height floor. The mini-roll steals
+    // height from the file list inside the current window — do not grow taller
+    // for it (hosts often clip the bottom when setSize exceeds available space).
+    const int previewExtra = metrics::scaled(26);
     const int targetH = juce::jmax(metrics::transportH() + sidebar.idealMinHeight(),
                                    juce::jmax(metrics::scaled(460) + previewExtra, lastWindowH));
 
@@ -2054,7 +2058,6 @@ void MidiBrowserEditor::layoutContent()
     effectsInspector.setVisible(fxOpen);
     // Preview title row always lives under the browser list (fold to minimize).
     previewHeader.setVisible(true);
-    miniRoll.setVisible(previewOpen);
 
     auto row = r;
     const int sideW = sidebar.idealWidth();
@@ -2083,19 +2086,30 @@ void MidiBrowserEditor::layoutContent()
     if (fxOpen)
         effectsInspector.setBounds(paneX, paneY, metrics::effectsPaneWidth(), paneH);
 
-    // Preview stack pinned under the file list: title row always, roll when open.
+    // Preview stack pinned under the file list — never taller than the column.
+    // Prefer keeping a usable file-list strip; shrink the roll (content refits).
     const int previewHeaderH = metrics::scaled(26);
-    if (previewOpen)
-    {
-        auto preview = browserCol.removeFromBottom(metrics::miniRollH());
-        previewHeader.setBounds(browserCol.removeFromBottom(previewHeaderH));
-        miniRoll.setBounds(preview);
-    }
+    const int fileListMinH = metrics::listHeaderH() + metrics::listRowH() * 2;
+    const int colH = browserCol.getHeight();
+    const int softMaxStack = juce::jmax(0, colH - fileListMinH);
+    const int desiredRollH = previewOpen ? metrics::miniRollH() : 0;
+    int stackH = juce::jmin(previewHeaderH + desiredRollH, softMaxStack);
+    // In a very short window, still keep the Preview title row if possible.
+    if (stackH < previewHeaderH)
+        stackH = juce::jmin(previewHeaderH, colH);
+    const int headerH = juce::jmin(previewHeaderH, stackH);
+    const int rollH = previewOpen ? juce::jmax(0, stackH - headerH) : 0;
+
+    if (rollH > 0)
+        miniRoll.setBounds(browserCol.removeFromBottom(rollH));
     else
-    {
-        previewHeader.setBounds(browserCol.removeFromBottom(previewHeaderH));
         miniRoll.setBounds({});
-    }
+    miniRoll.setVisible(rollH > 0);
+
+    if (headerH > 0)
+        previewHeader.setBounds(browserCol.removeFromBottom(headerH));
+    else
+        previewHeader.setBounds({});
 
     fileList.setBounds(browserCol);
     browserColW = fileList.getWidth();

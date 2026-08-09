@@ -111,7 +111,7 @@ public:
     bool editorOpen = false;
     bool effectsOpen = false;
     bool previewOpen = true;
-    bool sidebarCollapsed = true;
+    bool sidebarCollapsed = false;
     BrowserColumnVisibility columnVisibility;
     /** Logical (unscaled) Name column width in the file table. */
     int nameColumnWidth = 280;

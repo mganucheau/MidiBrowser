@@ -96,7 +96,7 @@ SharedUiSession LibraryStore::uiSessionFromXml(const juce::XmlElement& el)
     s.editorOpen = el.getIntAttribute("editorOpen", 0) != 0;
     s.effectsOpen = el.getIntAttribute("effectsOpen", 0) != 0;
     s.previewOpen = el.getIntAttribute("previewOpen", 1) != 0;
-    s.sidebarCollapsed = el.getIntAttribute("sidebarCollapsed", 1) != 0;
+    s.sidebarCollapsed = el.getIntAttribute("sidebarCollapsed", 0) != 0;
     s.columnVisibility.key = el.getIntAttribute("colKey", 1) != 0;
     s.columnVisibility.tempo = el.getIntAttribute("colTempo", 1) != 0;
     s.columnVisibility.bars = el.getIntAttribute("colBars", 1) != 0;

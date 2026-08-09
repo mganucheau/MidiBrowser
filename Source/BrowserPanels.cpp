@@ -458,7 +458,7 @@ FavoritesSidebar::FavoritesSidebar()
     btnToggle.ghost = true;
     btnToggle.iconScale = 1.0f;
     btnToggle.setWantsKeyboardFocus(true);
-    btnToggle.setTooltip("Expand sidebar");
+    btnToggle.setTooltip(collapsed ? "Expand sidebar" : "Collapse sidebar");
     btnToggle.onClick = [this] { setCollapsed(!collapsed); };
     addAndMakeVisible(btnToggle);
 
@@ -818,11 +818,11 @@ void FavoritesSidebar::setCollapsed(bool shouldCollapse)
 {
     if (collapsed == shouldCollapse)
     {
-        btnToggle.setTooltip(collapsed ? "Expand sidebar" : "Collapse to icons");
+        btnToggle.setTooltip(collapsed ? "Expand sidebar" : "Collapse sidebar");
         return;
     }
     collapsed = shouldCollapse;
-    btnToggle.setTooltip(collapsed ? "Expand sidebar" : "Collapse to icons");
+    btnToggle.setTooltip(collapsed ? "Expand sidebar" : "Collapse sidebar");
     if (onCollapsedChanged) onCollapsedChanged();
     notifyHeightChanged();
 }

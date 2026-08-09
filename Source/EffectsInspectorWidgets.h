@@ -1684,19 +1684,7 @@ public:
     {
         if (open == o) return;
         open = o;
-        forceCollapsed = false;
         refreshRowVisibility();
-        if (onToggle) onToggle();
-        repaint();
-    }
-
-    /** Header fold-all: hide every row (ignore dirty keep-visible). */
-    void setFullyCollapsed(bool collapsed)
-    {
-        forceCollapsed = collapsed;
-        open = !collapsed;
-        refreshRowVisibility();
-        resized();
         if (onToggle) onToggle();
         repaint();
     }
@@ -1851,8 +1839,6 @@ public:
     std::vector<Row> rows;
 
 private:
-    bool forceCollapsed = false;
-
     juce::Rectangle<int> headerBounds() const
     {
         return getLocalBounds().withTrimmedTop(toolkitSectionPadT())
@@ -1886,7 +1872,6 @@ private:
 
     bool isRowShowing(const Row& r) const
     {
-        if (forceCollapsed) return false;
         if (open) return true;
         return r.dirty && r.dirty();
     }

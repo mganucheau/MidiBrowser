@@ -177,7 +177,7 @@ private:
     void forgetSavedSearchSnapshot(int index);
     int selectedIdx = -1;
     KeyNavTarget keyNavTarget = KeyNavTarget::Browser;
-    int lastWindowH = 560;
+    int lastWindowH = 850;
     int browserColW = metrics::fileTableW;
     int layoutTargetW = 0;
     int layoutAnimFromW = 0;

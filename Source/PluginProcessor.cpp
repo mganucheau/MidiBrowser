@@ -766,7 +766,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             editorOpen = xml->getIntAttribute("editorOpen", 0) != 0;
             effectsOpen = xml->getIntAttribute("effectsOpen", 0) != 0;
             previewOpen = xml->getIntAttribute("previewOpen", 1) != 0;
-            sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 1) != 0;
+            sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 0) != 0;
             browseMode = juce::jlimit(0, 2, xml->getIntAttribute("browseMode", 0));
             starredFilter = xml->getIntAttribute("starredFilter", 0) != 0;
             includeSubdirs = xml->getIntAttribute("includeSubdirs", 0) != 0;

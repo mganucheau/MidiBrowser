@@ -791,14 +791,10 @@ bool EffectsInspector::anySectionOpen() const
 
 void EffectsInspector::foldAllSections()
 {
+    // Collapse keeps dirty (modified) rows visible — same as per-section chevrons.
     const bool expand = !anySectionOpen();
     for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
-    {
-        if (expand)
-            sec->setOpen(true);
-        else
-            sec->setFullyCollapsed(true);
-    }
+        sec->setOpen(expand);
     layoutSections();
     repaint();
 }

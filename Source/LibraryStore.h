@@ -38,7 +38,7 @@ struct SharedUiSession
     bool editorOpen = false;
     bool effectsOpen = false;
     bool previewOpen = true;
-    bool sidebarCollapsed = true;
+    bool sidebarCollapsed = false;
 
     int tweakDensity = 1;       // Density::Comfortable
     int tweakSize = 1;          // ContentSize::Medium

@@ -181,7 +181,7 @@ private:
     void scheduleFilterApply();
     void timerCallback() override;
 
-    IconBtn btnToggle { icons::more, "Show or hide sidebar" };
+    IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
     IconBtn btnSettings { icons::gear, "Settings" };
     fx::FlatSwitch includeSwitch;
     juce::StringArray dirs;
@@ -190,7 +190,7 @@ private:
     int activeSearchIdx = -1;
     int browseMode = 0;
     bool starredFilter = false;
-    bool collapsed = true;
+    bool collapsed = false;
     int expandedWidth = 0;
     int hoverRow = -1;
     bool hoverRemove = false;
