@@ -176,6 +176,7 @@ TransportBar::TransportBar()
     addAndMakeVisible(statusPill);
 
     prep(btnSync, false);
+    btnSync.caption = "Sync";
     btnSync.setTooltip("Sync to host tempo");
     btnSync.onClick = [this]
     {
@@ -195,17 +196,20 @@ TransportBar::TransportBar()
     addAndMakeVisible(btnDragToDaw);
 
     prep(btnPassthrough, false);
-    btnPassthrough.setTooltip("Passthrough MIDI\nLive input through Toolkit effects\nShortcut: P");
+    btnPassthrough.caption = "Passthrough";
+    btnPassthrough.setTooltip("Passthrough\nLive input through effects\nShortcut: P");
     btnPassthrough.onClick = [this] { if (onTogglePassthrough) onTogglePassthrough(); };
     addAndMakeVisible(btnPassthrough);
 
     prep(btnEditor, false);
-    btnEditor.setTooltip("Toggle editor\nShortcut: E");
+    btnEditor.caption = "Piano Roll";
+    btnEditor.setTooltip("Piano Roll\nShortcut: E");
     btnEditor.onClick = [this] { if (onToggleEditor) onToggleEditor(); };
     addAndMakeVisible(btnEditor);
 
     prep(btnEffects, false);
-    btnEffects.setTooltip("Toggle toolkit\nShortcut: F");
+    btnEffects.caption = "Effects";
+    btnEffects.setTooltip("Effects\nShortcut: F");
     btnEffects.onClick = [this] { if (onToggleEffects) onToggleEffects(); };
     addAndMakeVisible(btnEffects);
 
@@ -380,61 +384,78 @@ void TransportBar::mouseDoubleClick(const juce::MouseEvent& e)
 
 void TransportBar::resized()
 {
-    auto r = getLocalBounds();
-    const int h = r.getHeight();
+    const int h = getHeight();
     const int y = (h - kBtnH) / 2;
-    const int gap = 8;
+    const int gap = 6;
 
     // Only the standalone macOS window has floating traffic lights over the header.
     lightsZoneW = reserveTrafficLights ? 76 : 16;
 
-    // Left: optional traffic-light zone + app name
-    auto left = r.removeFromLeft(lightsZoneW + 14 + 110);
-    titleBounds = juce::Rectangle<int>(lightsZoneW + 14, 0, 110, h);
-    juce::ignoreUnused(left);
+    const int passW = btnPassthrough.captionWidth();
+    const int editW = btnEditor.captionWidth();
+    const int fxW = btnEffects.captionWidth();
+    const int toggleGap = 4;
+    const int togglesW = passW + toggleGap + editW + toggleGap + fxW;
+    const int rightInset = 8;
+    const int groupW = kBtnW * 2;
+    const int syncW = btnSync.captionWidth();
+    int pillW = 80;
+    int centerW = groupW + gap + pillW + gap + syncW;
+    const int dragExtra = hasClip ? btnDragToDaw.idealWidth() + 8 : 0;
+    const int dividerGap = 8 + 1 + 8;
 
-    // Right edge inset so view toggles aren't flush to the window border.
-    r.removeFromRight(14);
-    btnEffects.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
-    r.removeFromRight(6);
-    btnEditor.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
-    r.removeFromRight(6);
-    btnPassthrough.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
-    r.removeFromRight(10);
-    dividerBounds = r.removeFromRight(1).withY((h - 16) / 2).withHeight(16);
-    r.removeFromRight(10);
+    int titleW = 110;
+    auto needed = [&](int title, int center)
+    {
+        return lightsZoneW + 8 + title + 8 + center + dragExtra + dividerGap + togglesW + rightInset;
+    };
+    if (needed(titleW, centerW) > getWidth())
+        titleW = juce::jmax(0, getWidth() - (needed(0, centerW)));
+    if (needed(titleW, centerW) > getWidth())
+    {
+        pillW = 64;
+        centerW = groupW + gap + pillW + gap + syncW;
+        titleW = juce::jmax(0, getWidth() - (needed(0, centerW)));
+    }
 
-    // Drag chip is a primary export affordance — show whenever a clip is selected,
-    // not only when the editor/toolkit panes are open (VST often starts with both closed).
+    titleBounds = { lightsZoneW + 8, 0, titleW, h };
+
+    int xRight = getWidth() - rightInset;
+    btnEffects.setBounds(xRight - fxW, y, fxW, kBtnH);
+    xRight -= fxW + toggleGap;
+    btnEditor.setBounds(xRight - editW, y, editW, kBtnH);
+    xRight -= editW + toggleGap;
+    btnPassthrough.setBounds(xRight - passW, y, passW, kBtnH);
+    xRight -= passW + 8;
+    dividerBounds = { xRight - 1, (h - 16) / 2, 1, 16 };
+    xRight -= 1 + 8;
+
     const int chipH = 26;
     btnDragToDaw.setVisible(hasClip);
-    if (btnDragToDaw.isVisible())
+    if (hasClip)
     {
-        const int dragW = btnDragToDaw.idealWidth();
-        btnDragToDaw.setBounds(r.removeFromRight(dragW).withY((h - chipH) / 2).withHeight(chipH));
-        r.removeFromRight(8);
+        const int chipW = btnDragToDaw.idealWidth();
+        btnDragToDaw.setBounds(xRight - chipW, (h - chipH) / 2, chipW, chipH);
+        xRight -= chipW + 8;
     }
     else
     {
         btnDragToDaw.setBounds({});
     }
 
-    // Centre: play|stop group + BPM + sync
-    const int groupW = kBtnW * 2;
-    const int pillW = 88;
-    const int centerW = groupW + gap + pillW + gap + kBtnW;
-    const int rightEdge = btnDragToDaw.isVisible() ? btnDragToDaw.getX()
-                                                   : dividerBounds.getX();
-    int centerX = titleBounds.getRight() + (rightEdge - titleBounds.getRight() - centerW) / 2;
-    centerX = juce::jmax(titleBounds.getRight() + 8, centerX);
-    if (centerX + centerW > rightEdge - 8)
-        centerX = juce::jmax(titleBounds.getRight() + 8, rightEdge - 8 - centerW);
+    const int rightEdge = xRight;
+    int centerX = titleBounds.getRight() + 8;
+    const int room = rightEdge - centerX;
+    if (room > centerW)
+        centerX += (room - centerW) / 2;
+    if (centerX + centerW > rightEdge)
+        centerX = juce::jmax(lightsZoneW + 4, rightEdge - centerW);
 
     transportGroupBounds = { centerX, y, groupW, kBtnH };
     btnPlay.setBounds(transportGroupBounds.getX(), y, kBtnW, kBtnH);
     btnStop.setBounds(transportGroupBounds.getX() + kBtnW, y, kBtnW, kBtnH);
     statusPill.setBounds(transportGroupBounds.getRight() + gap, y, pillW, kBtnH);
-    btnSync.setBounds(statusPill.getRight() + gap, y, kBtnW, kBtnH);
+    btnSync.setBounds(statusPill.getRight() + gap, y, syncW, kBtnH);
 }
 
 void TransportBar::paint(juce::Graphics& g)

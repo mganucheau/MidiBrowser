@@ -22,6 +22,7 @@ bool LibraryStore::searchesEqual(const BrowserSearch& a, const BrowserSearch& b)
         && a.barsMax == b.barsMax
         && a.complexityMin == b.complexityMin
         && a.complexityMax == b.complexityMax
+        && a.kindMask == b.kindMask
         && a.subdirs == b.subdirs
         && a.removeDuplicates == b.removeDuplicates;
 }
@@ -38,6 +39,7 @@ BrowserSearch LibraryStore::browserSearchFromXml(const juce::XmlElement& el)
     s.removeDuplicates = el.getIntAttribute("removeDuplicates", 1) != 0;
     s.complexityMin = juce::jmax(0, el.getIntAttribute("complexityMin", 0));
     s.complexityMax = juce::jmax(0, el.getIntAttribute("complexityMax", 0));
+    s.kindMask = (uint8_t) juce::jlimit(0, 0x1F, el.getIntAttribute("kindMask", 0));
 
     if (el.hasAttribute("bpmMin") || el.hasAttribute("bpmMax"))
     {
@@ -79,6 +81,7 @@ void LibraryStore::browserSearchToXml(juce::XmlElement& el, const BrowserSearch&
     el.setAttribute("barsMax", s.barsMax);
     el.setAttribute("complexityMin", s.complexityMin);
     el.setAttribute("complexityMax", s.complexityMax);
+    el.setAttribute("kindMask", (int) s.kindMask);
     el.setAttribute("subdirs", s.subdirs ? 1 : 0);
     el.setAttribute("removeDuplicates", s.removeDuplicates ? 1 : 0);
 }

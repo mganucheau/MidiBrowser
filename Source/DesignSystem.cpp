@@ -35,7 +35,7 @@ const Palette& palette()
         juce::Colour(0xffffffff),   // ctl
         rgba(0, 0, 0, 0.20f),       // ctlb
         juce::Colour(0xffffffff),   // field
-        rgba(0, 0, 0, 0.20f),       // trk
+        rgba(0, 0, 0, 0.14f),       // trk
         rgba(0, 0, 0, 0.04f),       // rowalt
         juce::Colour(0xff1f7ef2),   // note
         juce::Colour(0xffe0a800),   // stron
@@ -49,6 +49,12 @@ const Palette& palette()
         juce::Colour(0xfff0842c),   // kindPerc
         rgba(0, 0, 0, 0.18f),       // winbrd
         rgba(0, 0, 0, 0.05f),       // hoverWash
+        juce::Colour(0xfff2f2f4),   // head
+        rgba(0, 0, 0, 0.045f),      // well
+        juce::Colour(0xffcfe2fb),   // kfInW
+        juce::Colour(0xff1d5bb0),   // kfInB
+        juce::Colour(0xffdcdce0),   // kfOutW
+        juce::Colour(0xff8c8c93),   // kfOutB
     };
     static const Palette dark {
         juce::Colour(0xff28282b),
@@ -65,7 +71,7 @@ const Palette& palette()
         juce::Colour(0xff3b3b40),
         rgba(255, 255, 255, 0.10f),
         rgba(255, 255, 255, 0.06f),
-        rgba(255, 255, 255, 0.18f),
+        rgba(255, 255, 255, 0.16f),
         rgba(255, 255, 255, 0.035f),
         juce::Colour(0xff3f9bff),
         juce::Colour(0xfff5b400),
@@ -79,6 +85,12 @@ const Palette& palette()
         juce::Colour(0xfff0842c),
         rgba(255, 255, 255, 0.12f),
         rgba(255, 255, 255, 0.05f),
+        juce::Colour(0xff252528),           // head
+        rgba(255, 255, 255, 0.055f),        // well
+        rgba(10, 132, 255, 0.28f),          // kfInW = accent @ 28%
+        rgba(10, 132, 255, 0.70f),          // kfInB = accent @ 70%
+        rgba(255, 255, 255, 0.14f),         // kfOutW
+        rgba(255, 255, 255, 0.28f),         // kfOutB
     };
     return usesDarkAppearance() ? dark : light;
 }

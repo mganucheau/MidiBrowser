@@ -28,6 +28,11 @@ namespace icons {
     /** Bookmark / Keep in Library. */
     inline constexpr const char* bookmark      = "bookmark";
     inline constexpr const char* bookmarkFill  = "bookmark-fill";
+    /** Floppy — Save / Keep in Library. */
+    inline constexpr const char* save          = "save";
+    inline constexpr const char* saveFill      = "save-fill";
+    /** 5-pin DIN plug. */
+    inline constexpr const char* midi          = "midi";
     inline constexpr const char* plus          = "plus";
     inline constexpr const char* minus         = "minus";
     inline constexpr const char* x             = "x";
@@ -76,7 +81,11 @@ public:
     juce::String icon;
     bool active = false;       // accent fill
     bool ghost = true;         // no background when idle
+    bool headerChrome = false; // toolkit pane header: tx3, accent wash on hover
     float iconScale = 1.0f;
+    /** When set, the button draws this label beside the icon and grows to fit. */
+    juce::String caption;
+    int captionWidth() const;
 };
 
 /** Rounded chip with optional leading icon; used for Trim, badges, Editor btn. */

@@ -8,7 +8,7 @@
 namespace pflow {
 
 /** Flat macOS-style effects inspector (Playback / Timing / Performance / Pitch & Scale / Effects). */
-class EffectsInspector : public juce::Component
+class EffectsInspector : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     EffectsInspector();
@@ -49,6 +49,19 @@ public:
     std::function<void()> onTrimClicked;
     std::function<void()> onActivated;
 
+    fx::Section& playbackSection() { return playback; }
+    fx::Section& timingSection() { return timing; }
+    fx::Section& performanceSection() { return performance; }
+    fx::Section& pitchSection() { return pitchSec; }
+    fx::Section& effectsSection() { return effectsSec; }
+    bool delayPairVisible() const
+    {
+        return delayBlock.isVisible() && delayTimePopup.isVisible() && delayAmountSl.isVisible();
+    }
+    bool delayFeedbackVisible() const { return delayFeedbackSl.isVisible(); }
+    bool articulationStrengthEnabled() const { return articulationStrengthSl.isEnabled(); }
+    juce::String noteFilterLegendLead() const { return noteFilter.legendLead(); }
+
 private:
     void notifyGroove();
     void notifyEdit();
@@ -72,6 +85,8 @@ private:
     void foldAllSections();
     bool anySectionOpen() const;
     void updateToolkitFoldBounds();
+    void refreshDependentEnables();
+    void refreshOctaveSummary();
 
     GrooveParams groove;
     ClipEdit edit;
@@ -101,11 +116,11 @@ private:
     fx::InlineRow extendRow;
 
     fx::FlatPopup swingTimePopup;
-    fx::InlineRow swingTimeRow;
     fx::FlatPopup quantizeTimePopup;
-    fx::InlineRow quantizeTimeRow;
     fx::FlatSliderRow quantizeStrengthSl;
+    fx::GridAmountBlock quantizeBlock { "Quantize", quantizeTimePopup, quantizeStrengthSl };
     fx::FlatSliderRow swing;
+    fx::GridAmountBlock swingBlock { "Swing", swingTimePopup, swing };
     fx::FlatSliderRow pocket;
     fx::FlatSliderRow humanize;
     fx::FlatSliderRow lengthSl;
@@ -121,8 +136,8 @@ private:
     fx::FlatSliderRow complexitySl;
     fx::FlatSliderRow variationsSl;
     fx::FlatPopup delayTimePopup;
-    fx::InlineRow delayTimeRow;
     fx::FlatSliderRow delayAmountSl;
+    fx::GridAmountBlock delayBlock { "Delay", delayTimePopup, delayAmountSl };
     fx::FlatSliderRow delayFeedbackSl;
 
     fx::SegmentedSelector octaveSelector;
@@ -142,10 +157,16 @@ private:
     fx::InlineRow fitRow;
     fx::InlineRow mapRow;
 
+    fx::Divider timingDivider;
+    fx::Divider performanceDivider;
+    fx::Divider pitchDividerA;
+    fx::Divider pitchDividerB;
+    fx::Divider effectsDivider;
+
     juce::Viewport viewport;
     juce::Component body;
 
-    static constexpr int kPanelW = 248;
+    static constexpr int kPanelW = 300;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EffectsInspector)
 };

@@ -7,10 +7,8 @@ using namespace fx;
 EffectsInspector::EffectsInspector()
     : tempoRow("Tempo", tempoToggle)
     , extendRow("Extend", extendPopup)
-    , swingTimeRow("Swing Time", swingTimePopup)
-    , quantizeTimeRow("Quantize", quantizeTimePopup)
     , quantizeStrengthSl("Strength", 0, 100, 0, false)
-    , swing("Swing", 0, 100, 0, false)
+    , swing("Amount", 0, 100, 0, false)
     , pocket("Pocket", -100, 100, 0, true)
     , humanize("Humanize", 0, 100, 0, false)
     , lengthSl("Length", 25, 200, 100, false)
@@ -19,11 +17,10 @@ EffectsInspector::EffectsInspector()
     , articulationStrengthSl("Strength", 0, 100, 0, false)
     , velocityRangeSl("Velocity", 1, 127, 1, 127)
     , sustainRow("Sustain Pedal", sustainPopup)
-    , complexitySl("Complexity", 0, 100, 50, false)
+    , complexitySl("Complexity", 0, 100, 50, true)
     , variationsSl("Variations", 0, 16, 0, false)
-    , delayTimeRow("Delay", delayTimePopup)
-    , delayAmountSl("Delay Amount", 0, 100, 0, false)
-    , delayFeedbackSl("Delay Feedback", 0, 100, 40, false)
+    , delayAmountSl("Amount", 0, 100, 0, false)
+    , delayFeedbackSl("Feedback", 0, 100, 40, false)
     , octaveRangeRow("Octave Range", octaveRangePopup)
     , pitchRangeSl("Range", 0, 127, 0, 127)
     , filterTypeRow("Filter Type", filterTypePopup)
@@ -51,6 +48,8 @@ EffectsInspector::EffectsInspector()
     btnEffectsLock.setComponentID("btnLock");
     btnEffectsLock.setWantsKeyboardFocus(false);
     btnEffectsLock.ghost = true;
+    btnReset.headerChrome = true;
+    btnEffectsLock.headerChrome = true;
     btnEffectsLock.iconScale = 1.0f;
     btnEffectsLock.setTooltip("Lock all Toolkit parameters while browsing");
     btnEffectsLock.onClick = [this]
@@ -173,7 +172,7 @@ EffectsInspector::EffectsInspector()
     juce::StringArray artItems;
     for (int i = 0; i < (int) Articulation::Count; ++i)
         artItems.add(articulationLabel((Articulation) i));
-    articulationGrid.title = "ARTICULATION";
+    articulationGrid.title = "Articulation";
     articulationGrid.columns = 6;
     articulationGrid.multiSelect = false;
     articulationGrid.fitContent = true;
@@ -226,7 +225,7 @@ EffectsInspector::EffectsInspector()
 
 
 
-    octaveSelector.title = "OCTAVE";
+    octaveSelector.title = "Octave";
     {
         juce::StringArray octs;
         for (int i = 0; i <= 6; ++i) octs.add(juce::String(i));
@@ -288,7 +287,7 @@ EffectsInspector::EffectsInspector()
 
     juce::StringArray keys;
     for (int i = 0; i < 12; ++i) keys.add(kNoteNames[(size_t) i]);
-    keyGrid.title = "KEY";
+    keyGrid.title = "Key";
     keyGrid.columns = 6;
     keyGrid.multiSelect = false;
     keyGrid.setItems(keys);
@@ -303,7 +302,7 @@ EffectsInspector::EffectsInspector()
 
     juce::StringArray modes;
     for (int i = 0; i < kNumModes; ++i) modes.add(modeName((Mode) i));
-    modeGrid.title = "MODE";
+    modeGrid.title = "Mode";
     modeGrid.columns = 6;
     modeGrid.multiSelect = false;
     modeGrid.fitContent = true;
@@ -345,13 +344,14 @@ EffectsInspector::EffectsInspector()
     playback.addRow(&trimRow, kRowMinH, [this] { return edit.hasTrim(); });
     playback.addRow(&extendRow, kRowMinH, [this] { return edit.extendMult > 1; });
 
-    timing.addRow(&quantizeTimeRow, kRowMinH, [this] {
+    timing.addRow(&quantizeBlock, [this] { return quantizeBlock.idealHeight(); }, [this] {
         return groove.quantizeStrength > 0
-            && groove.quantizeGridIndex != (int) QuantizeGrid::Eighth;
+            || groove.quantizeGridIndex != (int) QuantizeGrid::Eighth;
     });
-    timing.addRow(&quantizeStrengthSl, kSliderRowH, [this] { return groove.quantizeStrength > 0; });
-    timing.addRow(&swingTimeRow, kRowMinH, [this] { return groove.swingGridIndex != 1; });
-    timing.addRow(&swing, kSliderRowH, [this] { return groove.swing != 0; });
+    timing.addRow(&swingBlock, [this] { return swingBlock.idealHeight(); }, [this] {
+        return groove.swing != 0 || groove.swingGridIndex != 1;
+    });
+    timing.addRow(&timingDivider, [this] { return timingDivider.idealHeight(); });
     timing.addRow(&lengthSl, kSliderRowH, [this] { return groove.length != 100; });
     timing.addRow(&pocket, kSliderRowH, [this] { return groove.pocket != 0; });
     timing.addRow(&humanize, kSliderRowH, [this] { return groove.humanize != 0; });
@@ -361,9 +361,10 @@ EffectsInspector::EffectsInspector()
     performance.addRow(&articulationStrengthSl, kSliderRowH, [this] {
         return groove.articulationIndex != (int) Articulation::Off && groove.articulationStrength > 0;
     });
+    performance.addRow(&performanceDivider, [this] { return performanceDivider.idealHeight(); });
     performance.addRow(&dynamicsSl, kSliderRowH, [this] { return groove.dynamics != 0; });
     performance.addRow(&intensitySl, kSliderRowH, [this] { return groove.intensity != 100; });
-    performance.addRow(&velocityRangeSl, 22, [this] {
+    performance.addRow(&velocityRangeSl, [this] { return velocityRangeSl.idealHeight(); }, [this] {
         return groove.velocityRangeLo > 1 || groove.velocityRangeHi < 127;
     });
     performance.addRow(&sustainRow, kRowMinH, [this] {
@@ -372,26 +373,28 @@ EffectsInspector::EffectsInspector()
 
     pitchSec.addRow(&octaveSelector, [this] { return octaveSelector.idealHeight(); },
                     [this] { return edit.octave >= 0; });
-    pitchSec.addRow(&octaveRangeRow, kRowMinH, [this] { return edit.octaveRange != 0; });
     pitchSec.addRow(&pitchRow, kRowMinH, [this] { return edit.pitchShift != 0; });
+    pitchSec.addRow(&octaveRangeRow, kRowMinH, [this] { return edit.octaveRange != 0; });
+    pitchSec.addRow(&pitchDividerA, [this] { return pitchDividerA.idealHeight(); });
     pitchSec.addRow(&keyGrid, [this] { return keyGrid.idealHeight(); },
                     [this] { return edit.root >= 0 && (edit.fitScale || edit.mapToRoot); });
     pitchSec.addRow(&modeGrid, [this] { return modeGrid.idealHeight(); },
                     [this] { return edit.root >= 0 && (edit.fitScale || edit.mapToRoot); });
     pitchSec.addRow(&fitRow, kRowMinH, [this] { return edit.fitScale; });
     pitchSec.addRow(&mapRow, kRowMinH, [this] { return edit.mapToRoot; });
-    // Filter / Range / Filter Type sit at the bottom of Pitch & Scale.
+    pitchSec.addRow(&pitchDividerB, [this] { return pitchDividerB.idealHeight(); });
     pitchSec.addRow(&noteFilter, [this] { return noteFilter.idealHeight(); },
                     [this] { return edit.hasNoteFilter(); });
-    pitchSec.addRow(&pitchRangeSl, 22, [this] { return edit.hasPitchRange(); });
+    pitchSec.addRow(&pitchRangeSl, [this] { return pitchRangeSl.idealHeight(); },
+                    [this] { return edit.hasPitchRange(); });
     pitchSec.addRow(&filterTypeRow, kRowMinH, [this] { return edit.hasNoteFilter(); });
 
     effectsSec.addRow(&complexitySl, kSliderRowH, [this] { return groove.complexityTarget >= 0; });
     effectsSec.addRow(&variationsSl, kSliderRowH, [this] { return groove.variationIndex > 0; });
-    effectsSec.addRow(&delayTimeRow, kRowMinH, [this] {
-        return groove.delayAmount > 0 && groove.delayTimeIndex != (int) DelayTime::Eighth;
+    effectsSec.addRow(&effectsDivider, [this] { return effectsDivider.idealHeight(); });
+    effectsSec.addRow(&delayBlock, [this] { return delayBlock.idealHeight(); }, [this] {
+        return groove.delayAmount > 0;
     });
-    effectsSec.addRow(&delayAmountSl, kSliderRowH, [this] { return groove.delayAmount > 0; });
     effectsSec.addRow(&delayFeedbackSl, kSliderRowH, [this] {
         return groove.delayAmount > 0 && groove.delayFeedback != 40;
     });
@@ -572,8 +575,36 @@ int EffectsInspector::displayedOctave() const
 
 void EffectsInspector::syncNoteFilterScale()
 {
-    const int root = edit.root >= 0 ? edit.root : clipRootPc;
-    noteFilter.setScaleContext(root, edit.mode);
+    const int root = juce::jmax(0, keyGrid.getSelectedIndex());
+    const auto mode = (Mode) juce::jmax(0, modeGrid.getSelectedIndex());
+    noteFilter.setScaleContext(root, mode);
+}
+
+void EffectsInspector::refreshOctaveSummary()
+{
+    const bool native = edit.octave < 0;
+    octaveSelector.summary = native
+        ? ("Clip (" + juce::String(displayedOctave()) + ")")
+        : juce::String(displayedOctave());
+    octaveSelector.summaryDefault = native;
+    octaveSelector.nativeIndex = clipSourceOctave;
+    octaveSelector.repaint();
+}
+
+void EffectsInspector::refreshDependentEnables()
+{
+    const bool artOn = groove.articulationIndex != (int) Articulation::Off;
+    articulationStrengthSl.setEnabled(artOn);
+    articulationStrengthSl.setAlpha(artOn ? 1.0f : 0.38f);
+
+    const bool delayOn = groove.delayAmount > 0;
+    delayFeedbackSl.setEnabled(delayOn);
+    delayFeedbackSl.setAlpha(delayOn ? 1.0f : 0.38f);
+
+    const bool filterOn = edit.hasNoteFilter();
+    filterTypeRow.setEnabled(filterOn);
+    filterTypePopup.setEnabled(filterOn);
+    filterTypeRow.setAlpha(filterOn ? 1.0f : 0.38f);
 }
 
 int EffectsInspector::resolvedPitchMidi() const
@@ -590,14 +621,17 @@ void EffectsInspector::refreshPitchAnnotation()
 {
     const int refPc = edit.root >= 0 ? edit.root : (clipRootPc >= 0 ? clipRootPc : -1);
     pitchRow.annotation = pitchScaleAnnotation(resolvedPitchMidi(), refPc, edit.mode);
+    refreshOctaveSummary();
     pitchRow.repaint();
 }
 
 void EffectsInspector::refreshComplexitySlider()
 {
     const int v = groove.resolvedComplexityTarget(clipComplexity);
+    complexitySl.setDefault(clipComplexity);
     complexitySl.setValue(v, juce::dontSendNotification);
-    complexitySl.valueText = juce::String(v);
+    const int delta = v - clipComplexity;
+    complexitySl.valueText = delta == 0 ? "Clip" : signedIntText(delta);
     complexitySl.repaint();
 }
 
@@ -605,6 +639,7 @@ void EffectsInspector::refreshDirtySections()
 {
     for (auto* sec : { &playback, &timing, &performance, &pitchSec, &effectsSec })
         sec->refreshDirtyRows();
+    refreshDependentEnables();
     layoutSections();
 }
 
@@ -772,7 +807,7 @@ void EffectsInspector::layoutSections()
     for (int i = 0; i < n; ++i)
     {
         auto* sec = secs[i];
-        sec->showBottomDivider = true; // including Effects (last section)
+        sec->showBottomDivider = sec != &effectsSec;
         const int h = sec->idealHeight();
         sec->setBounds(0, y, w, h);
         sec->resized();
@@ -801,22 +836,19 @@ void EffectsInspector::foldAllSections()
 
 void EffectsInspector::updateToolkitFoldBounds()
 {
-    auto header = getLocalBounds().removeFromTop(metrics::paneHeaderH()).reduced(14, 0);
-    header.removeFromRight(metrics::chromeIconButton() * 2 + 12);
-    toolkitFoldBounds = header.removeFromLeft(18).withSizeKeepingCentre(16, 16);
+    auto header = getLocalBounds().removeFromTop(metrics::toolkitHeaderH());
+    toolkitFoldBounds = { 12, (header.getHeight() - 16) / 2, 16, 16 };
 }
 
 void EffectsInspector::resized()
 {
     auto r = getLocalBounds();
-    const int headerH = metrics::paneHeaderH();
-    auto header = r.removeFromTop(headerH).reduced(14, 0);
-    const int iconBtn = metrics::chromeIconButton();
-    btnEffectsLock.iconScale = 0.9f;
-    btnReset.iconScale = 0.9f;
-    btnEffectsLock.setBounds(header.removeFromRight(iconBtn).withSizeKeepingCentre(iconBtn, iconBtn));
-    header.removeFromRight(4);
-    btnReset.setBounds(header.removeFromRight(iconBtn).withSizeKeepingCentre(iconBtn, iconBtn));
+    const int headerH = metrics::toolkitHeaderH();
+    auto header = r.removeFromTop(headerH);
+    auto icons = header.removeFromRight(10 + 24 + 24);
+    icons.removeFromRight(10);
+    btnEffectsLock.setBounds(icons.removeFromRight(24).withSizeKeepingCentre(24, 22));
+    btnReset.setBounds(icons.removeFromRight(24).withSizeKeepingCentre(24, 22));
     updateToolkitFoldBounds();
 
     viewport.setBounds(r);
@@ -834,10 +866,7 @@ void EffectsInspector::resized()
     }
     trimRow.setControlWidth(trimSwitch.idealWidth());
     fitSelect(extendPopup, extendRow);
-    fitSelect(swingTimePopup, swingTimeRow);
-    fitSelect(quantizeTimePopup, quantizeTimeRow);
     fitSelect(sustainPopup, sustainRow);
-    fitSelect(delayTimePopup, delayTimeRow);
     fitSelect(octaveRangePopup, octaveRangeRow);
     fitSelect(filterTypePopup, filterTypeRow);
 
@@ -851,27 +880,25 @@ void EffectsInspector::resized()
 void EffectsInspector::paint(juce::Graphics& g)
 {
     const auto& t = inspectorTokens();
-    g.fillAll(ds::side());
+    g.fillAll(ds::panel());
     g.setColour(t.divider);
     g.fillRect(getLocalBounds().removeFromLeft(1));
 
-    auto header = getLocalBounds().removeFromTop(metrics::paneHeaderH());
+    auto header = getLocalBounds().removeFromTop(metrics::toolkitHeaderH());
+    g.setColour(ds::head());
+    g.fillRect(header);
     g.setColour(t.divider);
     g.fillRect(header.getX(), header.getBottom() - 1, header.getWidth(), 1);
 
     updateToolkitFoldBounds();
-    auto titleArea = header.reduced(14, 0);
-    titleArea.removeFromRight(metrics::chromeIconButton() * 2 + 12);
-    titleArea.removeFromLeft(toolkitFoldBounds.getWidth() + 6);
+    auto chev = toolkitFoldBounds.toFloat().withSizeKeepingCentre(10.0f, 10.0f);
+    drawStrokedChevron(g, chev, t.valueText, anySectionOpen());
 
-    auto chev = toolkitFoldBounds.toFloat().withSizeKeepingCentre(12.0f, 12.0f);
-    if (anySectionOpen())
-        drawCaretDown(g, chev, t.chevron);
-    else
-        drawCaretRight(g, chev, t.chevron);
-
+    auto titleArea = header;
+    titleArea.removeFromLeft(12 + 16 + 8);
+    titleArea.removeFromRight(10 + 24 + 24);
     g.setColour(t.headerText);
-    g.setFont(paneTitleFont());
+    g.setFont(uiFontFixed(13.0f, true));
     g.drawText("Toolkit", titleArea, juce::Justification::centredLeft, false);
 }
 
@@ -882,7 +909,7 @@ void EffectsInspector::mouseDown(const juce::MouseEvent& e)
     updateToolkitFoldBounds();
 
     // Toolkit title chevron lives in the pane header (outside the viewport).
-    if (local.y < metrics::paneHeaderH()
+    if (local.y < metrics::toolkitHeaderH()
         && toolkitFoldBounds.expanded(8, 6).contains(local))
     {
         foldAllSections();
@@ -898,8 +925,10 @@ void EffectsInspector::mouseMove(const juce::MouseEvent& e)
 {
     const auto local = e.getEventRelativeTo(this).getPosition();
     updateToolkitFoldBounds();
-    const bool overFold = local.y < metrics::paneHeaderH()
+    const bool overFold = local.y < metrics::toolkitHeaderH()
                        && toolkitFoldBounds.expanded(8, 6).contains(local);
+    if (overFold)
+        setTooltip("Fold all — keeps modified controls");
     setMouseCursor(overFold ? juce::MouseCursor::PointingHandCursor
                             : juce::MouseCursor::NormalCursor);
 }

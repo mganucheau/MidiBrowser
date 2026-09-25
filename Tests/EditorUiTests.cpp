@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "BrowserPanels.h"
+#include "EffectsInspector.h"
 #include "EffectsInspectorWidgets.h"
 #include "TestHelpers.h"
 #include <catch2/catch_approx.hpp>
@@ -194,4 +195,57 @@ TEST_CASE("File table keyboard nav follows sorted display order", "[editorui]")
     REQUIRE(panel.getSelectedIndex() == 2); // middle
     panel.keyPressed(juce::KeyPress(juce::KeyPress::downKey));
     REQUIRE(panel.getSelectedIndex() == 1); // alpha
+}
+
+TEST_CASE("Toolkit fold keeps dirty rows and collapses clean sections", "[editorui]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    EffectsInspector fx;
+    fx.setSize(metrics::effectsPaneWidth(), 800);
+
+    GrooveParams g;
+    g.swing = 35;
+    fx.setGroove(g, juce::dontSendNotification);
+    REQUIRE(fx.timingSection().isVisible());
+    REQUIRE(fx.timingSection().visibleRowCount() == 1);
+    REQUIRE(fx.timingSection().modifiedCount() == 1);
+
+    EffectsInspector clean;
+    clean.setSize(metrics::effectsPaneWidth(), 800);
+    for (fx::Section* sec : { &clean.playbackSection(), &clean.timingSection(),
+                              &clean.performanceSection(), &clean.pitchSection(),
+                              &clean.effectsSection() })
+        REQUIRE(sec->getHeight() == fx::kSectionHeaderH);
+}
+
+TEST_CASE("Toolkit paired delay rows and disabled dependents", "[editorui]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    EffectsInspector fx;
+    fx.setSize(metrics::effectsPaneWidth(), 800);
+
+    GrooveParams g;
+    g.delayAmount = 25;
+    g.delayFeedback = 40;
+    fx.setGroove(g, juce::dontSendNotification);
+    REQUIRE(fx.delayPairVisible());
+    REQUIRE_FALSE(fx.delayFeedbackVisible());
+
+    REQUIRE_FALSE(fx.articulationStrengthEnabled());
+    g = GrooveParams{};
+    g.articulationIndex = (int) Articulation::Legato;
+    fx.setGroove(g, juce::dontSendNotification);
+    REQUIRE(fx.articulationStrengthEnabled());
+}
+
+TEST_CASE("Note filter legend follows key and mode", "[editorui]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    EffectsInspector fx;
+    ClipEdit edit;
+    edit.root = 9; // A
+    edit.mode = Mode::Aeolian;
+    fx.setEdit(edit, juce::dontSendNotification);
+    REQUIRE(fx.noteFilterLegendLead() == "In A aeolian");
+    REQUIRE(metrics::effectsPaneWidth() == metrics::scaled(300));
 }

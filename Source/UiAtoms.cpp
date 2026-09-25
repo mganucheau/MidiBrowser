@@ -254,6 +254,42 @@ void drawIcon(juce::Graphics& g, const juce::String& name,
         g.strokePath(a1, st);
         g.strokePath(a2, st);
     }
+    else if (name == icons::save || name == icons::saveFill)
+    {
+        auto disk = juce::Rectangle<float>(cx - s * 0.85f, cy - s * 0.95f, s * 1.7f, s * 1.9f);
+        auto shutter = juce::Rectangle<float>(disk.getX() + disk.getWidth() * 0.28f,
+                                              disk.getY() + px,
+                                              disk.getWidth() * 0.44f,
+                                              disk.getHeight() * 0.28f);
+        auto label = juce::Rectangle<float>(disk.getX() + disk.getWidth() * 0.22f,
+                                            disk.getBottom() - disk.getHeight() * 0.38f,
+                                            disk.getWidth() * 0.56f, disk.getHeight() * 0.20f);
+        if (name == icons::saveFill)
+        {
+            juce::Path body;
+            body.addRoundedRectangle(disk, px * 0.8f);
+            body.setUsingNonZeroWinding(false);
+            body.addRectangle(shutter);
+            g.fillPath(body);
+        }
+        else
+        {
+            g.drawRoundedRectangle(disk, px * 0.8f, px);
+            g.drawRect(shutter, px);
+        }
+        g.fillRoundedRectangle(label, px * 0.4f);
+    }
+    else if (name == icons::midi)
+    {
+        g.drawEllipse(cx - s, cy - s, s * 2.0f, s * 2.0f, px);
+        const float pr = juce::jmax(1.1f, px * 0.85f);
+        const float pins[5][2] = {
+            { -0.42f, -0.32f }, { 0.0f, -0.52f }, { 0.42f, -0.32f },
+            { -0.26f,  0.38f }, { 0.26f,  0.38f }
+        };
+        for (const auto& pin : pins)
+            g.fillEllipse(cx + s * pin[0] - pr, cy + s * pin[1] - pr, pr * 2.0f, pr * 2.0f);
+    }
     else if (name == icons::infinity)
     {
         // Lemniscate (∞) for DAW sync.
@@ -332,9 +368,32 @@ IconBtn::IconBtn(const juce::String& iconName, const juce::String& tip)
     setWantsKeyboardFocus(true);
 }
 
+int IconBtn::captionWidth() const
+{
+    if (caption.isEmpty())
+        return 34;
+    const auto font = uiFontFixed(12.0f, true);
+    const int textW = (int) std::ceil(font.getStringWidthFloat(caption));
+    // Same side inset as the square sync button (34px around a 14px glyph).
+    constexpr int padH = 10;
+    return padH + 14 + 5 + textW + padH;
+}
+
 void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
 {
     auto b = getLocalBounds().toFloat();
+    if (headerChrome)
+    {
+        if (over || down)
+        {
+            g.setColour(ds::acc().withAlpha(0.12f));
+            g.fillRoundedRectangle(b, 5.0f);
+        }
+        const auto col = (active || over) ? ds::acc() : ds::tx3();
+        auto glyph = b.withSizeKeepingCentre(14.0f, 14.0f);
+        drawIcon(g, icon, glyph, col, 1.4f);
+        return;
+    }
     const float radius = 6.0f;
     if (ghost)
     {
@@ -366,6 +425,25 @@ void IconBtn::paintButton(juce::Graphics& g, bool over, bool down)
         b.reduced(inset).getHeight() * glyphScale);
     // §7: stroke 1.2–1.5
     const float stroke = juce::jlimit(1.2f, 1.5f, 1.35f * contentScale() * textIconScale());
+    if (caption.isNotEmpty())
+    {
+        const auto font = uiFontFixed(12.0f, true);
+        const int textW = (int) std::ceil(font.getStringWidthFloat(caption));
+        constexpr float iconW = 14.0f;
+        constexpr float padL = 10.0f;
+        constexpr float gap = 5.0f;
+        auto iconR = juce::Rectangle<float>(b.getX() + padL, b.getY(), iconW, b.getHeight())
+                         .withSizeKeepingCentre(iconW, 14.0f);
+        iconR.setX(b.getX() + padL);
+        drawIcon(g, icon, iconR, col, stroke);
+        g.setFont(font);
+        g.setColour(col);
+        g.drawText(caption, (int) (b.getX() + padL + iconW + gap), (int) b.getY(),
+                   textW + 2, (int) b.getHeight(), juce::Justification::centredLeft, false);
+        if (hasKeyboardFocus(true))
+            drawFocusRing(g, b, radius);
+        return;
+    }
     drawIcon(g, icon, glyph, col, stroke);
     if (!isEnabled())
         g.setOpacity(0.40f);

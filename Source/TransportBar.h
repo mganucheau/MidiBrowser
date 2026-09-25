@@ -123,9 +123,9 @@ private:
     StatusPill statusPill;
     IconBtn btnSync { icons::sync, "Sync to host tempo" };
     DragChip btnDragToDaw { "Drag to DAW" };
-    IconBtn btnPassthrough { icons::infinity, "Passthrough MIDI" };
-    IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
-    IconBtn btnEffects { icons::sidebarRight, "Toggle toolkit" };
+    IconBtn btnPassthrough { icons::midi, "Passthrough" };
+    IconBtn btnEditor { icons::noteKeys, "Piano Roll" };
+    IconBtn btnEffects { icons::sliders, "Effects" };
 
     juce::Rectangle<int> titleBounds, transportGroupBounds, dividerBounds;
 

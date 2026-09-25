@@ -19,6 +19,8 @@ struct BrowserSearch
     int barsMax = 0;     // 0 = any; 64 = 64+ (unlimited upper)
     int complexityMin = 0; // 0 = no lower bound
     int complexityMax = 0; // 0 = no upper bound
+    /** Bit i set = ClipKind i selected. 0 = any kind. */
+    uint8_t kindMask = 0;
     bool subdirs = true;
     /** Collapse content-identical hits from multiple folders into one row. */
     bool removeDuplicates = true;
@@ -187,6 +189,7 @@ private:
     IconBtn btnToggle { icons::sidebar, "Show or hide sidebar" };
     IconBtn btnSettings { icons::gear, "Settings" };
     fx::FlatSwitch includeSwitch;
+    fx::FlatSwitch hideDupesSwitch;
     juce::StringArray dirs;
     juce::String active; // current folder path when a root is loaded
     std::vector<SavedSearchEntry> savedSearches;
@@ -220,11 +223,12 @@ private:
     juce::Rectangle<int> settingsRowBounds;
     juce::Rectangle<int> openFolderBounds, folderCardBounds;
     juce::Rectangle<int> keepBtnBounds, updateBtnBounds, filtersBtnBounds;
+    juce::Rectangle<int> includeRowBounds, hideDupesRowBounds;
     juce::Rectangle<int> libraryHeaderBounds, searchHeaderBounds, savedHeaderBounds;
 
     std::vector<Row> rows;
 
-    // ── Filter panel (Key grid + histogram ranges + Hide Duplicates)
+    // ── Filter panel (key, kind, histogram ranges)
     class FilterPanel : public juce::Component
     {
     public:
@@ -242,11 +246,10 @@ private:
         int rowH() const;
         int rangeH() const;
         fx::ChipGrid keyGrid;
+        fx::ChipGrid kindGrid;
         fx::HistRangeSlider bpmRange { "TEMPO", 40, 240 };
         fx::HistRangeSlider barsRange { "BARS", 1, 64 };
         fx::HistRangeSlider complexityRange { "COMPLEXITY", 0, 100 };
-        fx::FlatSwitch hideDupesSwitch;
-        juce::Rectangle<int> hideDupesRow;
     };
 
     // ── Search query (field + Save chip when typed)

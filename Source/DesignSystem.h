@@ -46,6 +46,14 @@ struct Palette
 
     // Hover washes (§6 / §9)
     juce::Colour hoverWash;
+
+    // Toolkit pane (sidebar A)
+    juce::Colour head;
+    juce::Colour well;
+    juce::Colour kfInW;
+    juce::Colour kfInB;
+    juce::Colour kfOutW;
+    juce::Colour kfOutB;
 };
 
 const Palette& palette();
@@ -77,6 +85,12 @@ inline juce::Colour laneb()    { return palette().laneb; }
 inline juce::Colour beat()     { return palette().beat; }
 inline juce::Colour winbrd()   { return palette().winbrd; }
 inline juce::Colour hoverWash(){ return palette().hoverWash; }
+inline juce::Colour head()     { return palette().head; }
+inline juce::Colour well()     { return palette().well; }
+inline juce::Colour kfInW()    { return palette().kfInW; }
+inline juce::Colour kfInB()    { return palette().kfInB; }
+inline juce::Colour kfOutW()   { return palette().kfOutW; }
+inline juce::Colour kfOutB()   { return palette().kfOutB; }
 inline juce::Colour kindDrums(){ return palette().kindDrums; }
 inline juce::Colour kindBass() { return palette().kindBass; }
 inline juce::Colour kindKeys() { return palette().kindKeys; }
@@ -111,7 +125,7 @@ namespace region {
     constexpr int toolbarH     = 52;
     constexpr int sidebarW     = 280;
     constexpr int fileListW    = 420;
-    constexpr int toolkitW     = sidebarW; // match the library sidebar
+    constexpr int toolkitW     = 300;
     constexpr int rollMinW     = 320;
     constexpr int velocityH    = 100;
     constexpr int previewH     = 112;
