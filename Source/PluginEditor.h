@@ -103,9 +103,11 @@ private:
     void selectPathOrFirst(const juce::String& path);
     /** Cancel in-flight scans and show the searching affordance. */
     int beginBackgroundClipLoad();
-    /** Parse MIDI paths on a worker thread; apply callback on the message thread. */
+    /** Hydrate clips from cached paths using FolderIndex metadata (no MIDI parse).
+        Notes are still loaded lazily on select via ensureClipNotesLoaded. */
     void loadClipsFromPathsAsync(juce::StringArray paths,
-                                 std::function<void(std::vector<StepClip>&&)> onDone);
+                                 std::function<void(std::vector<StepClip>&&)> onDone,
+                                 juce::File indexRoot = {});
     void runSearch(const BrowserSearch& criteria);
     /** savedIdx >= 0 keeps that saved-search selection and stores/restores its result snapshot. */
     void runSearchAsync(const BrowserSearch& criteria, int savedIdx = -1,
@@ -212,7 +214,7 @@ private:
     void forgetSavedSearchSnapshot(int index);
     int selectedIdx = -1;
     KeyNavTarget keyNavTarget = KeyNavTarget::Browser;
-    int lastWindowH = 850;
+    int lastWindowH = 425;
     int browserColW = metrics::fileTableW;
     int layoutTargetW = 0;
     int layoutAnimFromW = 0;

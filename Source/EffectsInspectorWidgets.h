@@ -9,22 +9,22 @@
 namespace pflow {
 namespace fx {
 
-// Caps B2 canvas metrics (fixed px — see effects-photos-caps-b2.canvas.tsx)
-constexpr float kFontPt = 12.0f;
+// Match the library sidebar (BrowserPanels): 14px gutter, 30px controls, 12.5/10 type.
+constexpr float kFontPt = 12.5f;
 constexpr float kAnnotPt = 11.0f;
-constexpr float kPopupFontPt = 12.0f;
-constexpr float kSectionTitlePt = 11.0f; // tracked caption (was TOOLKIT chrome)
-constexpr float kPaneTitlePt = 14.0f;    // pane header title (TOOLKIT)
-constexpr int kSectionPadH = 16;       // shell horizontal pad (section header chrome)
-constexpr int kRowMinH = 26;
-constexpr int kControlH = 26;
-constexpr int kSectionHeaderH = 30;
-constexpr int kSectionRowInset = 22;   // INDENT past padded edge (chevron column)
-/** Content inset from pane edge ≈ left-edge→title (excludes chevron). */
-constexpr int kContentPadX = kSectionPadH + kSectionRowInset; // 34
-constexpr int kSliderRowH = 26;
-constexpr int kSelectW = 48;       // 1/4 content column (Extend, Quantize, …)
-constexpr int kSelectHalfW = 96;   // 1/2 content column (Half/Double)
+constexpr float kPopupFontPt = 12.5f;
+constexpr float kSectionTitlePt = 10.0f; // tracked caption, same as LIBRARY labels
+constexpr float kPaneTitlePt = 12.5f;    // pane header title
+constexpr int kSectionPadH = 14;       // library kPadH
+constexpr int kRowMinH = 30;           // library action row
+constexpr int kControlH = 30;
+constexpr int kSectionHeaderH = 28;    // library sidebar header
+constexpr int kSectionRowInset = 6;    // library kRowPadX — no second indent
+/** Content inset from pane edge (library rows sit at pad + row pad). */
+constexpr int kContentPadX = kSectionPadH + kSectionRowInset; // 20
+constexpr int kSliderRowH = 30;
+constexpr int kSelectW = 64;       // compact popup in the wider pane
+constexpr int kSelectHalfW = 120;  // Half/Double
 constexpr int kHeaderIconW = 20; // match library sidebar glyph hit target
 constexpr float kTallRadius = 4.0f;
 constexpr float kTallPadX = 10.0f;
@@ -32,7 +32,8 @@ constexpr float kTallPadX = 10.0f;
 /** Compact / Comfortable spacing between Toolkit rows and section chrome. */
 inline int toolkitRowGap()
 {
-    return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 6);
+    // Library action gap is 6; compact tightens it slightly.
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 6 : 4);
 }
 inline int toolkitSectionPadT()
 {
@@ -40,17 +41,29 @@ inline int toolkitSectionPadT()
 }
 inline int toolkitSectionPadB()
 {
-    // Match top pad so the last control isn't flush against the section divider.
     return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 8);
 }
 inline int toolkitTitleGap()
 {
-    return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 6);
+    // Library header-to-rows gap.
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 4 : 2);
 }
-/** Bottom inset under the last Toolkit section — a bit more than section top pad. */
 inline int toolkitBodyPadB()
 {
-    return metrics::scaled(currentDensity() == Density::Comfortable ? 18 : 14);
+    return metrics::scaled(currentDensity() == Density::Comfortable ? 10 : 8);
+}
+
+/** Solid accent behind type. Dark-mode blue is bright enough that black type
+    fails and white type needs a deeper fill. */
+inline juce::Colour accentFillColour()
+{
+    const auto acc = ds::acc();
+    return usesDarkAppearance() ? acc.darker(0.28f) : acc;
+}
+
+inline juce::Colour onAccentColour()
+{
+    return juce::Colours::white;
 }
 
 inline juce::Font inspectorFont(bool semibold = false) { return uiFontFixed(kFontPt, semibold); }
@@ -125,12 +138,12 @@ public:
         auto r = getLocalBounds().toFloat();
         if (active)
         {
-            auto fill = t.accent;
+            auto fill = accentFillColour();
             if (down) fill = fill.darker(0.08f);
             else if (over) fill = fill.brighter(0.06f);
             g.setColour(fill);
             g.fillRoundedRectangle(r, metrics::controlRadius);
-            g.setColour(juce::Colours::black);
+            g.setColour(onAccentColour());
         }
         else
         {
@@ -313,11 +326,11 @@ private:
                 const bool sel = (i == index);
                 if (hi || sel)
                 {
-                    g.setColour(hi ? t.accent : t.accent.withAlpha(0.18f));
+                    g.setColour(hi ? accentFillColour() : t.accent.withAlpha(0.18f));
                     g.fillRoundedRectangle(row, 4.0f);
                 }
                 g.setFont(inspectorFont());
-                g.setColour(hi ? juce::Colours::black : t.rowLabel);
+                g.setColour(hi ? onAccentColour() : t.rowLabel);
                 g.drawText(labels[i], row.reduced(8.0f, 0.0f).toNearestInt(),
                            juce::Justification::centredLeft, true);
             }
@@ -541,19 +554,19 @@ public:
         auto right = r.withTrimmedLeft(r.getWidth() * 0.5f);
         if (selected == Sel::Half)
         {
-            g.setColour(t.accent);
+            g.setColour(accentFillColour());
             g.fillRoundedRectangle(left.reduced(1.5f, 2.0f), 3.0f);
         }
         if (selected == Sel::Double)
         {
-            g.setColour(t.accent);
+            g.setColour(accentFillColour());
             g.fillRoundedRectangle(right.reduced(1.5f, 2.0f), 3.0f);
         }
 
         g.setFont(inspectorFont());
         auto textCol = [&](Sel s)
         {
-            return selected == s ? juce::Colours::black : t.rowLabel;
+            return selected == s ? onAccentColour() : t.rowLabel;
         };
         g.setColour(textCol(Sel::Half));
         g.drawText("Half", left.toNearestInt(), juce::Justification::centred, false);
@@ -618,7 +631,7 @@ public:
         {
             fill = r.withWidth(juce::jmax(0.0f, r.getWidth() * norm));
         }
-        g.setColour(t.accent);
+        g.setColour(accentFillColour());
         g.fillRoundedRectangle(fill, kTallRadius);
 
         if (hot)
@@ -640,13 +653,13 @@ public:
             g.setColour(valueCol);
             g.drawText(text, pad, juce::Justification::centredRight, true);
         };
-        // Black text on accent fill for contrast.
+        // Unfilled well keeps body type; the accent portion uses white.
         drawTexts(hot ? t.headerText : t.rowLabel, t.headerText);
         if (fill.getWidth() > 0.5f)
         {
             juce::Graphics::ScopedSaveState state(g);
             g.reduceClipRegion(fill.getSmallestIntegerContainer());
-            drawTexts(juce::Colours::black, juce::Colours::black);
+            drawTexts(onAccentColour(), onAccentColour());
         }
     }
 
@@ -950,7 +963,7 @@ public:
             const bool cand = !on && i < 16
                 && (candidateMask & (uint16_t) (1u << i)) != 0;
             if (on)
-                g.setColour(t.accent);
+                g.setColour(accentFillColour());
             else if (cand)
                 g.setColour(t.accent.withAlpha(0.22f));
             else
@@ -967,7 +980,7 @@ public:
                 g.drawRoundedRectangle(cell.reduced(0.5f), 5.0f, 1.0f);
             }
             g.setFont(uiFontFixed(kAnnotPt, on));
-            g.setColour(on ? juce::Colours::black
+            g.setColour(on ? onAccentColour()
                            : (cand ? t.accent.brighter(0.15f) : t.headerText));
             g.drawText(labels[i], cell.toNearestInt(), juce::Justification::centred, false);
         }
@@ -1130,11 +1143,11 @@ public:
                             .reduced(2.0f, 2.0f);
             if (i == index)
             {
-                g.setColour(t.accent);
+                g.setColour(accentFillColour());
                 g.fillRoundedRectangle(cell, cell.getHeight() * 0.5f);
             }
             g.setFont(uiFontFixed(kAnnotPt, i == index));
-            g.setColour(i == index ? juce::Colours::black : t.headerText);
+            g.setColour(i == index ? onAccentColour() : t.headerText);
             g.drawText(labels[i], cell.toNearestInt(), juce::Justification::centred, false);
         }
     }

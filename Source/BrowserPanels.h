@@ -87,6 +87,8 @@ public:
     void setCurrentClipCount(int n);
     void setStarredCount(int n);
     void setScanning(bool on);
+    /** True after a Scan (or a valid folder index) so the action reads Update. */
+    void setScanFinished(bool finished);
     /** Optional "42/200" progress while a folder scan runs. */
     void setScanProgress(int done, int total);
 
@@ -206,6 +208,7 @@ private:
     bool searchOpen = true;
     bool includeSubdirs = false;
     bool scanning = false;
+    bool scanFinished = false;
     int scanProgressDone = 0;
     int scanProgressTotal = 0;
     bool filterOpen = false;
@@ -261,7 +264,7 @@ private:
         void focusQuery();
         void blurQuery();
         bool isQueryFocused() const;
-        int idealHeight() const { return metrics::scaled(27); }
+        int idealHeight() const { return metrics::scaled(32); }
         std::function<void()> onActivate;
         std::function<void()> onClear;
         std::function<void()> onDeactivate;

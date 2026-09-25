@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "FolderIndex.h"
+#include <map>
 #include <thread>
 #include <atomic>
 #include <algorithm>
@@ -439,7 +440,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             }
         }
 
-        // Persisted result paths — parse off the message thread so Ableton stays live.
+        // Persisted result paths — hydrate from FolderIndex (no MIDI re-parse).
         if (entry.resultPaths.size() > 0)
         {
             const auto criteria = entry.search;
@@ -458,7 +459,8 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
                     }
                     applySearchSnapshot(std::move(found), {}, criteria, idx, rootPath, false);
                     refreshSidebar();
-                });
+                },
+                juce::File(rootPath));
             refreshSidebar();
             return;
         }
@@ -753,8 +755,8 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
 
     setResizable(true, true);
     // Default workspace size; applyLayoutState may grow width for columns.
-    lastWindowH = 850;
-    setSize(700, 850);
+    lastWindowH = 425;
+    setSize(700, 425);
     applyLayoutState();
     startTimerHz(30);
     setWantsKeyboardFocus(true);
@@ -788,12 +790,34 @@ int MidiBrowserEditor::beginBackgroundClipLoad()
 
 void MidiBrowserEditor::loadClipsFromPathsAsync(
     juce::StringArray paths,
-    std::function<void(std::vector<StepClip>&&)> onDone)
+    std::function<void(std::vector<StepClip>&&)> onDone,
+    juce::File indexRoot)
 {
     const int gen = beginBackgroundClipLoad();
     juce::Component::SafePointer<MidiBrowserEditor> safe(this);
-    juce::Thread::launch([safe, paths = std::move(paths), gen, onDone = std::move(onDone)]() mutable
+    juce::Thread::launch([safe, paths = std::move(paths), gen,
+                          onDone = std::move(onDone), indexRoot]() mutable
     {
+        // Prefer FolderIndex metadata — never re-parse MIDI just to rebuild a list.
+        std::map<juce::String, StepClip> byPath;
+        auto ingestIndex = [&byPath](const juce::File& root, bool recursive)
+        {
+            if (!root.isDirectory())
+                return;
+            // Use the on-disk index even if the fingerprint drifted slightly —
+            // we only need browse metadata; missing files are skipped below.
+            if (auto idx = FolderIndex::load(root, recursive))
+                for (auto& c : FolderIndex::toClips(*idx))
+                    if (c.filePath.isNotEmpty())
+                        byPath.emplace(c.filePath, std::move(c));
+        };
+
+        if (indexRoot.isDirectory())
+        {
+            ingestIndex(indexRoot, true);
+            ingestIndex(indexRoot, false);
+        }
+
         std::vector<StepClip> found;
         found.reserve((size_t) paths.size());
         for (const auto& path : paths)
@@ -803,11 +827,18 @@ void MidiBrowserEditor::loadClipsFromPathsAsync(
             const juce::File f(path);
             if (!f.existsAsFile())
                 continue;
-            try
+
+            if (auto it = byPath.find(path); it != byPath.end())
             {
-                found.push_back(makeStepClip(parseMidiFile(f)));
+                found.push_back(it->second);
+                continue;
             }
-            catch (...) {}
+
+            // Lightweight stub — notes load on select via ensureClipNotesLoaded.
+            StepClip stub;
+            stub.filePath = path;
+            stub.name = f.getFileNameWithoutExtension();
+            found.push_back(std::move(stub));
         }
 
         juce::MessageManager::callAsync([safe, gen, found = std::move(found),
@@ -875,6 +906,7 @@ void MidiBrowserEditor::setRootDirectory(const juce::File& dir, bool keepSelecti
     cachedSubdirs.clear();
     cachedMidiFiles.clear();
     folderScanned = false;
+    sidebar.setScanFinished(false);
     selectedIdx = -1;
     auto name = dir.getFileName();
     if (name.isEmpty()) name = dir.getFullPathName();
@@ -920,6 +952,7 @@ void MidiBrowserEditor::refreshBrowseListingAsync()
 
                 safe->clips = std::move(clips);
                 safe->folderScanned = true;
+                safe->sidebar.setScanFinished(true);
                 safe->cachedMidiFiles.clear();
                 safe->cachedSubdirs.clear();
                 if (!recursive)
@@ -1091,7 +1124,9 @@ void MidiBrowserEditor::restoreBrowserSession()
                     rebuildEntries();
                     selectPathOrFirst(wantPath);
                     persistBrowserSession();
-                });
+                },
+                rootDir.isDirectory() ? rootDir
+                    : juce::File(processorRef.lastBrowserDir));
         }
         else
         {
@@ -1224,6 +1259,7 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection, const juce::String& pre
 
             safe->clips = std::move(results);
             safe->folderScanned = true;
+            safe->sidebar.setScanFinished(true);
             safe->cachedMidiFiles.clear();
             FolderIndex::fromClips(dir, safe->recursiveBrowse, safe->clips).save();
             auto folderName = dir.getFileName();
@@ -1507,7 +1543,8 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria, int savedI
                         if (savedIdx >= 0)
                             processorRef.updateSavedSearchResults(savedIdx, cachedPaths, rootPath);
                         applySearchSnapshot(std::move(found), {}, criteria, savedIdx, rootPath, false);
-                    });
+                    },
+                    searchRoot);
                 return;
             }
         }
@@ -1527,10 +1564,28 @@ void MidiBrowserEditor::runSearchAsync(const BrowserSearch& criteria, int savedI
             {
                 return clipMatchesQuery(f, criteria);
             };
-            scanMidiFiles(searchRoot, criteria.subdirs, found, matcher);
 
-            for (const auto& c : found)
-                resultPaths.add(c.filePath);
+            // Fast path: filter a prior Scan's FolderIndex instead of re-parsing MIDI.
+            if (auto indexed = FolderIndex::loadValidClips(searchRoot, criteria.subdirs))
+            {
+                found.reserve(indexed->size());
+                for (auto& c : *indexed)
+                {
+                    const juce::File f(c.filePath);
+                    if (!f.existsAsFile())
+                        continue;
+                    if (!matcher(c, f))
+                        continue;
+                    resultPaths.add(c.filePath);
+                    found.push_back(std::move(c));
+                }
+            }
+            else
+            {
+                scanMidiFiles(searchRoot, criteria.subdirs, found, matcher);
+                for (const auto& c : found)
+                    resultPaths.add(c.filePath);
+            }
         }
         catch (...)
         {
@@ -1580,20 +1635,44 @@ void MidiBrowserEditor::saveCurrentSearch()
         entry.rootPath = processorRef.lastBrowserDir;
 
     // Capture result paths so the saved search reopens instantly next session.
+    // Prefer the last search snapshot, then currently visible (filtered) rows,
+    // then the full clip list — so Keep+filters and folder filters persist too.
+    auto capturePaths = [&](const std::vector<StepClip>& pool)
+    {
+        entry.resultPaths.clear();
+        entry.resultPaths.ensureStorageAllocated((int) pool.size());
+        for (const auto& c : pool)
+            if (c.filePath.isNotEmpty())
+                entry.resultPaths.add(c.filePath);
+    };
+
     if (LibraryStore::searchesEqual(lastSearchSnapshot.criteria, criteria)
         && !lastSearchSnapshot.clips.empty())
     {
-        entry.resultPaths.ensureStorageAllocated((int) lastSearchSnapshot.clips.size());
-        for (const auto& c : lastSearchSnapshot.clips)
-            if (c.filePath.isNotEmpty())
-                entry.resultPaths.add(c.filePath);
+        capturePaths(lastSearchSnapshot.clips);
     }
-    else if (browseMode == 2 && !clips.empty())
+    else if (!displayRows.empty())
     {
-        entry.resultPaths.ensureStorageAllocated((int) clips.size());
-        for (const auto& c : clips)
-            if (c.filePath.isNotEmpty())
-                entry.resultPaths.add(c.filePath);
+        entry.resultPaths.clear();
+        for (const auto& row : displayRows)
+        {
+            if (row.isDirectory)
+                continue;
+            if (juce::isPositiveAndBelow(row.clipIndex, (int) clips.size()))
+            {
+                const auto& path = clips[(size_t) row.clipIndex].filePath;
+                if (path.isNotEmpty())
+                    entry.resultPaths.add(path);
+            }
+            else if (row.file.existsAsFile())
+            {
+                entry.resultPaths.add(row.file.getFullPathName());
+            }
+        }
+    }
+    else if (!clips.empty())
+    {
+        capturePaths(clips);
     }
 
     juce::StringArray parts;
@@ -2354,8 +2433,9 @@ void MidiBrowserEditor::applyLayoutState()
     // height from the file list inside the current window — do not grow taller
     // for it (hosts often clip the bottom when setSize exceeds available space).
     const int previewExtra = metrics::scaled(26);
+    // Default workspace is ~half the old 850px height; don't force a taller floor.
     const int targetH = juce::jmax(metrics::transportH() + sidebar.idealMinHeight(),
-                                   juce::jmax(metrics::scaled(460) + previewExtra, lastWindowH));
+                                   juce::jmax(metrics::scaled(320) + previewExtra, lastWindowH));
 
     // Prefer fitting columns when they exceed the base table width; otherwise
     // keep the current width (user can drag between base and max).

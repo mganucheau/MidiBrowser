@@ -801,7 +801,7 @@ void EffectsInspector::foldAllSections()
 
 void EffectsInspector::updateToolkitFoldBounds()
 {
-    auto header = getLocalBounds().removeFromTop(metrics::paneHeaderH()).reduced(16, 0);
+    auto header = getLocalBounds().removeFromTop(metrics::paneHeaderH()).reduced(14, 0);
     header.removeFromRight(metrics::chromeIconButton() * 2 + 12);
     toolkitFoldBounds = header.removeFromLeft(18).withSizeKeepingCentre(16, 16);
 }
@@ -810,7 +810,7 @@ void EffectsInspector::resized()
 {
     auto r = getLocalBounds();
     const int headerH = metrics::paneHeaderH();
-    auto header = r.removeFromTop(headerH).reduced(16, 4);
+    auto header = r.removeFromTop(headerH).reduced(14, 0);
     const int iconBtn = metrics::chromeIconButton();
     btnEffectsLock.iconScale = 0.9f;
     btnReset.iconScale = 0.9f;
@@ -851,7 +851,7 @@ void EffectsInspector::resized()
 void EffectsInspector::paint(juce::Graphics& g)
 {
     const auto& t = inspectorTokens();
-    g.fillAll(t.panelBg);
+    g.fillAll(ds::side());
     g.setColour(t.divider);
     g.fillRect(getLocalBounds().removeFromLeft(1));
 
@@ -860,7 +860,7 @@ void EffectsInspector::paint(juce::Graphics& g)
     g.fillRect(header.getX(), header.getBottom() - 1, header.getWidth(), 1);
 
     updateToolkitFoldBounds();
-    auto titleArea = header.reduced(16, 0);
+    auto titleArea = header.reduced(14, 0);
     titleArea.removeFromRight(metrics::chromeIconButton() * 2 + 12);
     titleArea.removeFromLeft(toolkitFoldBounds.getWidth() + 6);
 
@@ -870,7 +870,6 @@ void EffectsInspector::paint(juce::Graphics& g)
     else
         drawCaretRight(g, chev, t.chevron);
 
-    // Pane title: former section-title size (14 / semibold).
     g.setColour(t.headerText);
     g.setFont(paneTitleFont());
     g.drawText("Toolkit", titleArea, juce::Justification::centredLeft, false);
