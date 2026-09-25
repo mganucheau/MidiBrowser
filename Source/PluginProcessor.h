@@ -3,6 +3,7 @@
 #include "MidiFileData.h"
 #include "EditModel.h"
 #include "GrooveEngine.h"
+#include "LiveMidiFx.h"
 #include "BrowserPanels.h"
 #include "LibraryStore.h"
 #include <atomic>
@@ -112,9 +113,12 @@ public:
     bool effectsOpen = false;
     bool previewOpen = true;
     bool sidebarCollapsed = false;
+    /** Live MIDI through Toolkit effects (replaces clip preview while on). */
+    bool passthrough = false;
+    std::atomic<bool> passthroughActive { false };
     BrowserColumnVisibility columnVisibility;
     /** Logical (unscaled) Name column width in the file table. */
-    int nameColumnWidth = 280;
+    int nameColumnWidth = 140;
 
     juce::String lastBrowserDir;
     bool trimEmptyMeasuresPreview = false;
@@ -159,11 +163,18 @@ public:
     void setPreviewState(const MidiClip& clip, bool hasClip, bool muted, bool soloed,
                          bool softUpdate = false);
 
+    /** Publish Toolkit pitch/groove snapshot for Passthrough mode. */
+    void setLiveFxState(const LiveFxState& state);
+
+    /** Enable/disable passthrough; flushes held notes on transition. */
+    void setPassthroughEnabled(bool enabled);
+
     /** Ask the audio thread to release every held note on the next block. */
     void requestNoteFlush()
     {
         juce::ScopedLock sl(previewLock_);
         previewFlushPending_ = true;
+        liveFlushPending_.store(true);
     }
 
 private:
@@ -186,6 +197,9 @@ private:
     bool previewMuted_ = false;
     bool previewFlushPending_ = false;   // release held notes before the next block
     juce::uint64 previewFingerprint_ = 0;
+
+    LiveMidiFx liveFx_;
+    std::atomic<bool> liveFlushPending_ { false };
 
     LibraryStore library_;
     void syncLibraryFromMemory();

@@ -194,6 +194,11 @@ TransportBar::TransportBar()
     btnDragToDaw.onCopyToFolder = [this] { if (onCopyToFolder) onCopyToFolder(); };
     addAndMakeVisible(btnDragToDaw);
 
+    prep(btnPassthrough, false);
+    btnPassthrough.setTooltip("Passthrough MIDI\nLive input through Toolkit effects\nShortcut: P");
+    btnPassthrough.onClick = [this] { if (onTogglePassthrough) onTogglePassthrough(); };
+    addAndMakeVisible(btnPassthrough);
+
     prep(btnEditor, false);
     btnEditor.setTooltip("Toggle editor\nShortcut: E");
     btnEditor.onClick = [this] { if (onToggleEditor) onToggleEditor(); };
@@ -269,6 +274,13 @@ void TransportBar::setEffectsOpen(bool open)
     resized();
 }
 
+void TransportBar::setPassthrough(bool on)
+{
+    passthrough = on;
+    btnPassthrough.active = on;
+    btnPassthrough.repaint();
+}
+
 void TransportBar::setHasClip(bool has)
 {
     hasClip = has;
@@ -313,6 +325,7 @@ void TransportBar::timerCallback()
     btnPlay.setAlpha(a);
     btnStop.setAlpha(a);
     btnSync.setAlpha(a);
+    btnPassthrough.setAlpha(a);
     btnEditor.setAlpha(a);
     btnEffects.setAlpha(a);
     repaint();
@@ -325,7 +338,8 @@ bool TransportBar::hitInteractive(juce::Point<int> p) const
         return c.isVisible() && c.getBounds().contains(p);
     };
     return covers(btnPlay) || covers(btnStop) || covers(statusPill) || covers(btnSync)
-        || covers(btnDragToDaw) || covers(btnEditor) || covers(btnEffects);
+        || covers(btnDragToDaw) || covers(btnPassthrough) || covers(btnEditor)
+        || covers(btnEffects);
 }
 
 void TransportBar::mouseDown(const juce::MouseEvent& e)
@@ -384,6 +398,8 @@ void TransportBar::resized()
     btnEffects.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
     r.removeFromRight(6);
     btnEditor.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
+    r.removeFromRight(6);
+    btnPassthrough.setBounds(r.removeFromRight(kBtnW).withY(y).withHeight(kBtnH));
     r.removeFromRight(10);
     dividerBounds = r.removeFromRight(1).withY((h - 16) / 2).withHeight(16);
     r.removeFromRight(10);

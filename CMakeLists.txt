@@ -1,14 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
+# Pre-1.0 beta — each build appends an incrementing -beta.N via GenerateBuildInfo.
 if(APPLE)
-    project(MidiBrowser VERSION 1.0.0 LANGUAGES C CXX OBJCXX)
+    project(MidiBrowser VERSION 0.1.0 LANGUAGES C CXX OBJCXX)
 else()
-    project(MidiBrowser VERSION 1.0.0 LANGUAGES C CXX)
+    project(MidiBrowser VERSION 0.1.0 LANGUAGES C CXX)
 endif()
 
 set(PF_VERSION "${PROJECT_VERSION}")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/Generated")
 
-# Fresh version stamp (semver · build time · git hash) on every build for testers.
+# Fresh version stamp (0.1.0-beta.N · 12h time · git hash) on every build for testers.
 set(PF_BUILDINFO_CPP "${CMAKE_BINARY_DIR}/Generated/BuildInfo.cpp")
 set(PF_BUILDINFO_H   "${CMAKE_BINARY_DIR}/Generated/BuildInfo.h")
 add_custom_target(MidiBrowserBuildInfo ALL
@@ -21,11 +22,13 @@ add_custom_target(MidiBrowserBuildInfo ALL
     COMMENT "Updating BuildInfo stamp"
     VERBATIM)
 # Seed so the first configure can resolve the source path before the first build.
+# Skip incrementing the build counter on configure — only count real builds.
 execute_process(
     COMMAND "${CMAKE_COMMAND}"
         -DPF_VERSION=${PF_VERSION}
         -DSRC_DIR=${CMAKE_SOURCE_DIR}
         -DOUT_DIR=${CMAKE_BINARY_DIR}/Generated
+        -DPF_SEED_ONLY=1
         -P "${CMAKE_SOURCE_DIR}/cmake/GenerateBuildInfo.cmake")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -56,13 +59,14 @@ endif()
 
 # Single instrument-style plugin: MIDI output + silent stereo audio.
 # Loads reliably in Ableton (VST3) and Logic (AU). IS_MIDI_EFFECT breaks many hosts.
+set(MIDIBROWSER_PRODUCT_NAME "Midi Toolkit")
 juce_add_plugin(MidiBrowser
     COMPANY_NAME            "MidiBrowser"
     BUNDLE_ID               com.midibrowser.app
     PLUGIN_MANUFACTURER_CODE MdbR
     PLUGIN_CODE              MdbB
     FORMATS                  ${_midibrowser_formats}
-    PRODUCT_NAME             "Midi Toolkit"
+    PRODUCT_NAME             "${MIDIBROWSER_PRODUCT_NAME}"
     IS_SYNTH                 TRUE
     NEEDS_MIDI_INPUT         TRUE
     NEEDS_MIDI_OUTPUT        TRUE
@@ -70,6 +74,40 @@ juce_add_plugin(MidiBrowser
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD  TRUE
 )
+
+# Always install into the user plug-in folders so DAWs see the latest build.
+# (JUCE's COPY_PLUGIN_AFTER_BUILD can be left OFF in an old CMake cache.)
+# Quote each -D so paths with spaces (e.g. "Midi Toolkit.vst3") stay intact.
+if(APPLE)
+    foreach(_fmt IN ITEMS VST3 AU)
+        if(TARGET MidiBrowser_${_fmt})
+            if(_fmt STREQUAL "VST3")
+                set(_kind VST3)
+            else()
+                set(_kind AU)
+            endif()
+            add_custom_command(TARGET MidiBrowser_${_fmt} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}"
+                    "-DPLUGIN_SRC=$<TARGET_BUNDLE_DIR:MidiBrowser_${_fmt}>"
+                    "-DPLUGIN_KIND=${_kind}"
+                    "-DPRODUCT_NAME=${MIDIBROWSER_PRODUCT_NAME}"
+                    -P "${CMAKE_SOURCE_DIR}/cmake/InstallPlugins.cmake"
+                COMMENT "Installing ${_fmt} -> ~/Library/Audio/Plug-Ins"
+                VERBATIM)
+        endif()
+    endforeach()
+elseif(WIN32)
+    if(TARGET MidiBrowser_VST3)
+        add_custom_command(TARGET MidiBrowser_VST3 POST_BUILD
+            COMMAND "${CMAKE_COMMAND}"
+                "-DPLUGIN_SRC=$<TARGET_FILE_DIR:MidiBrowser_VST3>/../.."
+                "-DPLUGIN_KIND=VST3"
+                "-DPRODUCT_NAME=${MIDIBROWSER_PRODUCT_NAME}"
+                -P "${CMAKE_SOURCE_DIR}/cmake/InstallPlugins.cmake"
+            COMMENT "Installing VST3 into Common Files"
+            VERBATIM)
+    endif()
+endif()
 
 juce_add_binary_data(MidiBrowserAssets
     SOURCES
@@ -88,6 +126,7 @@ target_sources(MidiBrowser PRIVATE
     Source/MidiFileData.cpp
     Source/EditModel.cpp
     Source/GrooveEngine.cpp
+    Source/LiveMidiFx.cpp
     Source/UiAtoms.cpp
     Source/TransportBar.cpp
     Source/BrowserPanels.cpp
@@ -97,6 +136,7 @@ target_sources(MidiBrowser PRIVATE
     Source/Theme.cpp
     Source/DesignSystem.cpp
     Source/LibraryStore.cpp
+    Source/FolderIndex.cpp
     "${PF_BUILDINFO_CPP}"
 )
 if(APPLE)
@@ -160,6 +200,8 @@ if(MIDIBROWSER_BUILD_TESTS)
         Tests/GrooveEngineTests.cpp
         Tests/EditorUiTests.cpp
         Tests/LibraryStoreTests.cpp
+        Tests/LiveMidiFxTests.cpp
+        Tests/FolderIndexTests.cpp
     )
     target_link_libraries(MidiBrowserTests PRIVATE
         MidiBrowser

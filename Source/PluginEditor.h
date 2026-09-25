@@ -34,15 +34,23 @@ public:
     bool keyPressed(const juce::KeyPress&) override;
     void darkModeSettingChanged() override;
 
+    void setRootDirectory(const juce::File& dir, bool keepSelection = false);
+    /** Parse one MIDI file for preview without a full folder Scan. */
+    void ensureAndSelectFile(const juce::File& file);
+    void toggleEditorFold();
+
 private:
     void applyNativeWindowChrome();
-    void setRootDirectory(const juce::File& dir, bool keepSelection = false);
     /** Async folder scan — never parses MIDI on the message thread. */
     void rescanFolder(bool keepSelection, const juce::String& preferredPath = {});
     /** Load every MIDI file under the current folder tree (flat list). */
     void scanAllFolders();
     void chooseFolder();
     void rebuildEntries();
+    /** Load notes for an indexed clip (metadata-only) before preview/play. */
+    bool ensureClipNotesLoaded(int clipIndex);
+    /** Prefer a valid on-disk folder index; fall back to name listing. */
+    void refreshBrowseListingAsync();
     /** Refilter the already-loaded clip list (no disk rescan). */
     void applyBrowserFilter();
     int displayForClip(int clipIdx) const;
@@ -54,6 +62,9 @@ private:
     void updateMiniPreview();
     MidiClip buildRenderedClip() const;
     void pushPreviewToProcessor();
+    void pushLiveFxToProcessor();
+    void applyPassthroughUi();
+    void togglePassthrough();
     void startDragExport();
     void startDragOriginalFile(const juce::File& file);
     void copyFileToFolder(const juce::File& file);
@@ -62,8 +73,24 @@ private:
     void applyLayoutState();
     void updateWindowLimits();
     void layoutContent();
-    void toggleEditorFold();
     void toggleEffectsFold();
+    /** Dim veil over file browser + piano UI while Passthrough is on. */
+    class PassthroughVeil : public juce::Component
+    {
+    public:
+        void paint(juce::Graphics& g) override
+        {
+            g.setColour(colours::panel().withMultipliedBrightness(0.72f));
+            g.fillRect(getLocalBounds());
+            g.setColour(colours::text().withAlpha(0.18f));
+            g.fillRect(getLocalBounds());
+        }
+        void mouseDown(const juce::MouseEvent&) override {}
+        void mouseDrag(const juce::MouseEvent&) override {}
+        void mouseUp(const juce::MouseEvent&) override {}
+        void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override {}
+    };
+    PassthroughVeil passthroughVeil;
     void showTweaksMenu();
     void refreshSidebar();
     void syncEffectsInspector();
@@ -142,6 +169,12 @@ private:
 
     juce::File rootDir;
     std::vector<StepClip> clips;
+    /** Immediate child folders for browse mode — filled async, never on the UI thread. */
+    std::vector<juce::File> cachedSubdirs;
+    /** Immediate MIDI files (names only) until Scan parses metadata. */
+    std::vector<juce::File> cachedMidiFiles;
+    /** True after Scan has parsed this folder's MIDI into `clips`. */
+    bool folderScanned = false;
     /** True after "Scan all folders" — flat recursive MIDI list, no subfolder rows. */
     bool recursiveBrowse = false;
     struct DisplayRow
@@ -159,6 +192,8 @@ private:
     std::atomic<int> searchGeneration { 0 };
     /** Bumps on each async folder Update so stale completions are ignored. */
     std::atomic<int> folderScanGeneration { 0 };
+    /** Bumps when browsing to a new folder so stale subdir lists are ignored. */
+    std::atomic<int> browseListGeneration { 0 };
     bool sidebarScanning = false;
     /** Primary clip path -> all Finder locations (including primary) after dedupe. */
     std::map<juce::String, juce::StringArray> searchDuplicateLocations;

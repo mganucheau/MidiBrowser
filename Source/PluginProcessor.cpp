@@ -51,6 +51,8 @@ void MidiBrowserProcessor::applySharedUiSessionFromLibrary()
     effectsOpen = s.effectsOpen;
     previewOpen = s.previewOpen;
     sidebarCollapsed = s.sidebarCollapsed;
+    passthrough = s.passthrough;
+    passthroughActive.store(passthrough);
 
     tweaks().density.store(juce::jlimit(0, 1, s.tweakDensity));
     tweaks().size.store(juce::jlimit(0, kNumContentSizes - 1, s.tweakSize));
@@ -77,6 +79,7 @@ void MidiBrowserProcessor::persistSharedUiSession()
     s.effectsOpen = effectsOpen;
     s.previewOpen = previewOpen;
     s.sidebarCollapsed = sidebarCollapsed;
+    s.passthrough = passthrough;
     s.tweakDensity = tweaks().density.load();
     s.tweakSize = tweaks().size.load();
     s.tweakTextScalePct = tweaks().textScalePct.load();
@@ -111,6 +114,7 @@ void MidiBrowserProcessor::syncLibraryFromMemory()
         s.effectsOpen = effectsOpen;
         s.previewOpen = previewOpen;
         s.sidebarCollapsed = sidebarCollapsed;
+        s.passthrough = passthrough;
         s.tweakDensity = tweaks().density.load();
         s.tweakSize = tweaks().size.load();
         s.tweakTextScalePct = tweaks().textScalePct.load();
@@ -197,7 +201,31 @@ void MidiBrowserProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
+    const bool pass = passthroughActive.load();
+    juce::MidiBuffer flushEvents;
+    if (liveFlushPending_.exchange(false))
+        liveFx_.flush(flushEvents, 0);
+
+    if (pass)
+    {
+        // Passthrough replaces clip preview: transform host MIDI in place.
+        if (wasSounding_)
+        {
+            flushActiveNotes(flushEvents, 0);
+            wasSounding_ = false;
+            lastBeatPos_ = -1.0;
+        }
+        liveFx_.process(midi, sampleRate_, hostBpm.load(), hostBeatPos.load(),
+                        buffer.getNumSamples());
+        for (const auto metadata : flushEvents)
+            midi.addEvent(metadata.getMessage(), metadata.samplePosition);
+        return;
+    }
+
+    // Clip-preview path: discard host MIDI, keep any live-note release events.
     midi.clear();
+    for (const auto metadata : flushEvents)
+        midi.addEvent(metadata.getMessage(), metadata.samplePosition);
 
     const bool synced = syncToHost.load();
     const bool hostIsPlaying = hostPlaying.load();
@@ -400,6 +428,30 @@ void MidiBrowserProcessor::setPreviewState(const MidiClip& clip, bool hasClip, b
     juce::ignoreUnused(soloed);
 }
 
+void MidiBrowserProcessor::setLiveFxState(const LiveFxState& state)
+{
+    liveFx_.setState(state);
+}
+
+void MidiBrowserProcessor::setPassthroughEnabled(bool enabled)
+{
+    const bool was = passthroughActive.load();
+    passthrough = enabled;
+    passthroughActive.store(enabled);
+    if (was != enabled)
+    {
+        // Leaving either mode: release whatever that path was holding.
+        requestNoteFlush();
+        if (!enabled)
+            liveFlushPending_.store(true);
+        else
+        {
+            juce::ScopedLock sl(previewLock_);
+            previewFlushPending_ = true;
+        }
+    }
+}
+
 void MidiBrowserProcessor::generatePreviewMidi(const MidiClip& clip, double startBeat, double endBeat,
                                                juce::MidiBuffer& output, int numSamples,
                                                int sampleOffsetBase)
@@ -521,6 +573,7 @@ void MidiBrowserProcessor::getStateInformation(juce::MemoryBlock& dest)
     xml.setAttribute("effectsOpen", effectsOpen ? 1 : 0);
     xml.setAttribute("previewOpen", previewOpen ? 1 : 0);
     xml.setAttribute("sidebarCollapsed", sidebarCollapsed ? 1 : 0);
+    xml.setAttribute("passthrough", passthrough ? 1 : 0);
     xml.setAttribute("browseMode", browseMode);
     xml.setAttribute("starredFilter", starredFilter ? 1 : 0);
     xml.setAttribute("includeSubdirs", includeSubdirs ? 1 : 0);
@@ -754,7 +807,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
                 tweaks().textScalePct.store(juce::jlimit(60, 150, pct));
             }
             tweaks().appearance.store(juce::jlimit(0, kNumAppearances - 1,
-                xml->getIntAttribute("tweakAppearance", (int) Appearance::Dark)));
+                xml->getIntAttribute("tweakAppearance", (int) Appearance::System)));
             tweaks().showTooltips.store(xml->getIntAttribute("tweakShowTooltips", 1) != 0 ? 1 : 0);
             syncSessionBars.store(juce::jlimit(1, 256, xml->getIntAttribute("syncSessionBars",
                 xml->getIntAttribute("arrangementBars", syncSessionBars.load()))));
@@ -767,6 +820,8 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             effectsOpen = xml->getIntAttribute("effectsOpen", 0) != 0;
             previewOpen = xml->getIntAttribute("previewOpen", 1) != 0;
             sidebarCollapsed = xml->getIntAttribute("sidebarCollapsed", 0) != 0;
+            passthrough = xml->getIntAttribute("passthrough", 0) != 0;
+            passthroughActive.store(passthrough);
             browseMode = juce::jlimit(0, 2, xml->getIntAttribute("browseMode", 0));
             starredFilter = xml->getIntAttribute("starredFilter", 0) != 0;
             includeSubdirs = xml->getIntAttribute("includeSubdirs", 0) != 0;
@@ -792,7 +847,7 @@ void MidiBrowserProcessor::setStateInformation(const void* data, int sizeInBytes
             columnVisibility.difNotes = xml->getIntAttribute("colDifNotes", 0) != 0;
             columnVisibility.timeSig = xml->getIntAttribute("colTimeSig", 0) != 0;
             columnVisibility.notes = xml->getIntAttribute("colNotes", 0) != 0;
-            nameColumnWidth = juce::jlimit(120, 2400, xml->getIntAttribute("nameColumnWidth", 280));
+            nameColumnWidth = juce::jlimit(120, 2400, xml->getIntAttribute("nameColumnWidth", 140));
             editLock = xml->getIntAttribute("editLock", 0) != 0;
             effectsLock = xml->getIntAttribute("effectsLock", 0) != 0;
             if (xml->hasAttribute("sectionLocks"))

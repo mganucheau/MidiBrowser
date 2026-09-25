@@ -58,12 +58,15 @@ TEST_CASE("Trim button trims and restores through the real editor UI", "[editoru
     const auto path = dir.getChildFile("lead.mid").getFullPathName();
 
     MidiBrowserProcessor proc;
-    proc.lastBrowserDir = dir.getFullPathName();
-    proc.editorOpen = true;
     proc.effectsOpen = true;
+    proc.passthrough = false;
+    proc.passthroughActive.store(false);
 
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     REQUIRE(ed != nullptr);
+    auto* browser = dynamic_cast<MidiBrowserEditor*>(ed.get());
+    REQUIRE(browser != nullptr);
+    browser->ensureAndSelectFile(dir.getChildFile("lead.mid"));
     ed->setVisible(true);   // hit-testing requires a visible component tree
     ed->setSize(1100, 620);
 
@@ -113,11 +116,15 @@ TEST_CASE("Fold and pitch-lock buttons are reachable; lock persists a template",
     const auto dir = makeLeadBarFolder("MidiBrowserUiTest2");
 
     MidiBrowserProcessor proc;
-    proc.lastBrowserDir = dir.getFullPathName();
-    proc.editorOpen = true;
     proc.effectsOpen = true;
+    proc.passthrough = false;
+    proc.passthroughActive.store(false);
 
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
+    auto* browser = dynamic_cast<MidiBrowserEditor*>(ed.get());
+    REQUIRE(browser != nullptr);
+    browser->ensureAndSelectFile(dir.getChildFile("lead.mid"));
+    browser->toggleEditorFold(); // startup leaves the piano roll folded
     ed->setVisible(true);
     ed->setSize(1300, 620);
 

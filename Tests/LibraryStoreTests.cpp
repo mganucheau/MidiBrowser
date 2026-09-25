@@ -109,6 +109,7 @@ TEST_CASE("Shared UI session reloads on a new processor instance", "[Library][qa
         a.selectedClipPath = "/tmp/shared-midi-lib/a.mid";
         a.editorOpen = true;
         a.previewOpen = false;
+        a.passthrough = true;
         a.nameColumnWidth = 360;
         a.columnVisibility.complexity = true;
         tweaks().appearance.store((int) Appearance::Light);
@@ -128,14 +129,23 @@ TEST_CASE("Shared UI session reloads on a new processor instance", "[Library][qa
         REQUIRE(b.selectedClipPath == "/tmp/shared-midi-lib/a.mid");
         REQUIRE(b.editorOpen);
         REQUIRE_FALSE(b.previewOpen);
+        REQUIRE(b.passthrough);
+        REQUIRE(b.passthroughActive.load());
         REQUIRE(b.nameColumnWidth == 360);
         REQUIRE(b.columnVisibility.complexity);
         REQUIRE(tweaks().appearance.load() == (int) Appearance::Light);
     }
 
+    // Restore prior library and bump the save generation so any late async
+    // writes from destroyed processors cannot clobber the restore.
     file.deleteFile();
     if (backup.existsAsFile())
         backup.moveFileTo(file);
+    {
+        LibraryStore drain;
+        drain.load();
+        drain.flush();
+    }
 }
 
 TEST_CASE("Favorites accrue across sessions and host state loads", "[Library][qa]")

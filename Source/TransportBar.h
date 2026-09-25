@@ -26,6 +26,7 @@ public:
     void setClipBpm(double);
     void setEditorOpen(bool);
     void setEffectsOpen(bool);
+    void setPassthrough(bool);
     void setHasClip(bool has);
     void setClipName(const juce::String& name);
     /** Standalone macOS reserves a traffic-light gutter; plugins must not. */
@@ -35,6 +36,7 @@ public:
     std::function<void()> onStop;
     std::function<void()> onToggleEditor;
     std::function<void()> onToggleEffects;
+    std::function<void()> onTogglePassthrough;
     std::function<void(bool)> onSyncChanged;
     std::function<void(double)> onFreeBpmChanged;
     std::function<void()> onDragToDaw;
@@ -121,6 +123,7 @@ private:
     StatusPill statusPill;
     IconBtn btnSync { icons::sync, "Sync to host tempo" };
     DragChip btnDragToDaw { "Drag to DAW" };
+    IconBtn btnPassthrough { icons::infinity, "Passthrough MIDI" };
     IconBtn btnEditor { icons::noteKeys, "Toggle editor" };
     IconBtn btnEffects { icons::sidebarRight, "Toggle toolkit" };
 
@@ -130,6 +133,7 @@ private:
     bool synced = true;
     bool editorOpen = false;
     bool effectsOpen = false;
+    bool passthrough = false;
     bool hasClip = false;
     bool windowActive = true;
     bool reserveTrafficLights = false;

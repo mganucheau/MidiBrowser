@@ -1,8 +1,12 @@
 # Regenerates Generated/BuildInfo.h + BuildInfo.cpp on every build.
 # Invoked as: cmake -DPF_VERSION=... -DSRC_DIR=... -DOUT_DIR=... -P GenerateBuildInfo.cmake
+#
+# Marketing version stays below 1.0 during beta. Each real build increments
+# cmake/build_number.txt so testers can tell builds apart (0.1.0-beta.N).
+# Pass -DPF_SEED_ONLY=1 during cmake configure to generate headers without bumping.
 
 if(NOT DEFINED PF_VERSION)
-    set(PF_VERSION "0.0.0")
+    set(PF_VERSION "0.1.0")
 endif()
 if(NOT DEFINED SRC_DIR OR NOT DEFINED OUT_DIR)
     message(FATAL_ERROR "GenerateBuildInfo.cmake requires SRC_DIR and OUT_DIR")
@@ -29,9 +33,39 @@ if(GIT_EXECUTABLE AND EXISTS "${SRC_DIR}/.git")
     endif()
 endif()
 
-string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M")
+# Monotonic beta build counter (persists across cleans via source-tree file).
+set(BUILD_NUMBER_FILE "${SRC_DIR}/cmake/build_number.txt")
+set(BUILD_NUMBER 1)
+if(EXISTS "${BUILD_NUMBER_FILE}")
+    file(READ "${BUILD_NUMBER_FILE}" _raw)
+    string(STRIP "${_raw}" _raw)
+    if(_raw MATCHES "^[0-9]+$")
+        set(BUILD_NUMBER "${_raw}")
+    endif()
+endif()
+
+if(NOT PF_SEED_ONLY)
+    math(EXPR BUILD_NUMBER "${BUILD_NUMBER} + 1")
+    file(WRITE "${BUILD_NUMBER_FILE}" "${BUILD_NUMBER}\n")
+endif()
+
+set(PF_FULL_VERSION "${PF_VERSION}-beta.${BUILD_NUMBER}")
+
+# 12-hour clock via `date` — CMake's string(TIMESTAMP) does not expand %p/%I reliably.
+set(BUILD_TIME "")
+if(APPLE OR CMAKE_HOST_UNIX)
+    execute_process(
+        COMMAND date "+%Y-%m-%d %I:%M %p"
+        OUTPUT_VARIABLE BUILD_TIME
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+endif()
+if(BUILD_TIME STREQUAL "")
+    # Fallback: 24-hour stamp if `date` is unavailable.
+    string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M")
+endif()
 # ASCII separators only — middle-dot · often missing in host UI fonts.
-set(STAMP "${PF_VERSION} | ${BUILD_TIME} | ${GIT_HASH}${GIT_DIRTY}")
+set(STAMP "${PF_FULL_VERSION} | ${BUILD_TIME} | ${GIT_HASH}${GIT_DIRTY}")
 
 file(MAKE_DIRECTORY "${OUT_DIR}")
 
@@ -40,13 +74,15 @@ file(WRITE "${OUT_DIR}/BuildInfo.h" [=[
 
 namespace pflow::build_info {
 
-/** Marketing / project version from CMake (e.g. "1.0.0"). */
+/** Marketing version with beta build suffix (e.g. "0.1.0-beta.42"). */
 const char* version();
+/** Monotonic beta build number as a decimal string. */
+const char* buildNumber();
 /** Short git commit hash; trailing '+' if the working tree was dirty at build. */
 const char* gitHash();
-/** Local build timestamp "YYYY-MM-DD HH:MM". */
+/** Local build timestamp "YYYY-MM-DD hh:mm AM/PM". */
 const char* buildTime();
-/** Single line for testers: "1.0.0 | 2026-07-14 14:05 | a1b2c3d+". */
+/** Single line for testers: "0.1.0-beta.42 | 2026-09-25 12:40 PM | a1b2c3d+". */
 const char* stamp();
 
 } // namespace pflow::build_info
@@ -57,10 +93,11 @@ file(WRITE "${OUT_DIR}/BuildInfo.cpp" "\
 #include \"BuildInfo.h\"\n\
 \n\
 namespace pflow::build_info {\n\
-const char* version()   { return \"${PF_VERSION}\"; }\n\
-const char* gitHash()   { return \"${GIT_HASH}${GIT_DIRTY}\"; }\n\
-const char* buildTime() { return \"${BUILD_TIME}\"; }\n\
-const char* stamp()     { return \"${STAMP}\"; }\n\
+const char* version()     { return \"${PF_FULL_VERSION}\"; }\n\
+const char* buildNumber() { return \"${BUILD_NUMBER}\"; }\n\
+const char* gitHash()     { return \"${GIT_HASH}${GIT_DIRTY}\"; }\n\
+const char* buildTime()   { return \"${BUILD_TIME}\"; }\n\
+const char* stamp()       { return \"${STAMP}\"; }\n\
 }\n\
 ")
 

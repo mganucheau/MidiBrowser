@@ -33,17 +33,18 @@ struct SharedUiSession
     juce::StringArray browserResultPaths;
 
     BrowserColumnVisibility columnVisibility;
-    int nameColumnWidth = 280;
+    int nameColumnWidth = 140;
 
     bool editorOpen = false;
     bool effectsOpen = false;
     bool previewOpen = true;
     bool sidebarCollapsed = false;
+    bool passthrough = false;
 
     int tweakDensity = 1;       // Density::Comfortable
     int tweakSize = 1;          // ContentSize::Medium
     int tweakTextScalePct = 100;
-    int tweakAppearance = 2;    // Appearance::Dark
+    int tweakAppearance = 0;    // Appearance::System
     int tweakShowTooltips = 1;
 };
 

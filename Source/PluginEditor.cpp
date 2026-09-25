@@ -1,4 +1,8 @@
 #include "PluginEditor.h"
+#include "FolderIndex.h"
+#include <thread>
+#include <atomic>
+#include <algorithm>
 #include "BuildInfo.h"
 #include "NativeWindowChrome.h"
 #include <set>
@@ -213,6 +217,13 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     : AudioProcessorEditor(&p),
       processorRef(p)
 {
+    // Startup defaults independent of prior-session chrome.
+    tweaks().appearance.store((int) Appearance::System);
+    processorRef.editorOpen = false;
+    // Migrate the previous default width (280) to the new half-width default.
+    if (processorRef.nameColumnWidth == 280)
+        processorRef.nameColumnWidth = 140;
+
     setLookAndFeel(&lnf);
     lnf.refreshColours();
     juce::Desktop::getInstance().addDarkModeSettingListener(this);
@@ -244,6 +255,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.onFreeBpmChanged = [this](double bpm) { processorRef.freeBpm.store(bpm); };
     transport.onToggleEditor = [this] { toggleEditorFold(); };
     transport.onToggleEffects = [this] { toggleEffectsFold(); };
+    transport.onTogglePassthrough = [this] { togglePassthrough(); };
     transport.onDragToDaw = [this] { startDragExport(); };
     transport.onCopyToFolder = [this] { copyRenderedClipToFolder(); };
     transport.setSynced(processorRef.syncToHost.load());
@@ -252,6 +264,7 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     transport.setHostBpm(processorRef.hostBpm.load());
     transport.setEditorOpen(processorRef.editorOpen);
     transport.setEffectsOpen(processorRef.effectsOpen);
+    transport.setPassthrough(processorRef.passthrough);
     transport.setReserveTrafficLights(
         processorRef.wrapperType == juce::AudioProcessor::wrapperType_Standalone);
     content.addAndMakeVisible(transport);
@@ -275,10 +288,25 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (!dir.isDirectory())
             return;
         const auto path = dir.getFullPathName();
-        if (processorRef.savedBrowserDirs.contains(path))
+        const bool alreadyKept = processorRef.savedBrowserDirs.contains(path);
+        if (alreadyKept)
             processorRef.removeSavedBrowserDir(path);
         else
             processorRef.addSavedBrowserDir(path);
+
+        // When filters are active, also save directory + filter criteria as a search.
+        if (!alreadyKept)
+        {
+            const auto criteria = sidebar.getCriteria();
+            const bool filtersActive = criteria.query.isNotEmpty()
+                || criteria.keyRoot >= 0 || criteria.keyMask != 0
+                || criteria.bpmMin > 0.0 || criteria.bpmMax > 0.0
+                || criteria.barsMin > 0 || criteria.barsMax > 0
+                || criteria.complexityMin > 0 || criteria.complexityMax > 0;
+            if (filtersActive)
+                saveCurrentSearch();
+        }
+
         refreshSidebar();
         if (sidebar.isCollapsed())
             sidebar.setCollapsed(false);
@@ -307,7 +335,16 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         ++searchGeneration;
         // Force recursiveBrowse from the toggle (do not rely on stale flag).
         recursiveBrowse = on;
-        rescanFolder(true);
+        // Only re-parse if this folder was already scanned; otherwise wait for Scan.
+        if (!clips.empty() || sidebarScanning)
+            rescanFolder(true);
+        else
+        {
+            auto name = rootDir.getFileName();
+            if (name.isEmpty()) name = rootDir.getFullPathName();
+            if (on) name += " (all)";
+            fileList.setFolderName(name);
+        }
         refreshSidebar();
         fileList.grabBrowseFocus();
         persistBrowserSession();
@@ -469,6 +506,11 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         const auto& row = displayRows[(size_t) entryIdx];
         if (row.isDirectory)
             return;   // highlight only; enter via Right / click
+        if (row.clipIndex < 0)
+        {
+            ensureAndSelectFile(row.file);
+            return;
+        }
         selectIndex(row.clipIndex);
     };
     fileList.onPlayRow = [this](int entryIdx)
@@ -477,7 +519,10 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
             return;
         const auto& row = displayRows[(size_t) entryIdx];
         if (row.isDirectory) return;
-        selectIndex(row.clipIndex);
+        if (row.clipIndex < 0)
+            ensureAndSelectFile(row.file);
+        else
+            selectIndex(row.clipIndex);
         processorRef.previewArmed.store(true);
     };
     fileList.onToggleStar = [this](int entryIdx)
@@ -485,8 +530,12 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         if (!juce::isPositiveAndBelow(entryIdx, (int) displayRows.size()))
             return;
         const auto& row = displayRows[(size_t) entryIdx];
-        if (row.isDirectory || row.clipIndex < 0) return;
-        processorRef.toggleStarred(clips[(size_t) row.clipIndex].filePath);
+        if (row.isDirectory) return;
+        const auto path = row.clipIndex >= 0
+                              ? clips[(size_t) row.clipIndex].filePath
+                              : row.file.getFullPathName();
+        if (path.isEmpty()) return;
+        processorRef.toggleStarred(path);
         if (browseMode == 1)
             loadStarredClips(); // drop unstarred from the global list
         else
@@ -688,12 +737,16 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
         transport.setBpmMultiplier(m);
         applyTimeStretchFromMultiplier();
         updateMiniPreview();
+        pushLiveFxToProcessor();
     };
     processorRef.syncLockFlagsFromSections();
     effectsInspector.setSectionLocks(processorRef.sectionLocks);
     effectsInspector.setBpmMultiplier(processorRef.bpmMultiplier.load());
     effectsInspector.onActivated = [this] { claimKeyNav(KeyNavTarget::Effects); };
     content.addAndMakeVisible(effectsInspector);
+
+    passthroughVeil.setVisible(false);
+    content.addChildComponent(passthroughVeil);
 
     restoreBrowserSession();
     refreshSidebar();
@@ -706,6 +759,8 @@ MidiBrowserEditor::MidiBrowserEditor(MidiBrowserProcessor& p)
     startTimerHz(30);
     setWantsKeyboardFocus(true);
     updateMiniPreview();
+    pushLiveFxToProcessor();
+    applyPassthroughUi();
     applyNativeWindowChrome();
 }
 
@@ -801,6 +856,7 @@ void MidiBrowserEditor::darkModeSettingChanged()
 
 void MidiBrowserEditor::setRootDirectory(const juce::File& dir, bool keepSelection)
 {
+    juce::ignoreUnused(keepSelection);
     browseMode = 0;
     starredFilter = false;
     recursiveBrowse = false;
@@ -808,10 +864,111 @@ void MidiBrowserEditor::setRootDirectory(const juce::File& dir, bool keepSelecti
     sidebar.setStarredFilter(false);
     rootDir = dir;
     processorRef.lastBrowserDir = dir.getFullPathName();
-    rescanFolder(keepSelection);
+
+    // Opening a folder is browse-only — MIDI parse waits for Scan.
+    ++folderScanGeneration;
+    ++browseListGeneration;
+    sidebarScanning = false;
+    sidebar.setScanning(false);
+    fileList.setSearching(false);
+    clips.clear();
+    cachedSubdirs.clear();
+    cachedMidiFiles.clear();
+    folderScanned = false;
+    selectedIdx = -1;
+    auto name = dir.getFileName();
+    if (name.isEmpty()) name = dir.getFullPathName();
+    fileList.setFolderName(name);
+    fileList.setEmptyHint("Loading folders…");
+    rebuildEntries();
+    refreshBrowseListingAsync();
+    rollEditor.clearClip();
+    syncEffectsInspector();
+    processorRef.setPreviewState({}, false, false, false);
+    transport.setHasClip(false);
+    transport.setClipName({});
     refreshSidebar();
     fileList.grabBrowseFocus();
     persistBrowserSession();
+}
+
+void MidiBrowserEditor::refreshBrowseListingAsync()
+{
+    if (!rootDir.isDirectory())
+    {
+        cachedSubdirs.clear();
+        cachedMidiFiles.clear();
+        return;
+    }
+
+    const juce::File dir = rootDir;
+    const bool recursive = recursiveBrowse;
+    const int gen = browseListGeneration.load();
+    juce::Component::SafePointer<MidiBrowserEditor> safe(this);
+    juce::Thread::launch([safe, dir, recursive, gen]()
+    {
+        // Prefer a still-valid folder index (instant browse after a prior Scan).
+        if (auto indexed = FolderIndex::loadValidClips(dir, recursive))
+        {
+            juce::MessageManager::callAsync([safe, clips = std::move(*indexed), gen, dir, recursive]() mutable
+            {
+                if (safe == nullptr || gen != safe->browseListGeneration.load())
+                    return;
+                if (!safe->rootDir.isDirectory()
+                    || safe->rootDir.getFullPathName() != dir.getFullPathName())
+                    return;
+
+                safe->clips = std::move(clips);
+                safe->folderScanned = true;
+                safe->cachedMidiFiles.clear();
+                safe->cachedSubdirs.clear();
+                if (!recursive)
+                {
+                    // Still list child folders for navigation.
+                    auto dirs = dir.findChildFiles(juce::File::findDirectories, false, "*");
+                    dirs.sort();
+                    for (const auto& d : dirs)
+                        if (!d.getFileName().startsWithChar('.'))
+                            safe->cachedSubdirs.push_back(d);
+                }
+                safe->fileList.setEmptyHint(safe->clips.empty() ? "No files" : juce::String());
+                safe->rebuildEntries();
+                safe->refreshSidebar();
+            });
+            return;
+        }
+
+        auto listing = listDirectoryQuick(dir, FolderIndex::kMaxBrowseNames);
+        std::vector<juce::File> keptDirs = std::move(listing.directories);
+        std::vector<juce::File> keptMidis = std::move(listing.midiFiles);
+        const int totalMidis = listing.totalMidiFiles;
+        const int hiddenMidis = juce::jmax(0, totalMidis - (int) keptMidis.size());
+
+        juce::MessageManager::callAsync([safe, subdirs = std::move(keptDirs),
+                                         midiFiles = std::move(keptMidis), hiddenMidis, gen, dir, totalMidis]() mutable
+        {
+            if (safe == nullptr || gen != safe->browseListGeneration.load())
+                return;
+            if (!safe->rootDir.isDirectory()
+                || safe->rootDir.getFullPathName() != dir.getFullPathName())
+                return;
+
+            safe->cachedSubdirs = std::move(subdirs);
+            safe->cachedMidiFiles = std::move(midiFiles);
+            if (safe->folderScanned)
+                safe->fileList.setEmptyHint("No files");
+            else if (safe->cachedSubdirs.empty() && safe->cachedMidiFiles.empty() && hiddenMidis == 0)
+                safe->fileList.setEmptyHint("No files");
+            else if (hiddenMidis > 0)
+                safe->fileList.setEmptyHint(
+                    "Showing " + juce::String((int) safe->cachedMidiFiles.size())
+                    + " of " + juce::String(totalMidis)
+                    + " MIDI files — Click Scan to index all");
+            else
+                safe->fileList.setEmptyHint("Click Scan to load MIDI details");
+            safe->rebuildEntries();
+        });
+    });
 }
 
 void MidiBrowserEditor::persistBrowserSession()
@@ -892,12 +1049,9 @@ void MidiBrowserEditor::restoreBrowserSession()
     sidebar.setIncludeSubdirs(processorRef.includeSubdirs);
     sidebar.setCriteria(processorRef.browserSessionSearch);
 
-    if (processorRef.lastBrowserDir.isNotEmpty())
-    {
-        const juce::File dir(processorRef.lastBrowserDir);
-        if (dir.isDirectory())
-            rootDir = dir;
-    }
+    // Fresh start: do not auto-open the prior-session directory (Browse is explicit).
+    // lastBrowserDir is still kept for the Open Folder dialog starting location.
+    rootDir = juce::File();
 
     browseMode = juce::jlimit(0, 2, processorRef.browseMode);
     starredFilter = processorRef.starredFilter;
@@ -945,10 +1099,19 @@ void MidiBrowserEditor::restoreBrowserSession()
         }
         fileList.grabBrowseFocus();
     }
-    else if (rootDir.isDirectory())
+    else
     {
+        // Folder mode: empty until the user opens a directory.
+        browseMode = 0;
+        processorRef.browseMode = 0;
+        sidebar.setBrowseMode(0);
+        clips.clear();
         searchDuplicateLocations.clear();
-        rescanFolder(false, wantPath);
+        fileList.setFolderName("Select a folder");
+        rebuildEntries();
+        rollEditor.clearClip();
+        syncEffectsInspector();
+        processorRef.setPreviewState({}, false, false, false);
         fileList.grabBrowseFocus();
     }
 
@@ -979,11 +1142,15 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection, const juce::String& pre
     if (name.isEmpty()) name = dir.getFullPathName();
     if (recursive) name += " (all)";
     fileList.setFolderName(name);
+    fileList.setEmptyHint("Scanning…");
 
     // Clear the list immediately so the host UI stays interactive while we parse.
     clips.clear();
+    folderScanned = false;
     selectedIdx = -1;
     rebuildEntries();
+    if (cachedSubdirs.empty() && !recursive)
+        refreshBrowseListingAsync();
     rollEditor.clearClip();
     syncEffectsInspector();
     processorRef.setPreviewState({}, false, false, false);
@@ -995,17 +1162,47 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection, const juce::String& pre
         std::vector<StepClip> found;
         try
         {
-            if (recursive)
             {
-                scanMidiFiles(dir, true, found,
-                              [](const StepClip&, const juce::File&) { return true; });
-            }
-            else
-            {
-                auto files = dir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi");
-                files.sort();
-                for (const auto& f : files)
-                    found.push_back(makeStepClip(parseMidiFile(f)));
+                // Always enumerate first, then parse in parallel. Recursive "Scan all"
+                // on Midi_Parsed (~411k) is still heavy — progress keeps UI alive.
+                auto files = collectMidiFiles(dir, recursive);
+                const int total = files.size();
+                found.resize((size_t) total);
+                std::atomic<int> done { 0 };
+                const int nThreads = juce::jmax(2, (int) std::thread::hardware_concurrency());
+                juce::ThreadPool pool(nThreads);
+                for (int i = 0; i < total; ++i)
+                {
+                    pool.addJob([safe, gen, &files, &found, &done, i, total]()
+                    {
+                        const auto& file = files.getReference(i);
+                        try
+                        {
+                            found[(size_t) i] = makeStepClip(parseMidiFile(file));
+                        }
+                        catch (...)
+                        {
+                            StepClip stub;
+                            stub.filePath = file.getFullPathName();
+                            stub.name = file.getFileNameWithoutExtension();
+                            found[(size_t) i] = std::move(stub);
+                        }
+                        const int d = ++done;
+                        if (safe != nullptr && (d == total || (d % 64) == 0))
+                        {
+                            juce::MessageManager::callAsync([safe, gen, d, total]()
+                            {
+                                if (safe == nullptr || gen != safe->folderScanGeneration.load())
+                                    return;
+                                safe->sidebar.setScanProgress(d, total);
+                                safe->fileList.setEmptyHint("Scanning " + juce::String(d)
+                                                            + "/" + juce::String(total) + "…");
+                            });
+                        }
+                    });
+                }
+                while (done.load() < total)
+                    juce::Thread::sleep(5);
             }
         }
         catch (...)
@@ -1026,10 +1223,14 @@ void MidiBrowserEditor::rescanFolder(bool keepSelection, const juce::String& pre
                 return;
 
             safe->clips = std::move(results);
+            safe->folderScanned = true;
+            safe->cachedMidiFiles.clear();
+            FolderIndex::fromClips(dir, safe->recursiveBrowse, safe->clips).save();
             auto folderName = dir.getFileName();
             if (folderName.isEmpty()) folderName = dir.getFullPathName();
             if (safe->sidebar.getIncludeSubdirs()) folderName += " (all)";
             safe->fileList.setFolderName(folderName);
+            safe->fileList.setEmptyHint("No files");
             safe->rebuildEntries();
             safe->selectPathOrFirst(previousPath);
             safe->refreshSidebar();
@@ -1434,6 +1635,62 @@ void MidiBrowserEditor::saveCurrentSearch()
     persistBrowserSession();
 }
 
+
+bool MidiBrowserEditor::ensureClipNotesLoaded(int clipIndex)
+{
+    if (!juce::isPositiveAndBelow(clipIndex, (int) clips.size()))
+        return false;
+
+    auto& clip = clips[(size_t) clipIndex];
+    if (!clip.notes.empty())
+        return true;
+
+    const juce::File f(clip.filePath);
+    if (!f.existsAsFile())
+        return false;
+
+    try
+    {
+        auto loaded = makeStepClip(parseMidiFile(f));
+        // Keep list identity; replace body with fully parsed clip.
+        loaded.filePath = clip.filePath;
+        clip = std::move(loaded);
+    }
+    catch (...)
+    {
+        return false;
+    }
+    return true;
+}
+
+void MidiBrowserEditor::ensureAndSelectFile(const juce::File& file)
+{
+    if (!file.existsAsFile())
+        return;
+
+    const auto path = file.getFullPathName();
+    for (int i = 0; i < (int) clips.size(); ++i)
+    {
+        if (clips[(size_t) i].filePath == path)
+        {
+            selectIndex(i);
+            return;
+        }
+    }
+
+    try
+    {
+        clips.push_back(makeStepClip(parseMidiFile(file)));
+    }
+    catch (...)
+    {
+        return;
+    }
+
+    rebuildEntries();
+    selectIndex((int) clips.size() - 1);
+}
+
 void MidiBrowserEditor::rebuildEntries()
 {
     displayRows.clear();
@@ -1469,11 +1726,8 @@ void MidiBrowserEditor::rebuildEntries()
 
     if (browseMode == 0 && rootDir.isDirectory() && !recursiveBrowse)
     {
-        auto dirs = rootDir.findChildFiles(juce::File::findDirectories, false, "*");
-        dirs.sort();
-        for (const auto& d : dirs)
+        for (const auto& d : cachedSubdirs)
         {
-            if (d.getFileName().startsWithChar('.')) continue;
             FileListEntry e;
             e.file = d;
             e.name = d.getFileName();
@@ -1483,21 +1737,53 @@ void MidiBrowserEditor::rebuildEntries()
         }
     }
 
-    for (int i : passing)
+    // Before Scan: show MIDI filenames so folders aren't empty. After Scan: use parsed clips.
+    if (!folderScanned && browseMode == 0 && !recursiveBrowse)
     {
-        const auto& clip = clips[(size_t) i];
-        if (hiddenDupes.count(clip.filePath) != 0)
-            continue;
+        for (const auto& f : cachedMidiFiles)
+        {
+            const auto path = f.getFullPathName();
+            int clipIdx = -1;
+            for (int i = 0; i < (int) clips.size(); ++i)
+                if (clips[(size_t) i].filePath == path) { clipIdx = i; break; }
 
-        const bool starred = processorRef.isStarred(clip.filePath);
-        const bool edited = (processorRef.sectionLocks & toolkitLock::Pitch) != 0
-                                && !editIsClean(processorRef.editFor(clip.filePath));
-        auto entry = entryForClip(clip, juce::File(clip.filePath), edited, starred);
-        if (auto it = searchDuplicateLocations.find(clip.filePath);
-            it != searchDuplicateLocations.end() && it->second.size() > 1)
-            entry.locations = it->second;
-        entries.push_back(std::move(entry));
-        displayRows.push_back({ false, i, juce::File(clip.filePath) });
+            FileListEntry e;
+            if (clipIdx >= 0)
+            {
+                const auto& clip = clips[(size_t) clipIdx];
+                const bool starred = processorRef.isStarred(clip.filePath);
+                const bool edited = (processorRef.sectionLocks & toolkitLock::Pitch) != 0
+                                        && !editIsClean(processorRef.editFor(clip.filePath));
+                e = entryForClip(clip, f, edited, starred);
+            }
+            else
+            {
+                e.file = f;
+                e.name = f.getFileNameWithoutExtension();
+                e.starred = processorRef.isStarred(path);
+            }
+            entries.push_back(std::move(e));
+            displayRows.push_back({ false, clipIdx, f });
+        }
+    }
+    else
+    {
+        for (int i : passing)
+        {
+            const auto& clip = clips[(size_t) i];
+            if (hiddenDupes.count(clip.filePath) != 0)
+                continue;
+
+            const bool starred = processorRef.isStarred(clip.filePath);
+            const bool edited = (processorRef.sectionLocks & toolkitLock::Pitch) != 0
+                                    && !editIsClean(processorRef.editFor(clip.filePath));
+            auto entry = entryForClip(clip, juce::File(clip.filePath), edited, starred);
+            if (auto it = searchDuplicateLocations.find(clip.filePath);
+                it != searchDuplicateLocations.end() && it->second.size() > 1)
+                entry.locations = it->second;
+            entries.push_back(std::move(entry));
+            displayRows.push_back({ false, i, juce::File(clip.filePath) });
+        }
     }
 
     fileList.setEntries(std::move(entries));
@@ -1601,6 +1887,9 @@ GrooveParams MidiBrowserEditor::selectedGroove() const
 void MidiBrowserEditor::selectIndex(int index)
 {
     if (!juce::isPositiveAndBelow(index, (int) clips.size()))
+        return;
+
+    if (!ensureClipNotesLoaded(index))
         return;
 
     const auto locks = processorRef.sectionLocks;
@@ -1782,6 +2071,50 @@ void MidiBrowserEditor::pushPreviewToProcessor()
     const auto preview = buildRenderedClip();
     // Soft update while tweaking Toolkit params so held notes aren't choked.
     processorRef.setPreviewState(preview, !preview.notes.empty(), false, false, true);
+    pushLiveFxToProcessor();
+}
+
+void MidiBrowserEditor::pushLiveFxToProcessor()
+{
+    LiveFxState state;
+    state.edit = selectedEdit();
+    state.groove = selectedGroove();
+    state.bpmMultiplier = processorRef.bpmMultiplier.load();
+    if (const auto* clip = selectedClip())
+    {
+        state.sourceRoot = clip->root;
+        state.sourceOctave = clipReferenceOctave(*clip);
+    }
+    processorRef.setLiveFxState(state);
+}
+
+void MidiBrowserEditor::applyPassthroughUi()
+{
+    const bool pass = processorRef.passthrough;
+    transport.setPassthrough(pass);
+    processorRef.setPassthroughEnabled(pass);
+
+    const float alpha = pass ? 0.45f : 1.0f;
+    fileList.setAlpha(alpha);
+    miniRoll.setAlpha(alpha);
+    previewHeader.setAlpha(alpha);
+    rollEditor.setAlpha(alpha);
+
+    fileList.setEnabled(!pass);
+    rollEditor.setEnabled(!pass);
+    previewHeader.setEnabled(!pass);
+    passthroughVeil.setVisible(pass);
+    if (pass)
+        passthroughVeil.toFront(false);
+    repaint();
+}
+
+void MidiBrowserEditor::togglePassthrough()
+{
+    processorRef.passthrough = !processorRef.passthrough;
+    persistBrowserSession();
+    applyPassthroughUi();
+    pushLiveFxToProcessor();
 }
 
 void MidiBrowserEditor::startDragExport()
@@ -1946,6 +2279,8 @@ void MidiBrowserEditor::PreviewHeader::paint(juce::Graphics& g)
 
 void MidiBrowserEditor::PreviewHeader::mouseDown(const juce::MouseEvent&)
 {
+    if (owner.processorRef.passthrough)
+        return;
     owner.processorRef.previewOpen = !owner.processorRef.previewOpen;
     owner.persistBrowserSession();
     owner.applyLayoutState();
@@ -2113,6 +2448,18 @@ void MidiBrowserEditor::layoutContent()
 
     fileList.setBounds(browserCol);
     browserColW = fileList.getWidth();
+
+    // Dim veil covers the file-driven piano stack (list + preview + editor pane).
+    if (passthroughVeil.isVisible())
+    {
+        juce::Rectangle<int> veil = fileList.getBounds()
+                                        .getUnion(previewHeader.getBounds())
+                                        .getUnion(miniRoll.getBounds());
+        if (edOpen)
+            veil = veil.getUnion(rollEditor.getBounds());
+        passthroughVeil.setBounds(veil);
+        passthroughVeil.toFront(false);
+    }
 }
 
 void MidiBrowserEditor::paint(juce::Graphics& g)
@@ -2134,9 +2481,10 @@ public:
 
     // Percents relative to the new 100% baseline (former 115% size).
     static constexpr int kTextPctChoices[] = { 70, 85, 100, 115, 130 };
-    static constexpr int kPanelW = 380;
-    static constexpr int kPanelH = 340;
+    static constexpr int kPanelW = 400;
+    static constexpr int kPanelH = 380;
     static constexpr int kHeaderH = 44;
+    static constexpr int kFooterH = 62;
 
     SettingsPanel()
     {
@@ -2251,14 +2599,20 @@ public:
             body.removeFromTop(rowGap);
         }
 
-        // Build stamp for user testing — version | build time | commit.
-        auto footer = getLocalBounds().removeFromBottom(28).reduced(18, 0);
+        // Build stamp for testers — larger type, 12-hour clock (from BuildInfo).
+        auto footer = getLocalBounds().removeFromBottom(kFooterH).reduced(18, 0);
         g.setColour(t.divider);
         g.fillRect(18, footer.getY(), getWidth() - 36, 1);
-        g.setFont(uiFont(10.0f, false));
-        g.setColour(colours::text3());
-        g.drawText(build_info::stamp(), footer.withTrimmedTop(6),
+        footer.removeFromTop(8);
+        g.setFont(uiFont(15.0f, true));
+        g.setColour(colours::text());
+        g.drawText(build_info::version(), footer.removeFromTop(22),
                    juce::Justification::centredLeft, true);
+        g.setFont(uiFont(12.5f, false));
+        g.setColour(colours::text2());
+        const juce::String meta = juce::String(build_info::buildTime())
+                                  + "  ·  " + build_info::gitHash();
+        g.drawText(meta, footer, juce::Justification::centredLeft, true);
     }
 
     void resized() override
@@ -2267,7 +2621,9 @@ public:
         closeBtn.setBounds(juce::Rectangle<int>(getWidth() - 18 - iconBtn, 0, iconBtn, kHeaderH)
                                .withSizeKeepingCentre(iconBtn, iconBtn));
 
-        auto body = getLocalBounds().withTrimmedTop(kHeaderH + 8).reduced(18, 10);
+        auto body = getLocalBounds().withTrimmedTop(kHeaderH + 8)
+                        .withTrimmedBottom(kFooterH)
+                        .reduced(18, 10);
         const int rowH = 44;
         const int rowGap = 10;
         const int ctrlH = metrics::scaled(26);
@@ -2399,7 +2755,7 @@ bool MidiBrowserEditor::keyPressed(const juce::KeyPress& key)
         return true;
     }
 
-    // E toggles the editor pane; F toggles effects.
+    // E toggles the editor pane; F toggles effects; P toggles passthrough.
     if (key.getTextCharacter() == 'e' || key.getTextCharacter() == 'E')
     {
         toggleEditorFold();
@@ -2410,6 +2766,14 @@ bool MidiBrowserEditor::keyPressed(const juce::KeyPress& key)
         toggleEffectsFold();
         return true;
     }
+    if (key.getTextCharacter() == 'p' || key.getTextCharacter() == 'P')
+    {
+        togglePassthrough();
+        return true;
+    }
+
+    if (processorRef.passthrough)
+        return false;
 
     if (rollEditor.isVisible() && rollEditor.hasSelection()
         && (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey))

@@ -92,11 +92,12 @@ SharedUiSession LibraryStore::uiSessionFromXml(const juce::XmlElement& el)
     s.includeSubdirs = el.getIntAttribute("includeSubdirs", 0) != 0;
     s.selectedClipPath = el.getStringAttribute("selectedClipPath");
     s.activeSavedSearchIdx = el.getIntAttribute("activeSavedSearchIdx", -1);
-    s.nameColumnWidth = juce::jlimit(120, 2400, el.getIntAttribute("nameColumnWidth", 280));
+    s.nameColumnWidth = juce::jlimit(120, 2400, el.getIntAttribute("nameColumnWidth", 140));
     s.editorOpen = el.getIntAttribute("editorOpen", 0) != 0;
     s.effectsOpen = el.getIntAttribute("effectsOpen", 0) != 0;
     s.previewOpen = el.getIntAttribute("previewOpen", 1) != 0;
     s.sidebarCollapsed = el.getIntAttribute("sidebarCollapsed", 0) != 0;
+    s.passthrough = el.getIntAttribute("passthrough", 0) != 0;
     s.columnVisibility.key = el.getIntAttribute("colKey", 1) != 0;
     s.columnVisibility.tempo = el.getIntAttribute("colTempo", 1) != 0;
     s.columnVisibility.bars = el.getIntAttribute("colBars", 1) != 0;
@@ -108,7 +109,7 @@ SharedUiSession LibraryStore::uiSessionFromXml(const juce::XmlElement& el)
     s.tweakDensity = juce::jlimit(0, 1, el.getIntAttribute("tweakDensity", 1));
     s.tweakSize = juce::jlimit(0, 2, el.getIntAttribute("tweakSize", 1));
     s.tweakTextScalePct = juce::jlimit(60, 150, el.getIntAttribute("tweakTextScalePct", 100));
-    s.tweakAppearance = juce::jlimit(0, 2, el.getIntAttribute("tweakAppearance", 2));
+    s.tweakAppearance = juce::jlimit(0, 2, el.getIntAttribute("tweakAppearance", 0));
     s.tweakShowTooltips = el.getIntAttribute("tweakShowTooltips", 1) != 0 ? 1 : 0;
     s.browserSessionSearch = browserSearchFromXml(el);
 
@@ -143,6 +144,7 @@ void LibraryStore::uiSessionToXml(juce::XmlElement& el, const SharedUiSession& s
     el.setAttribute("effectsOpen", s.effectsOpen ? 1 : 0);
     el.setAttribute("previewOpen", s.previewOpen ? 1 : 0);
     el.setAttribute("sidebarCollapsed", s.sidebarCollapsed ? 1 : 0);
+    el.setAttribute("passthrough", s.passthrough ? 1 : 0);
     el.setAttribute("colKey", s.columnVisibility.key ? 1 : 0);
     el.setAttribute("colTempo", s.columnVisibility.tempo ? 1 : 0);
     el.setAttribute("colBars", s.columnVisibility.bars ? 1 : 0);

@@ -87,6 +87,8 @@ public:
     void setCurrentClipCount(int n);
     void setStarredCount(int n);
     void setScanning(bool on);
+    /** Optional "42/200" progress while a folder scan runs. */
+    void setScanProgress(int done, int total);
 
     /** Refresh Filter histogram bars from loaded browser clips. */
     void setFilterHistograms(const std::vector<StepClip>& clips);
@@ -152,7 +154,6 @@ private:
     int activeFilterGroupCount() const;
     void toggleFilterPanel();
     int folderCardHeight() const;
-    static int countMidiFilesQuick(const juce::File& dir);
 
     /** Keyboard / tooltip navigation targets in visual order. */
     enum class NavKind
@@ -205,6 +206,8 @@ private:
     bool searchOpen = true;
     bool includeSubdirs = false;
     bool scanning = false;
+    int scanProgressDone = 0;
+    int scanProgressTotal = 0;
     bool filterOpen = false;
     bool filterApplyPending = false;
     float scanAngle = 0.0f;
@@ -362,6 +365,8 @@ public:
     bool keyPressed(const juce::KeyPress&) override;
 
     void setFolderName(const juce::String& name);
+    /** Shown when the list has no rows (e.g. folder open but not yet scanned). */
+    void setEmptyHint(const juce::String& hint);
     void setEntries(std::vector<FileListEntry> entries);
     void updateEntry(int index, const FileListEntry& entry);
     void setSelectedIndex(int index, juce::NotificationType notify = juce::sendNotification);
@@ -428,7 +433,7 @@ private:
         juce::Rectangle<int> name, key, tempo, bars, kind, complexity, difNotes, timeSig, notes;
     };
 
-    static constexpr int kNameWDefault = 280;
+    static constexpr int kNameWDefault = 140;
     static constexpr int kNameWMin = 120;
     static constexpr int kNameWMax = 2400;
     static constexpr int kKeyW = 44;
@@ -468,6 +473,7 @@ private:
     void showColumnVisibilityMenu();
 
     juce::String folderName { "Select a folder" };
+    juce::String emptyHint { "No files" };
     std::vector<FileListEntry> entries;
     std::vector<int> sortOrder;
     SortColumn sortColumn = SortColumn::Name;

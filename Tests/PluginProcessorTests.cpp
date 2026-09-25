@@ -302,6 +302,12 @@ TEST_CASE("Saved folder helpers dedupe and cap list size", "[Processor][qa]")
 
 TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
 {
+    const auto libFile = LibraryStore::libraryFile();
+    const auto backup = libFile.getSiblingFile("library.xml.bak-roundtrip");
+    if (libFile.existsAsFile())
+        libFile.copyFileTo(backup);
+    libFile.deleteFile();
+
     MidiBrowserProcessor original;
     original.lastBrowserDir = "/tmp/MidiBrowserSaved";
     original.trimEmptyMeasuresPreview = true;
@@ -334,6 +340,10 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
     saved.resultPaths.add("/tmp/midi-lib/a.mid");
     saved.resultPaths.add("/tmp/midi-lib/b.mid");
     original.addSavedSearch(saved);
+    // Keep the shared app-library session aligned with this host snapshot so
+    // setStateInformation's library preference does not overwrite fields.
+    original.persistSharedUiSession();
+    original.library().flush();
 
     juce::MemoryBlock state;
     original.getStateInformation(state);
@@ -377,22 +387,40 @@ TEST_CASE("Processor state round-trips browser settings", "[Processor][qa]")
 
     tweaks().density.store((int) Density::Compact);
     tweaks().size.store((int) ContentSize::Medium);
+
+    libFile.deleteFile();
+    if (backup.existsAsFile())
+        backup.moveFileTo(libFile);
 }
 
 TEST_CASE("Processor state ignores empty and legacy-safe payloads", "[Processor][qa]")
 {
-    MidiBrowserProcessor processor;
-    processor.lastBrowserDir = "before";
-    processor.setStateInformation(nullptr, 0);
-    REQUIRE(processor.lastBrowserDir.isEmpty());
+    // Isolate from the shared app-library UI session so empty host state
+    // does not rehydrate lastBrowserDir from a prior test.
+    const auto libFile = LibraryStore::libraryFile();
+    const auto backup = libFile.getSiblingFile("library.xml.bak-empty-state");
+    if (libFile.existsAsFile())
+        libFile.copyFileTo(backup);
+    libFile.deleteFile();
 
-    juce::XmlElement legacy("PatternFlowState");
-    legacy.setAttribute("lastBrowserDir", "/legacy/path");
-    legacy.setAttribute("arrangementBars", 16);
-    juce::MemoryBlock block;
-    juce::AudioProcessor::copyXmlToBinary(legacy, block);
+    {
+        MidiBrowserProcessor processor;
+        processor.lastBrowserDir = "before";
+        processor.setStateInformation(nullptr, 0);
+        REQUIRE(processor.lastBrowserDir.isEmpty());
 
-    processor.setStateInformation(block.getData(), (int) block.getSize());
-    REQUIRE(processor.lastBrowserDir == "/legacy/path");
-    REQUIRE(processor.syncSessionBars.load() == 16);
+        juce::XmlElement legacy("PatternFlowState");
+        legacy.setAttribute("lastBrowserDir", "/legacy/path");
+        legacy.setAttribute("arrangementBars", 16);
+        juce::MemoryBlock block;
+        juce::AudioProcessor::copyXmlToBinary(legacy, block);
+
+        processor.setStateInformation(block.getData(), (int) block.getSize());
+        REQUIRE(processor.lastBrowserDir == "/legacy/path");
+        REQUIRE(processor.syncSessionBars.load() == 16);
+    }
+
+    libFile.deleteFile();
+    if (backup.existsAsFile())
+        backup.moveFileTo(libFile);
 }

@@ -1820,8 +1820,8 @@ public:
     }
 
     juce::String title;
-    /** Expanded by default; when folded, dirty (changed) rows stay visible. */
-    bool open = true;
+    /** Folded by default; when folded, dirty (changed) rows stay visible. */
+    bool open = false;
     bool locked = false;
     bool showBottomDivider = true;
     std::function<void()> onToggle;

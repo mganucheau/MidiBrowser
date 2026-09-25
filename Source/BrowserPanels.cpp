@@ -555,6 +555,11 @@ void FavoritesSidebar::setScanning(bool on)
 {
     if (scanning == on) return;
     scanning = on;
+    if (!scanning)
+    {
+        scanProgressDone = 0;
+        scanProgressTotal = 0;
+    }
     if (scanning)
     {
         startTimerHz(30); // spin Update icon; filter debounce waits until idle
@@ -568,6 +573,14 @@ void FavoritesSidebar::setScanning(bool on)
         stopTimer();
     }
     repaint();
+}
+
+void FavoritesSidebar::setScanProgress(int done, int total)
+{
+    scanProgressDone = juce::jmax(0, done);
+    scanProgressTotal = juce::jmax(0, total);
+    if (scanning)
+        repaint(updateBtnBounds);
 }
 
 void FavoritesSidebar::setFilterHistograms(const std::vector<StepClip>& clips)
@@ -623,21 +636,6 @@ bool FavoritesSidebar::isCurrentFolderFavorited() const
 int FavoritesSidebar::activeFilterGroupCount() const
 {
     return filterPanel.activeGroupCount();
-}
-
-int FavoritesSidebar::countMidiFilesQuick(const juce::File& dir)
-{
-    if (!dir.isDirectory()) return 0;
-    // Cache per path so paint doesn't re-stat huge folders every frame.
-    struct CacheEntry { juce::int64 modMs = 0; int count = 0; };
-    static std::map<juce::String, CacheEntry> cache;
-    const auto path = dir.getFullPathName();
-    const auto modMs = dir.getLastModificationTime().toMilliseconds();
-    if (auto it = cache.find(path); it != cache.end() && it->second.modMs == modMs)
-        return it->second.count;
-    const int n = dir.findChildFiles(juce::File::findFiles, false, "*.mid;*.midi").size();
-    cache[path] = { modMs, n };
-    return n;
 }
 
 int FavoritesSidebar::folderCardHeight() const
@@ -947,7 +945,7 @@ void FavoritesSidebar::updateTooltipForPos(juce::Point<int> pos)
     }
     if (updateBtnBounds.contains(pos))
     {
-        setTooltip(scanning ? "Updating…" : "Update");
+        setTooltip(scanning ? "Scanning…" : "Scan folder for MIDI files");
         return;
     }
     if (filtersBtnBounds.contains(pos))
@@ -1019,13 +1017,14 @@ void FavoritesSidebar::layoutChildren()
                 inner.removeFromTop(metrics::scaled(6));
                 auto action = inner.removeFromTop(actionRowH());
                 const int gap = actionGap();
-                const int totalGaps = gap * 2;
-                const int unit = juce::jmax(1, (action.getWidth() - totalGaps) / 4);
-                keepBtnBounds = action.removeFromLeft(unit);
+                // Keep (narrow) · Scan (primary) · Filters
+                const int keepW = juce::jmax(1, action.getWidth() / 5);
+                keepBtnBounds = action.removeFromLeft(keepW);
                 action.removeFromLeft(gap);
-                updateBtnBounds = action.removeFromLeft(unit);
+                const int scanW = juce::jmax(1, (action.getWidth() - gap) / 2);
+                updateBtnBounds = action.removeFromLeft(scanW);
                 action.removeFromLeft(gap);
-                filtersBtnBounds = action; // remaining ~½
+                filtersBtnBounds = action;
                 if (filterOpen)
                 {
                     inner.removeFromTop(metrics::scaled(8));
@@ -1461,7 +1460,8 @@ void FavoritesSidebar::paintFolderCard(juce::Graphics& g)
                       hoverChrome == ChromeHit::Update || focusedKind(NavKind::Update),
                       false, scanning);
     {
-        auto iconR = updateBtnBounds.toFloat().withSizeKeepingCentre(13.0f, 13.0f);
+        auto area = updateBtnBounds.reduced(6, 0);
+        auto iconR = area.removeFromLeft(14).toFloat().withSizeKeepingCentre(12.0f, 12.0f);
         if (scanning)
         {
             g.saveState();
@@ -1474,6 +1474,18 @@ void FavoritesSidebar::paintFolderCard(juce::Graphics& g)
         {
             drawIcon(g, icons::undo, iconR, p.accent, kSidebarIconStroke);
         }
+        area.removeFromLeft(4);
+        g.setColour(scanning ? p.text2 : p.text);
+        g.setFont(uiFontFixed(11.0f, true));
+        juce::String scanLabel = "Scan";
+        if (scanning)
+        {
+            if (scanProgressTotal > 0)
+                scanLabel = juce::String(scanProgressDone) + "/" + juce::String(scanProgressTotal);
+            else
+                scanLabel = "Scanning…";
+        }
+        g.drawText(scanLabel, area, juce::Justification::centredLeft, false);
     }
     if (focusedKind(NavKind::Update))
         drawFocusRing(g, updateBtnBounds.toFloat(), 6.0f);
@@ -1547,9 +1559,10 @@ void FavoritesSidebar::paintRow(juce::Graphics& g, int rowIdx, const juce::Recta
         {
             const juce::File dir(dirs[row.index]);
             label = dir.getFileName().isNotEmpty() ? dir.getFileName() : dirs[row.index];
-            const int n = (dirs[row.index] == active) ? currentClipCount
-                                                      : countMidiFilesQuick(dir);
-            if (n > 0) countText = juce::String(n);
+            // Never enumerate disk for badge counts — that freezes on large libraries.
+            // Active folder shows the scanned clip count only.
+            if (dirs[row.index] == active && currentClipCount > 0)
+                countText = juce::String(currentClipCount);
             break;
         }
         case RowKind::Starred:
@@ -1746,6 +1759,12 @@ void FileListPanel::setFolderName(const juce::String& name)
 {
     folderName = name;
     repaint();
+}
+
+void FileListPanel::setEmptyHint(const juce::String& hint)
+{
+    emptyHint = hint.isNotEmpty() ? hint : "No files";
+    content.repaint();
 }
 
 void FileListPanel::setEntries(std::vector<FileListEntry> e)
@@ -2002,10 +2021,24 @@ void FileListPanel::fitNameColumnToContents()
     const float scale = juce::jmax(0.25f, contentScale());
     const auto font = ds::font(ds::Type::Body);
     float maxText = juce::GlyphArrangement::getStringWidth(font, "Name");
-    for (const auto& e : entries)
-        if (e.name.isNotEmpty())
-            maxText = juce::jmax(maxText,
-                                 juce::GlyphArrangement::getStringWidth(font, e.name));
+    // Huge folders: measuring every name stalls the UI; sample + keep a wide default.
+    constexpr int kMeasureCap = 400;
+    if ((int) entries.size() > kMeasureCap)
+    {
+        const int step = juce::jmax(1, (int) entries.size() / kMeasureCap);
+        for (int i = 0; i < (int) entries.size(); i += step)
+            if (entries[(size_t) i].name.isNotEmpty())
+                maxText = juce::jmax(maxText,
+                                     juce::GlyphArrangement::getStringWidth(font, entries[(size_t) i].name));
+        maxText = juce::jmax(maxText, 220.0f);
+    }
+    else
+    {
+        for (const auto& e : entries)
+            if (e.name.isNotEmpty())
+                maxText = juce::jmax(maxText,
+                                     juce::GlyphArrangement::getStringWidth(font, e.name));
+    }
 
     // Star/folder icon (18) + gap (6) + trailing pad so glyphs aren't clipped.
     const int pixelW = 18 + 6 + (int) std::ceil(maxText) + 16;
@@ -2484,7 +2517,7 @@ void FileListPanel::ListContent::paint(juce::Graphics& g)
     {
         g.setColour(colours::text2());
         g.setFont(uiFont(13.0f, false));
-        g.drawText("No files", getLocalBounds().reduced(24, 32),
+        g.drawText(owner.emptyHint, getLocalBounds().reduced(24, 32),
                    juce::Justification::centred);
         return;
     }
